@@ -116,11 +116,11 @@ Use the MySQL server already on the machine. **Do not install another MySQL serv
 ```bash
 cd /opt/cricket-live
 git clone <repository-url> app && cd app
-cp .env.example .env && chmod 600 .env
+cp backend/.env.example backend/.env && chmod 600 backend/.env
 cp admin/.env.example admin/.env.production
 ```
 
-### Backend `.env` (API + worker, never committed)
+### Backend `backend/.env` (API + worker, never committed)
 
 | Variable | Production value |
 | --- | --- |
@@ -158,7 +158,7 @@ secrets. The admin panel has no database, Redis, Sportmonks or Firebase access.
 ## 6. Prisma migrations
 
 ```bash
-cd /opt/cricket-live/app
+cd /opt/cricket-live/app/backend
 npm ci
 npx prisma generate
 npx prisma migrate status          # shows pending migrations, changes nothing
@@ -174,14 +174,13 @@ npm run db:verify                  # read-only: connection, migrations, indexes,
 ## 7. Build
 
 ```bash
-cd /opt/cricket-live/app
-npm ci && npx prisma generate && npm run build            # -> dist/main.js, dist/worker.js
+cd /opt/cricket-live/app/backend
+npm ci && npx prisma generate && npm run build            # -> backend/dist/main.js, backend/dist/worker.js
 npm test                                                  # optional on the server
-
-cd admin
-npm ci && npm run build                                   # reads admin/.env.production; fails if NEXT_PUBLIC_API_URL is missing
-cd ..
 npm run audit:secrets                                     # no secrets in the repo or admin bundle
+
+cd ../admin
+npm ci && npm run build                                   # reads admin/.env.production; fails if NEXT_PUBLIC_API_URL is missing
 ```
 
 ## 8. PM2
@@ -330,10 +329,12 @@ cd /opt/cricket-live/app
 git fetch --tags && git tag -l | tail      # note the current release tag for rollback
 mysqldump ... | gzip > ~/backups/...       # section 4
 git checkout <new-tag>
+cd backend
 npm ci && npx prisma generate && npm run build
 npx prisma migrate status && npx prisma migrate deploy
-(cd admin && npm ci && npm run build)
 npm run audit:secrets
+cd ../admin && npm ci && npm run build
+cd ..
 pm2 reload ecosystem.config.cjs && pm2 save
 curl -fsS http://127.0.0.1:3000/health
 ```
@@ -341,7 +342,7 @@ curl -fsS http://127.0.0.1:3000/health
 ## 16. Rollback procedure
 
 1. `git checkout <previous-tag>`
-2. `npm ci && npx prisma generate && npm run build && (cd admin && npm ci && npm run build)`
+2. `(cd backend && npm ci && npx prisma generate && npm run build) && (cd admin && npm ci && npm run build)`
 3. `pm2 reload ecosystem.config.cjs`
 4. Check `/health` and the admin dashboard.
 
@@ -371,8 +372,8 @@ These are covered by `src/resilience.e2e.spec.ts`, `src/live-score/*.spec.ts`,
 
 ## 18. Security checklist
 
-- [ ] `.env` is `chmod 600`, owned by the app user, never committed (`.gitignore`); `npm run audit:secrets` passes.
-- [ ] `JWT_SECRET` ≥ 32 random chars; `ADMIN_INITIAL_PASSWORD` removed from `.env` after first login.
+- [ ] `backend/.env` is `chmod 600`, owned by the app user, never committed (`.gitignore`); `npm run audit:secrets` (from `backend`) passes.
+- [ ] `JWT_SECRET` ≥ 32 random chars; `ADMIN_INITIAL_PASSWORD` removed from `backend/.env` after first login.
 - [ ] `CORS_ORIGIN=https://admin.example.com`.
 - [ ] Redis: `bind 127.0.0.1 -::1`, `requirepass`, `protected-mode yes`, 6379 closed in ufw.
 - [ ] MySQL: `bind-address = 127.0.0.1`, dedicated least-privilege user, 3306 closed.

@@ -2,7 +2,8 @@
  * PM2 process file (Ubuntu 24.04). Start from the repository root:
  *   pm2 start ecosystem.config.cjs && pm2 save
  *
- * Secrets are not set here. The API and worker read the root `.env` (chmod 600);
+ * The repo has two apps: `backend` (NestJS API + worker) and `admin` (Next.js).
+ * Secrets are not set here. The API and worker read `backend/.env` (chmod 600);
  * the admin panel reads only `admin/.env.production` (NEXT_PUBLIC_API_URL, no secrets).
  *
  * live-score-api: HTTP + Socket.IO, never polls Sportmonks. To scale, add more fork-mode
@@ -18,6 +19,9 @@
  *
  * live-score-admin: Next.js admin panel on 127.0.0.1:3100, served through nginx.
  */
+const path = require('path');
+const backendDir = path.join(__dirname, 'backend');
+
 const restartPolicy = {
   autorestart: true,
   // Crash loops back off (150 ms, 300 ms, ... up to 15 s) instead of hammering MySQL/Redis.
@@ -32,8 +36,8 @@ module.exports = {
   apps: [
     {
       name: 'live-score-api',
-      script: 'dist/main.js',
-      cwd: __dirname,
+      script: path.join(backendDir, 'dist', 'main.js'),
+      cwd: backendDir,
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '512M',
@@ -47,8 +51,8 @@ module.exports = {
     },
     // {
     //   name: 'live-score-api-2',
-    //   script: 'dist/main.js',
-    //   cwd: __dirname,
+    //   script: path.join(backendDir, 'dist', 'main.js'),
+    //   cwd: backendDir,
     //   instances: 1,
     //   exec_mode: 'fork',
     //   max_memory_restart: '512M',
@@ -58,8 +62,8 @@ module.exports = {
     // },
     {
       name: 'live-score-worker',
-      script: 'dist/worker.js',
-      cwd: __dirname,
+      script: path.join(backendDir, 'dist', 'worker.js'),
+      cwd: backendDir,
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '256M',
@@ -73,7 +77,7 @@ module.exports = {
     },
     {
       name: 'live-score-admin',
-      cwd: `${__dirname}/admin`,
+      cwd: path.join(__dirname, 'admin'),
       script: 'node_modules/next/dist/bin/next',
       args: 'start -p 3100 -H 127.0.0.1',
       instances: 1,

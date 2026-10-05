@@ -10,9 +10,11 @@
  * Exit code 1 when something leaks.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.cwd();
+const BACKEND_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = join(BACKEND_ROOT, '..');
 const SECRET_KEYS = [
   'SPORTMONKS_API_TOKEN',
   'JWT_SECRET',
@@ -40,7 +42,7 @@ function parseEnv(path) {
 }
 
 function secretsFromEnv() {
-  const env = { ...parseEnv(join(ROOT, '.env')) };
+  const env = { ...parseEnv(join(BACKEND_ROOT, '.env')) };
   const secrets = [];
   for (const key of SECRET_KEYS) {
     let value = env[key] ?? '';
@@ -83,7 +85,7 @@ for (const file of walk(ROOT)) {
   for (const { key, value } of secrets) {
     if (content.includes(value)) findings.push(`${key} value found in ${rel}`);
   }
-  if (/-----BEGIN (RSA )?PRIVATE KEY-----/.test(content) && !rel.startsWith('scripts/')) {
+  if (/-----BEGIN (RSA )?PRIVATE KEY-----/.test(content) && !rel.startsWith('backend/scripts/')) {
     findings.push(`private key block found in ${rel}`);
   }
   const isAdminCode = rel.startsWith('admin/src/') || rel.startsWith('admin/.next/static/');
