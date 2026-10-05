@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  ABANDONED
+  CANCELLED
+  POSTPONED
+  INTERRUPTED
+  UNKNOWN
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+enum AdPlacement {
+  HOME_BANNER
+  MATCH_LIST
+  MATCH_DETAIL
+  SPLASH
+  INTERSTITIAL
+}
+
+model League {
+  id           String   @id @default(cuid())
+  sportmonksId Int      @unique @map("sportmonks_id")
+  name         String   @db.VarChar(191)
+  code         String?  @db.VarChar(32)
+  imageUrl     String?  @map("image_url") @db.VarChar(512)
+  country      String?  @db.VarChar(120)
+  type         String?  @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  seasons Season[]
+  matches Match[]
+
+  @@index([name])
+  @@map("leagues")
+}
+
+model Season {
+  id           String    @id @default(cuid())
+  sportmonksId Int       @unique @map("sportmonks_id")
+  leagueId     String    @map("league_id")
+  name         String    @db.VarChar(191)
+  startDate    DateTime? @map("start_date")
+  endDate      DateTime? @map("end_date")
+  isCurrent    Boolean   @default(false) @map("is_current")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  league  League  @relation(fields: [leagueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  matches Match[]
+
+  @@index([leagueId])
+  @@index([isCurrent])
+  @@map("seasons")
+}
+
+model Team {
+  id           String   @id @default(cuid())
+  sportmonksId Int      @unique @map("sportmonks_id")
+  name         String   @db.VarChar(191)
+  shortName    String?  @map("short_name") @db.VarChar(32)
+  imageUrl     String?  @map("image_url") @db.VarChar(512)
+  country      String?  @db.VarChar(120)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  homeMatches Match[] @relation("MatchLocalTeam")
+  awayMatches Match[] @relation("MatchVisitorTeam")
+  wonMatches  Match[] @relation("MatchWinner")
+
+  @@index([name])
+  @@map("teams")
+}
+
+model Player {
+  id           String   @id @default(cuid())
+  sportmonksId Int      @unique @map("sportmonks_id")
+  name         String   @db.VarChar(191)
+  imageUrl     String?  @map("image_url") @db.VarChar(512)
+  country      String?  @db.VarChar(120)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@map("players")
+}
+
+/// Fixture metadata only. Live score snapshots stay in Redis.
+model Match {
+  id            String      @id @default(cuid())
+  sportmonksId  Int         @unique @map("sportmonks_id")
+  leagueId      String      @map("league_id")
+  seasonId      String      @map("season_id")
+  localTeamId   String      @map("local_team_id")
+  visitorTeamId String      @map("visitor_team_id")
+  winnerTeamId  String?     @map("winner_team_id")
+  venueName     String?     @map("venue_name") @db.VarChar(191)
+  venueCity     String?     @map("venue_city") @db.VarChar(120)
+  status        MatchStatus @default(UNKNOWN)
+  statusDetail  String?     @map("status_detail") @db.VarChar(120)
+  matchType     String?     @map("match_type") @db.VarChar(32)
+  round         String?     @db.VarChar(64)
+  startTime     DateTime    @map("start_time")
+  resultSummary String?     @map("result_summary") @db.VarChar(255)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  league      League @relation(fields: [leagueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  season      Season @relation(fields: [seasonId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  localTeam   Team   @relation("MatchLocalTeam", fields: [localTeamId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  visitorTeam Team   @relation("MatchVisitorTeam", fields: [visitorTeamId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  winnerTeam  Team?  @relation("MatchWinner", fields: [winnerTeamId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([status, startTime])
+  @@index([leagueId, startTime])
+  @@index([seasonId])
+  @@index([localTeamId])
+  @@index([visitorTeamId])
+  @@index([winnerTeamId])
+  @@map("matches")
+}
+
+model FcmDevice {
+  id         String         @id @default(cuid())
+  deviceId   String         @unique @map("device_id") @db.VarChar(128)
+  fcmToken   String         @map("fcm_token") @db.VarChar(512)
+  platform   DevicePlatform
+  appVersion String?        @map("app_version") @db.VarChar(32)
+  lastSeenAt DateTime       @map("last_seen_at")
+  isActive   Boolean        @default(true) @map("is_active")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  @@index([fcmToken])
+  @@index([isActive])
+  @@index([lastSeenAt])
+  @@map("fcm_devices")
+}
+
+model Ad {
+  id        String      @id @default(cuid())
+  title     String      @db.VarChar(191)
+  imageUrl  String      @map("image_url") @db.VarChar(512)
+  clickUrl  String      @map("click_url") @db.VarChar(512)
+  placement AdPlacement
+  priority  Int         @default(0)
+  isActive  Boolean     @default(false) @map("is_active")
+  startAt   DateTime?   @map("start_at")
+  endAt     DateTime?   @map("end_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@index([placement, isActive, priority])
+  @@map("ads")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
