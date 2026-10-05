@@ -27,10 +27,21 @@ const IN_PLAY = new Set([
 
 const STUMPS = /^Stump Day \d+$/;
 
-/** Maps a Sportmonks cricket status string to the backend status. */
+/**
+ * Maps a Sportmonks cricket status string to the backend status.
+ * `live: true` puts the fixture in the active set. A terminal status
+ * (Finished, abandoned, cancelled, postponed) still wins over that flag.
+ * The raw Sportmonks string is kept separately as `statusDetail`.
+ */
 export function mapStatus(raw: string | null, liveFlag: boolean | null): StatusInfo {
   if (raw && FINISHED[raw]) {
     return { status: FINISHED[raw], isLive: false, isFinished: true };
+  }
+  if (liveFlag) {
+    if (raw === 'Int.') {
+      return { status: MatchStatus.INTERRUPTED, isLive: true, isFinished: false };
+    }
+    return { status: MatchStatus.LIVE, isLive: true, isFinished: false };
   }
   if (raw === 'Int.') {
     return { status: MatchStatus.INTERRUPTED, isLive: true, isFinished: false };
@@ -40,9 +51,6 @@ export function mapStatus(raw: string | null, liveFlag: boolean | null): StatusI
   }
   if (raw === 'NS') {
     return { status: MatchStatus.SCHEDULED, isLive: false, isFinished: false };
-  }
-  if (liveFlag) {
-    return { status: MatchStatus.LIVE, isLive: true, isFinished: false };
   }
   return { status: MatchStatus.UNKNOWN, isLive: false, isFinished: false };
 }

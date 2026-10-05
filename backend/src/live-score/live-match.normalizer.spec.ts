@@ -84,16 +84,35 @@ describe('normalizeFixture', () => {
     expect(match.requiredRunRate).toBeNull();
   });
 
+  it('keeps a live:true fixture in the active set when Sportmonks status is still NS', () => {
+    const match = normalize({ id: 71391, status: 'NS', live: true, runs: [] });
+
+    expect(match).toMatchObject({
+      sportmonksId: 71391,
+      status: 'LIVE',
+      statusDetail: 'NS',
+      isLive: true,
+      isFinished: false,
+    });
+  });
+
   it('marks a finished match as final and not live', () => {
     const match = normalize({ status: 'Finished', live: false, winnerTeamId: LOCAL_TEAM_ID, note: 'Mumbai won by 20 runs' });
 
     expect(match).toMatchObject({
       status: 'COMPLETED',
+      statusDetail: 'Finished',
       isLive: false,
       isFinished: true,
       winnerTeamSportmonksId: LOCAL_TEAM_ID,
       note: 'Mumbai won by 20 runs',
     });
+  });
+
+  it('does not treat a finished fixture as live when the live flag is still true', () => {
+    const match = normalize({ status: 'Finished', live: true, winnerTeamId: LOCAL_TEAM_ID });
+
+    expect(match).toMatchObject({ status: 'COMPLETED', statusDetail: 'Finished', isLive: false, isFinished: true });
   });
 
   it('keeps missing data as null instead of guessing', () => {

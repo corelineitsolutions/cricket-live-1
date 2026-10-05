@@ -31,6 +31,17 @@ describe('computeNextPoll', () => {
     expect(computeNextPoll({ liveMatches: [finished], intervals }).mode).toBe('idle');
   });
 
+  it('polls every 10 s when the only fixture is live:true with status NS', () => {
+    const notStartedButLive = match({ id: 71391, status: 'NS', live: true, runs: [] });
+
+    expect(notStartedButLive.isLive).toBe(true);
+    expect(computeNextPoll({ liveMatches: [notStartedButLive], intervals })).toEqual({
+      intervalMs: 10_000,
+      mode: 'live',
+      reason: 'live',
+    });
+  });
+
   it('polls every 10 s during normal live play', () => {
     expect(computeNextPoll({ liveMatches: [firstInnings, earlyChase], intervals })).toEqual({
       intervalMs: 10_000,

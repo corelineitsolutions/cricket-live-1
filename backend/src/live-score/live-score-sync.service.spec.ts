@@ -207,6 +207,39 @@ describe('LiveScoreSyncService', () => {
     expect(h.liveIds()).toEqual([]);
   });
 
+  it('stores a live:true fixture whose Sportmonks status is still NS and leaves idle polling', async () => {
+    const h = liveScoreHarness();
+    h.livescores(rawFixture({ id: 71391, status: 'NS', live: true, runs: [] }));
+
+    const decision = await h.sync.runCycle(INSTANCE);
+
+    expect(decision).toEqual({ intervalMs: 10_000, mode: 'live', reason: 'live' });
+    expect(h.liveIds()).toEqual([71391]);
+    expect(h.match(71391)).toMatchObject({
+      sportmonksId: 71391,
+      status: 'LIVE',
+      statusDetail: 'NS',
+      isLive: true,
+      isFinished: false,
+    });
+    expect(h.logs.tagged('poll-success')[0]).toContain('"fixtures":1');
+    expect(h.logs.tagged('poll-success')[0]).toContain('"liveMatches":1');
+    expect(h.logs.tagged('poll-success')[0]).toContain('"mode":"live"');
+    expect(h.logs.tagged('poll-success')[0]).toContain('"nextIntervalMs":10000');
+  });
+
+  it('stays idle when livescores is empty', async () => {
+    const h = liveScoreHarness();
+    h.livescores();
+
+    const decision = await h.sync.runCycle(INSTANCE);
+
+    expect(decision).toEqual({ intervalMs: 60_000, mode: 'idle', reason: 'idle' });
+    expect(h.liveIds()).toEqual([]);
+    expect(h.logs.tagged('poll-success')[0]).toContain('"fixtures":0');
+    expect(h.logs.tagged('poll-success')[0]).toContain('"liveMatches":0');
+  });
+
   it('ignores fixtures that have not started', async () => {
     const h = liveScoreHarness();
     h.livescores(rawFixture({ status: 'NS', live: false, runs: [] }));

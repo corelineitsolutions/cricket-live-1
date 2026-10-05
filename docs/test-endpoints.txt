@@ -1,0 +1,103 @@
+Cricket Live API — test endpoints
+Run these on the Ubuntu server. Base URL is the machine itself.
+
+BASE=http://127.0.0.1:3000
+ADMIN_PANEL=http://127.0.0.1:3100
+Swagger (browser on the server, or tunnel): http://127.0.0.1:3000/api/docs
+
+A healthy JSON body looks like: {"success":true,"data":...}
+Replace MATCH_ID with a matchId from /matches/live or /matches.
+Replace TOKEN with the accessToken from admin login.
+
+
+1. Health (no login)
+curl -sS http://127.0.0.1:3000/health
+Expect: HTTP 200 and "status":"ok" (MySQL and Redis up)
+
+
+2. Live matches (no login) — main test
+curl -sS http://127.0.0.1:3000/api/v1/matches/live
+Expect: HTTP 200. data.matches is [] until Sportmonks has a live game and the worker has polled.
+data.stale is false while the worker is healthy.
+
+
+3. Stored matches (no login)
+curl -sS "http://127.0.0.1:3000/api/v1/matches?page=1&limit=20"
+curl -sS "http://127.0.0.1:3000/api/v1/matches?page=1&limit=20&status=LIVE"
+curl -sS "http://127.0.0.1:3000/api/v1/matches?page=1&limit=20&status=COMPLETED"
+
+
+4. One match, scorecard, commentary (no login)
+curl -sS http://127.0.0.1:3000/api/v1/matches/MATCH_ID
+curl -sS http://127.0.0.1:3000/api/v1/matches/MATCH_ID/scorecard
+curl -sS "http://127.0.0.1:3000/api/v1/matches/MATCH_ID/commentary?limit=30"
+
+
+5. Teams, players, leagues, seasons (no login)
+curl -sS "http://127.0.0.1:3000/api/v1/teams?page=1&limit=20"
+curl -sS http://127.0.0.1:3000/api/v1/teams/TEAM_ID
+curl -sS "http://127.0.0.1:3000/api/v1/players?page=1&limit=20"
+curl -sS http://127.0.0.1:3000/api/v1/players/PLAYER_ID
+curl -sS "http://127.0.0.1:3000/api/v1/leagues?page=1&limit=20"
+curl -sS http://127.0.0.1:3000/api/v1/leagues/LEAGUE_ID
+curl -sS "http://127.0.0.1:3000/api/v1/seasons?page=1&limit=20"
+curl -sS http://127.0.0.1:3000/api/v1/seasons/SEASON_ID
+TEAM_ID, PLAYER_ID, LEAGUE_ID, SEASON_ID are the numeric sportmonksId values from a match.
+
+
+6. Ads (no login)
+curl -sS http://127.0.0.1:3000/api/v1/ads
+curl -sS "http://127.0.0.1:3000/api/v1/ads?placement=HOME_BANNER"
+Placements: HOME_BANNER, MATCH_LIST, MATCH_DETAIL, SPLASH, INTERSTITIAL
+
+
+7. Socket contract and a live socket handshake (no login)
+curl -sS http://127.0.0.1:3000/api/v1/realtime
+curl -sS "http://127.0.0.1:3000/socket.io/?EIO=4&transport=polling"
+Expect the socket line to start with: 0{"sid":
+Namespace for the app: /live
+Path: /socket.io
+Subscribe event payload: {"matchId": MATCH_ID}
+
+
+8. Admin login
+curl -sS -X POST http://127.0.0.1:3000/api/v1/admin/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ADMIN_EMAIL","password":"ADMIN_PASSWORD"}'
+Copy data.accessToken into TOKEN.
+
+curl -sS http://127.0.0.1:3000/api/v1/admin/auth/me \
+  -H "Authorization: Bearer TOKEN"
+
+
+9. Admin panel API (login required)
+curl -sS http://127.0.0.1:3000/api/v1/admin/dashboard \
+  -H "Authorization: Bearer TOKEN"
+curl -sS http://127.0.0.1:3000/api/v1/admin/metrics \
+  -H "Authorization: Bearer TOKEN"
+curl -sS http://127.0.0.1:3000/api/v1/admin/matches/live \
+  -H "Authorization: Bearer TOKEN"
+curl -sS http://127.0.0.1:3000/api/v1/admin/matches/MATCH_ID \
+  -H "Authorization: Bearer TOKEN"
+curl -sS "http://127.0.0.1:3000/api/v1/admin/ads?page=1&limit=20" \
+  -H "Authorization: Bearer TOKEN"
+curl -sS "http://127.0.0.1:3000/api/v1/admin/devices?page=1&limit=20" \
+  -H "Authorization: Bearer TOKEN"
+
+Admin website (browser): http://127.0.0.1:3100/login
+
+
+10. Device push registration (no login; needs a real FCM token later)
+curl -sS -X POST http://127.0.0.1:3000/api/v1/devices/register \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"test-device-001","fcmToken":"test-fcm-token-value","platform":"android"}'
+
+curl -sS -X POST http://127.0.0.1:3000/api/v1/devices/deactivate \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"test-device-001"}'
+
+
+Start here
+curl -sS http://127.0.0.1:3000/health
+curl -sS http://127.0.0.1:3000/api/v1/matches/live
+curl -sS "http://127.0.0.1:3000/api/v1/matches?page=1&limit=20"
