@@ -16,7 +16,8 @@ import { buildScorecardInnings, scorecardPlayers } from './scorecard.mapper';
 
 /** Fresh period of detail caches. One upstream call per match per period, whatever the traffic. */
 export const DETAIL_TTL_SECONDS = {
-  live: 30,
+  live: 15,
+  liveCommentary: 2,
   finished: 24 * 60 * 60,
   other: 120,
   missing: 300,
@@ -26,8 +27,8 @@ export const DETAIL_STALE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Scorecard and commentary. These need data the live poll does not fetch, so they are
- * loaded from Latiyal on demand behind a shared cache with request coalescing and a
- * separate hourly budget (LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR).
+ * loaded from Latiyal on demand behind a shared cache with request coalescing, counted
+ * under the on-demand budget (LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR, 0 = unlimited).
  */
 @Injectable()
 export class MatchDetailService {
@@ -73,7 +74,7 @@ export class MatchDetailService {
     const result = await this.load<CommentaryItemDto[] | null>(
       'Commentary',
       RedisKey.matchCommentary(match.matchId),
-      this.options(match),
+      this.options(match, DETAIL_TTL_SECONDS.liveCommentary),
       async () => {
         const feed = await this.latiyal.getCommentary(match.matchId);
         return feed === null ? null : buildCommentary(feed);
@@ -91,8 +92,8 @@ export class MatchDetailService {
     return match.status !== MatchStatus.SCHEDULED;
   }
 
-  private options<T>(match: MatchDto): CacheOptions<T | null> {
-    const fresh = match.isLive ? DETAIL_TTL_SECONDS.live : match.isFinished ? DETAIL_TTL_SECONDS.finished : DETAIL_TTL_SECONDS.other;
+  private options<T>(match: MatchDto, liveTtl: number = DETAIL_TTL_SECONDS.live): CacheOptions<T | null> {
+    const fresh = match.isLive ? liveTtl : match.isFinished ? DETAIL_TTL_SECONDS.finished : DETAIL_TTL_SECONDS.other;
     return {
       ttlSeconds: (value) => (value === null ? DETAIL_TTL_SECONDS.missing : fresh),
       staleTtlSeconds: DETAIL_STALE_TTL_SECONDS,

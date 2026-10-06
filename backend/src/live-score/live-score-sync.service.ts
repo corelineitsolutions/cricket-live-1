@@ -16,7 +16,7 @@ import { WorkerState, WorkerStateRepository } from './worker-state.repository';
 /** Live matches missing from liveMatchList are looked up individually, at most this many per cycle. */
 export const MAX_MISSING_LOOKUPS_PER_CYCLE = 3;
 /** liveMatch detail (batsmen, bowler, rates) is fetched in parallel for at most this many listed matches. */
-export const MAX_DETAIL_LOOKUPS_PER_CYCLE = 10;
+export const MAX_DETAIL_LOOKUPS_PER_CYCLE = 25;
 /** After this many failed lookups a missing match is removed from the live list. */
 export const MAX_MISSING_ATTEMPTS = 3;
 
@@ -51,8 +51,9 @@ export class LiveScoreSyncService {
     logEvent(this.logger, 'debug', 'poll', { instanceId });
 
     let fixtures: LatiyalMatch[];
+    let listFresh: boolean;
     try {
-      fixtures = await this.latiyal.getLiveMatches();
+      ({ matches: fixtures, fresh: listFresh } = await this.liveList());
     } catch (error) {
       return this.handleFailure(error, instanceId);
     }
@@ -63,7 +64,15 @@ export class LiveScoreSyncService {
     const details = await this.fetchDetails(fixtures);
     const now = new Date();
     const current = fixtures
-      .map((fixture) => this.normalize(fixture.raw, details.get(fixture.id), previous.get(fixture.id) ?? null, now))
+      .map((fixture) => {
+        const prev = previous.get(fixture.id) ?? null;
+        const detail = details.get(fixture.id);
+        // A reused list carries an older score than the last snapshot, so it must not overwrite it.
+        if (detail === undefined && prev && !listFresh) {
+          return prev;
+        }
+        return this.normalize(fixture.raw, detail, prev, now);
+      })
       .filter((match) => match.isLive || match.isFinished);
     const currentIds = new Set(current.map((match) => match.sportmonksId));
 
@@ -116,6 +125,25 @@ export class LiveScoreSyncService {
       reason: decision.reason,
     });
     return decision;
+  }
+
+  /**
+   * liveMatchList, reused from Redis for LATIYAL_LIST_INTERVAL_MS (Latiyal asks for it about
+   * once a minute). Scores come from the per-match liveMatch call made every cycle.
+   */
+  private async liveList(): Promise<{ matches: LatiyalMatch[]; fresh: boolean }> {
+    const ttlMs = this.config.latiyalListIntervalMs;
+    if (ttlMs > 0) {
+      const cached = await this.workerState.getLiveList();
+      if (cached && Array.isArray(cached.matches)) {
+        return { matches: cached.matches, fresh: false };
+      }
+    }
+    const matches = await this.latiyal.getLiveMatches();
+    if (ttlMs > 0) {
+      await this.workerState.saveLiveList(matches, ttlMs);
+    }
+    return { matches, fresh: true };
   }
 
   /**

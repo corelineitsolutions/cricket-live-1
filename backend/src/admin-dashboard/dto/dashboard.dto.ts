@@ -110,10 +110,15 @@ export class DashboardProviderDto {
   @ApiProperty({ type: Number, nullable: true, example: 412, description: 'Latiyal calls counted this clock hour (all callers).' })
   callsThisHour!: number | null;
 
-  @ApiProperty({ example: 20000, description: 'LATIYAL_MAX_CALLS_PER_HOUR.' })
-  hourlyLimit!: number;
+  @ApiProperty({ type: Number, nullable: true, example: null, description: 'LATIYAL_MAX_CALLS_PER_HOUR. Null when unlimited (the default).' })
+  hourlyLimit!: number | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 1188, description: 'Calls still allowed this hour (the stricter of our limit and any API rate-limit headers).' })
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: null,
+    description: 'Calls still allowed this hour (the stricter of our limit and any API rate-limit headers). Null when unlimited or unknown.',
+  })
   remainingQuota!: number | null;
 
   @ApiProperty({ type: String, nullable: true, example: 'local', description: '"api" when the API sent rate-limit headers, else "local".' })
@@ -122,11 +127,11 @@ export class DashboardProviderDto {
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   quotaResetsAt!: string | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 37, description: 'Scorecard/commentary calls this hour.' })
+  @ApiProperty({ type: Number, nullable: true, example: 37, description: 'Scorecard, commentary and data-feed calls this hour.' })
   onDemandCallsThisHour!: number | null;
 
-  @ApiProperty({ example: 2000, description: 'LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR.' })
-  onDemandHourlyLimit!: number;
+  @ApiProperty({ type: Number, nullable: true, example: null, description: 'LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR. Null when unlimited (the default).' })
+  onDemandHourlyLimit!: number | null;
 
   @ApiProperty({ type: Number, nullable: true, example: 0, description: 'HTTP 429 responses received from Latiyal (kept with the quota state, about 1 hour).' })
   count429!: number | null;

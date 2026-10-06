@@ -265,13 +265,28 @@ describe('Public REST API (e2e)', () => {
       expect(redis.ttlSeconds(RedisKey.matchScorecard(FINISHED_ID))).toBe(DETAIL_TTL_SECONDS.finished);
     });
 
-    it('stops calling Latiyal once the on-demand hourly budget is spent', async () => {
+    it('stops calling Latiyal once an optional on-demand hourly cap is spent', async () => {
+      await api.close();
+      api = await createApiTestApp({ redis, db, config: { latiyalOnDemandMaxCallsPerHour: 1 } });
+      api.respond(() => scorecardBody());
+
+      await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(200);
+      await redis.del(RedisKey.matchScorecard(LIVE_ID));
+      await redis.del(RedisKey.stale(RedisKey.matchScorecard(LIVE_ID)));
+      await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(503);
+      expect(api.fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('has no on-demand cap by default (limit 0 means unlimited)', async () => {
       await api.close();
       api = await createApiTestApp({ redis, db, config: { latiyalOnDemandMaxCallsPerHour: 0 } });
       api.respond(() => scorecardBody());
 
-      await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(503);
-      expect(api.fetchMock).not.toHaveBeenCalled();
+      for (let i = 0; i < 5; i += 1) {
+        await redis.del(RedisKey.matchScorecard(LIVE_ID));
+        await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(200);
+      }
+      expect(api.fetchMock).toHaveBeenCalledTimes(5);
     });
   });
 

@@ -13,6 +13,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { AppConfigService } from './config/app-config.service';
 import { DatabaseModule } from './database/database.module';
 import { FcmModule } from './fcm/fcm.module';
+import { FeedsModule } from './feeds/feeds.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { HealthModule } from './health/health.module';
 import { LeaguesModule } from './leagues/leagues.module';
@@ -45,6 +46,7 @@ import { WebsocketModule } from './websocket/websocket.module';
     HealthModule,
     AdminModule,
     MatchesModule,
+    FeedsModule,
     TeamsModule,
     PlayersModule,
     LeaguesModule,

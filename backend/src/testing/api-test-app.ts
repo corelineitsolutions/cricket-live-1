@@ -15,6 +15,7 @@ import { throttlerOptions } from '../common/guards/throttler.config';
 import { AppConfigService } from '../config/app-config.service';
 import { PrismaService } from '../database/prisma.service';
 import { FcmModule } from '../fcm/fcm.module';
+import { FeedsModule } from '../feeds/feeds.module';
 import { FirebaseService } from '../firebase/firebase.service';
 import { HealthModule } from '../health/health.module';
 import { LeaguesModule } from '../leagues/leagues.module';
@@ -108,6 +109,7 @@ export async function createApiTestApp(options: ApiTestOptions = {}) {
       WebsocketModule,
       AdminDashboardModule,
       AdminMatchesModule,
+      FeedsModule,
       HealthModule,
     ],
     providers: [AllExceptionsFilter, { provide: APP_GUARD, useClass: HttpThrottlerGuard }],

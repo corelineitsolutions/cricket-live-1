@@ -8,7 +8,9 @@ export interface TestConfigOverrides {
   latiyalIdleIntervalMs?: number;
   latiyalLiveIntervalMs?: number;
   latiyalActiveIntervalMs?: number;
+  latiyalListIntervalMs?: number;
   latiyalMaxCallsPerHour?: number;
+  latiyalOnDemandMaxCallsPerHour?: number;
   latiyalTimeoutMs?: number;
   latiyalMaxRetries?: number;
   liveScoreWorkerEnabled?: boolean;
@@ -21,7 +23,9 @@ export function testConfig(overrides: TestConfigOverrides = {}): AppConfigServic
     latiyalIdleIntervalMs: 60_000,
     latiyalLiveIntervalMs: 10_000,
     latiyalActiveIntervalMs: 5_000,
+    latiyalListIntervalMs: 0,
     latiyalMaxCallsPerHour: 1_600,
+    latiyalOnDemandMaxCallsPerHour: 0,
     latiyalTimeoutMs: 8_000,
     latiyalMaxRetries: 2,
     liveScoreWorkerEnabled: true,

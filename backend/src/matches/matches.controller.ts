@@ -41,7 +41,7 @@ export class MatchesController {
   @ApiOperation({
     summary: 'Matches in play right now',
     description:
-      'Served from Redis, refreshed by the live-score worker every 5–60 seconds. For updates, subscribe to each match over Socket.IO instead of polling this endpoint quickly.',
+      'Served from Redis, refreshed by the live-score worker about every second while matches are live (every 60 s otherwise). For updates, subscribe to each match over Socket.IO instead of polling this endpoint quickly.',
   })
   @ApiOkResponse({ type: LiveMatchesResponseDto })
   @ApiServiceUnavailableResponse({ type: ErrorResponseDto, description: 'Live data store unavailable (SERVICE_UNAVAILABLE).' })
@@ -65,7 +65,7 @@ export class MatchesController {
   @ApiOperation({
     summary: 'Full scorecard',
     description:
-      'Batting, bowling and extras per innings. Cached: refreshed at most every 30 s while live, kept 24 h once finished. Empty before the match starts.',
+      'Batting, bowling and extras per innings. Cached: refreshed at most every 15 s while live, kept 24 h once finished. Empty before the match starts.',
   })
   @ApiOkResponse({ type: ScorecardEnvelopeDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
@@ -78,7 +78,7 @@ export class MatchesController {
   @Get(':id/commentary')
   @ApiOperation({
     summary: 'Ball-by-ball commentary',
-    description: 'Latest balls first. Cached: refreshed at most every 30 s while live. Empty before the match starts.',
+    description: 'Latest balls first. Cached: refreshed at most every 2 s while live. Empty before the match starts.',
   })
   @ApiOkResponse({ type: CommentaryEnvelopeDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto })

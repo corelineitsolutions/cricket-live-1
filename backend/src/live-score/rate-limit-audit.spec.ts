@@ -70,6 +70,16 @@ describe('Latiyal rate-limit audit (one simulated hour)', () => {
     expect(calls).toBe(1_080);
   });
 
+  it('10 s polling with liveMatchList reused for 60 s: 60 list + 360 detail = 420 calls/hour', async () => {
+    const h = liveScoreHarness({ latiyalListIntervalMs: 60_000 });
+    h.live(earlyChase());
+
+    const calls = await simulateHour([h]);
+
+    expect(calls).toBe(420);
+    expect(h.calls().filter((endpoint) => endpoint === 'liveMatchList')).toHaveLength(60);
+  });
+
   it('5 s polling (close finish): 1,440 calls/hour with one worker', async () => {
     const calls = await simulateHour(workersOn(new FakeRedis(), 1, () => [closeFinish()], 5_000));
 

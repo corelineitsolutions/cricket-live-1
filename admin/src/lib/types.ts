@@ -26,12 +26,14 @@ export interface Dashboard {
     lastSuccess: { at: string; durationMs: number; liveMatches: number } | null;
     lastError: { at: string; kind: string; status: number | null; message: string } | null;
     callsThisHour: number | null;
-    hourlyLimit: number;
+    /** Null when unlimited. */
+    hourlyLimit: number | null;
     remainingQuota: number | null;
     quotaSource: string | null;
     quotaResetsAt: string | null;
     onDemandCallsThisHour: number | null;
-    onDemandHourlyLimit: number;
+    /** Null when unlimited. */
+    onDemandHourlyLimit: number | null;
     count429: number | null;
     last429At: string | null;
     lastStatus: number | null;

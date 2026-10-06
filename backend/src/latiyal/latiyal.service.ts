@@ -15,7 +15,7 @@ export interface LatiyalLimits {
   maxCallsPerHour: number;
 }
 
-/** Typed Latiyal operations. There is no generic passthrough to the API. */
+/** Latiyal operations. Feeds are limited to the endpoints in LATIYAL_FEEDS. */
 @Injectable()
 export class LatiyalService implements OnModuleInit {
   private readonly logger = new Logger(LatiyalService.name);
@@ -79,6 +79,15 @@ export class LatiyalService implements OnModuleInit {
   /** Commentary feed for one match. Counts against the on-demand budget; callers must cache it. */
   getCommentary(id: number): Promise<unknown> {
     return this.getDetail(LatiyalEndpoint.commentary, id);
+  }
+
+  /**
+   * Any catalogued data feed (see latiyal-catalog.ts), passed through unparsed. Callers must
+   * validate the endpoint and params against the catalog and cache the result.
+   */
+  async getFeed(endpoint: string, params: Record<string, string>): Promise<{ ok: boolean; message: string | null; data: unknown }> {
+    const response = await this.http.request(endpoint, { params, budget: 'on-demand' });
+    return { ok: response.ok, message: response.message, data: response.data };
   }
 
   private async getDetail(endpoint: LatiyalEndpointName, id: number): Promise<unknown> {

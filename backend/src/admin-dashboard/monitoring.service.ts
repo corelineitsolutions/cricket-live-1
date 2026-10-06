@@ -5,8 +5,8 @@ import type { DashboardDto } from './dto/dashboard.dto';
 /** Metric names are stable: alerting rules and dashboards depend on them. */
 export const METRIC_DEFINITIONS = {
   'provider.calls.hour': 'Latiyal calls counted in the current clock hour',
-  'provider.calls.remaining': 'Latiyal calls still allowed this hour',
-  'provider.calls.limit': 'Configured LATIYAL_MAX_CALLS_PER_HOUR',
+  'provider.calls.remaining': 'Latiyal calls still allowed this hour (absent when unlimited)',
+  'provider.calls.limit': 'Configured LATIYAL_MAX_CALLS_PER_HOUR (absent when unlimited)',
   'provider.last_success': 'Unix time (seconds) of the last successful poll',
   'provider.last_error': 'Unix time (seconds) of the last failed poll',
   'provider.poll_interval': 'Delay before the next poll, in milliseconds',

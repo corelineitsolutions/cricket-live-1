@@ -1,7 +1,7 @@
 import { captureLogs } from '../testing/capture-logs';
 import { FakeRedis } from '../testing/fake-redis';
 import { testConfig } from '../testing/test-config';
-import { hourBucket, LatiyalQuotaService } from './latiyal-quota.service';
+import { hourBucket, LatiyalQuotaService, UNLIMITED_CALLS } from './latiyal-quota.service';
 
 const START = Date.parse('2026-10-01T12:30:00Z');
 
@@ -79,6 +79,42 @@ describe('LatiyalQuotaService', () => {
 
     vi.setSystemTime(START + 61_000);
     expect((await quota.tryConsume()).allowed).toBe(true);
+  });
+
+  it('never refuses a call when the limit is 0 (unlimited) but still counts calls', async () => {
+    const { quota, logs } = setup(0);
+
+    for (let i = 0; i < 2_000; i += 1) {
+      expect((await quota.tryConsume()).allowed).toBe(true);
+    }
+    expect((await quota.tryConsume('on-demand')).allowed).toBe(true);
+
+    const state = await quota.getState();
+    expect(state.callsThisHour).toBe(2_001);
+    expect(state.effectiveRemaining).toBe(UNLIMITED_CALLS);
+    expect((await quota.getBudget()).remaining).toBe(UNLIMITED_CALLS);
+    expect(logs.tagged('rate-limit-warning')).toHaveLength(0);
+    expect(logs.tagged('rate-limit')).toHaveLength(0);
+  });
+
+  it('still honours a 429 from Latiyal when unlimited', async () => {
+    const { quota } = setup(0);
+    await quota.record429(30_000, null);
+    expect((await quota.tryConsume()).allowed).toBe(false);
+    vi.setSystemTime(START + 31_000);
+    expect((await quota.tryConsume()).allowed).toBe(true);
+  });
+
+  it('caps on-demand calls only when LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR is positive', async () => {
+    const redis = new FakeRedis();
+    captureLogs();
+    const capped = new LatiyalQuotaService(
+      redis.asService(),
+      testConfig({ latiyalMaxCallsPerHour: 0, latiyalOnDemandMaxCallsPerHour: 1 }),
+    );
+    expect((await capped.tryConsume('on-demand')).allowed).toBe(true);
+    expect((await capped.tryConsume('on-demand')).allowed).toBe(false);
+    expect((await capped.tryConsume('live')).allowed).toBe(true);
   });
 
   it('warns once when 20% or less of the hourly budget is left', async () => {

@@ -231,6 +231,46 @@ describe('LiveScoreSyncService', () => {
     expect(h.logs.tagged('poll-error').some((line) => line.includes('"endpoint":"liveMatch"'))).toBe(true);
   });
 
+  describe('with liveMatchList reused for LATIYAL_LIST_INTERVAL_MS', () => {
+    it('fetches the list once per interval but liveMatch every cycle', async () => {
+      const h = liveScoreHarness({ latiyalListIntervalMs: 60_000 });
+      h.live(chase(50, 8));
+      await h.sync.runCycle(INSTANCE);
+      h.live(chase(54, 8.1));
+      await h.sync.runCycle(INSTANCE);
+      h.live(chase(58, 8.2));
+      await h.sync.runCycle(INSTANCE);
+
+      expect(h.calls()).toEqual(['liveMatchList', 'liveMatch', 'liveMatch', 'liveMatch']);
+      expect(h.match(ID)).toMatchObject({ score: 58, overs: 8.2 });
+      expect(h.redis.ttlSeconds(RedisKey.providerLiveList())).toBe(60);
+    });
+
+    it('fetches the list again once the cached copy expires', async () => {
+      const h = liveScoreHarness({ latiyalListIntervalMs: 60_000 });
+      h.live(chase(50, 8));
+      await h.sync.runCycle(INSTANCE);
+      await h.redis.del(RedisKey.providerLiveList());
+      await h.sync.runCycle(INSTANCE);
+
+      expect(h.calls()).toEqual(['liveMatchList', 'liveMatch', 'liveMatchList', 'liveMatch']);
+    });
+
+    it('keeps the last snapshot instead of an older cached list score when liveMatch fails', async () => {
+      const h = liveScoreHarness({ latiyalListIntervalMs: 60_000 });
+      h.live(chase(50, 8));
+      await h.sync.runCycle(INSTANCE);
+      h.live(chase(54, 8.1));
+      await h.sync.runCycle(INSTANCE);
+
+      h.respond(() => jsonResponse({ message: 'down' }, 500));
+      await h.sync.runCycle(INSTANCE);
+
+      expect(h.match(ID)).toMatchObject({ score: 54, overs: 8.1, stale: false });
+      expect(h.events().filter((event) => event.type === 'MATCH_UPDATED')).toHaveLength(1);
+    });
+  });
+
   it('stores a listed match whose Latiyal status still says Upcoming and leaves idle polling', async () => {
     const h = liveScoreHarness();
     h.live(latiyalMatch({ id: 71391, status: 'Upcoming', runs: [] }));

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { RedisKey } from '../common/constants/redis-keys';
+import type { LatiyalMatch } from '../latiyal/latiyal.types';
 import { RedisService } from '../redis/redis.service';
 import type { PollMode, PollReason } from './polling-policy';
 
@@ -34,6 +35,11 @@ export interface SuccessRecord extends PollRecord {
   durationMs: number;
   fixtures: number;
   liveMatches: number;
+}
+
+export interface CachedLiveList {
+  fetchedAt: string;
+  matches: LatiyalMatch[];
 }
 
 export interface ErrorRecord extends PollRecord {
@@ -105,5 +111,14 @@ export class WorkerStateRepository {
 
   async getStatus(): Promise<WorkerStatus | null> {
     return this.redis.getJson<WorkerStatus>(RedisKey.providerWorkerStatus());
+  }
+
+  getLiveList(): Promise<CachedLiveList | null> {
+    return this.redis.getJson<CachedLiveList>(RedisKey.providerLiveList());
+  }
+
+  async saveLiveList(matches: LatiyalMatch[], ttlMs: number): Promise<void> {
+    const ttlSeconds = Math.max(1, Math.ceil(ttlMs / 1000));
+    await this.redis.setJson(RedisKey.providerLiveList(), { fetchedAt: new Date().toISOString(), matches }, ttlSeconds);
   }
 }

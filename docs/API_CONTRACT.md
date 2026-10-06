@@ -84,6 +84,8 @@ All endpoints are public (no login, no JWT) and relative to the base URL. Everyt
 | GET | `/ads?placement=HOME_BANNER` | Active ads | `Ad[]` | 400, 429 |
 | GET | `/matches?page=1&limit=20&status=COMPLETED` | Stored matches (history), paginated | `Match[]` + `meta` | 400, 429 |
 | GET | `/realtime` | Machine-readable socket contract | object | 429 |
+| GET | `/feeds` | List of every cricket data feed (51 Latiyal endpoints) | `FeedDefinition[]` | 429 |
+| GET | `/feeds/{endpoint}?<params>` | One cricket data feed (series, squads, news, rankings, venues, …) | `Feed` | 400, 404, 429, 503 |
 | POST | `/devices/register` | Register or update this device for push notifications | `Device` | 400, 429 |
 | POST | `/devices/deactivate` | Stop push notifications for this device | `Device` | 400, 404, 429 |
 
@@ -98,6 +100,7 @@ All endpoints are public (no login, no JWT) and relative to the base URL. Everyt
 | `/matches` | `page`, `limit`, `status` (optional) | `page` ≥ 1, `limit` 1–100, `status` = a `MatchStatus` value |
 | `/devices/register` | JSON body | see [Device registration](#device-registration-push-notifications) |
 | `/devices/deactivate` | JSON body `{ "deviceId": "..." }` | same `deviceId` rules as registration |
+| `/feeds/{endpoint}` | Latiyal parameter names in the query (`match_id`, `series_id`, `news_id`, `player_id`, `venue_id`, `team_id`, `team_a_id`, `team_b_id`, `match_type`, `type`, `sub_type`, `paginate`) | whole numbers; only the params that feed lists (see `GET /feeds`) |
 
 **Do not send unknown query parameters.** They are rejected with `400 VALIDATION_ERROR`.
 
@@ -206,14 +209,46 @@ A player becomes available from `/players/{id}` once they appear in a live match
 
 | Endpoint | Served from | Refreshed |
 | --- | --- | --- |
-| `/matches/live` | Live store (Redis) | Every 5–10 s while matches are live, ~60 s otherwise |
+| `/matches/live` | Live store (Redis) | About every second while matches are live, ~60 s otherwise |
 | `/matches/{id}` (live) | Live store | Same as above. Finished matches keep `source:"live"` for 24 h |
 | `/matches/{id}` (other) | Database via cache | Up to 5 min |
-| `/scorecard`, `/commentary` | Shared cache | At most every 30 s while live; 24 h once finished; 2 min otherwise |
+| `/scorecard` | Shared cache | At most every 15 s while live; 24 h once finished; 2 min otherwise |
+| `/commentary` | Shared cache | At most every 2 s while live; 24 h once finished; 2 min otherwise |
+| `/feeds/{endpoint}` | Shared cache | Per feed, see `refreshSeconds` in `GET /feeds`: 1 s `liveMatch`, 2 s `commentary`, 15 s scorecard, 1 min home/playing XI, 10–30 min match lists and points tables, 1–6 h news/series/rankings, 24 h venues/team and player lists |
 | `/teams`, `/players`, `/leagues` | Database via cache | Up to 10 min |
 | `/ads` | Database via cache | Admin changes are visible immediately; schedules (`startAt`/`endAt`) are applied on every request |
 
-Polling these endpoints faster than their refresh period returns the same data. **For live scores use the socket**; poll scorecard/commentary no more than every 30 s, and only while that screen is visible.
+Polling these endpoints faster than their refresh period returns the same data. **For live scores use the socket**; poll scorecard every 15 s and commentary every 2–5 s, and only while that screen is visible.
+
+### Cricket data feeds (`/feeds`)
+
+Every endpoint of the Latiyal "Cricket Live Line" API is available through this backend; the app never talks to Latiyal and never sees the token. `GET /feeds` returns the list:
+
+```json
+{ "endpoint": "seriesStatsBySeriesId", "group": "series", "summary": "Series stats (type 1 = batting, 2 = bowling; sub_type = stat)",
+  "params": [{ "name": "series_id", "required": true }, { "name": "type", "required": true }, { "name": "sub_type", "required": true }],
+  "refreshSeconds": 21600, "v5Only": false }
+```
+
+`GET /feeds/{endpoint}?<params>` answers with `Feed`:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `endpoint` | string | Latiyal endpoint name (the path segment is matched case-insensitively) |
+| `params` | object | The parameters that were sent, e.g. `{ "match_id": "5484" }` |
+| `data` | any? | The Latiyal `data` payload **unchanged** (field names as documented by Latiyal). `null` when Latiyal has nothing for these ids |
+| `message` | string? | Latiyal's message when `data` is `null` (e.g. "Data not found") |
+| `updatedAt` | datetime | When this copy was fetched from Latiyal |
+| `stale` | boolean | `true` when Latiyal failed and this is the last good copy |
+
+Groups: `home` (homeList), `live` (liveMatchList, liveMatch, commentary, scorecardByMatchId, matchOverHistory, matchProbHistory, playingXiByMatchId, benchPlayersByMatchId, impactPlayersByMatchId), `matches` (upcomingMatches, recentMatches, matchInfo, squadsByMatchId, squadsByMatchIdV1, groupSquadsByMatchId, manOfTheMatch, trackerByMatchId), `series` (seriesList, allSeriesList, upcoming/recentMatchesBySeriesId, pointsTable, groupPointsTable, pointMatchesList, manOfTheSeriesV1, venuesBySeriesId, newsBySeriesId, seriesStatsBySeriesId, squadsBySeriesId, squadsBySeriesIdV1, topThreePlayersBySeriesId, trackerBySeriesId), `news` (news, newsDetail, seriesNewsDetail, newsByPlayerId, newsByVenueId), `rankings` (playerRanking, teamRanking), `players` (playerList, playerInfo, playerMatchList), `teams` (teamList, teamFormByTeamId, headToHeadByTeamId, teamComparisonByTeamId, tossComparisonByTeamId), `venues` (venuesDetail, recentMatchesByVenueId, venueScoringPattern). `playerList` and `teamList` need the Latiyal V5 plan.
+
+Ids in feed data are Latiyal ids — the same numbers as `sportmonksId` / `matchId` elsewhere in this API. Errors: unknown feed `404 RESOURCE_NOT_FOUND`; missing, unknown or non-numeric parameter `400 VALIDATION_ERROR`; Latiyal down with nothing cached `503 SERVICE_UNAVAILABLE`.
+
+```bash
+curl https://<api-host>/api/v1/feeds/pointsTable?series_id=418
+curl "https://<api-host>/api/v1/feeds/headToHeadByTeamId?team_a_id=99&team_b_id=98&match_type=2"
+```
 
 ### Device registration (push notifications)
 
@@ -838,10 +873,11 @@ Normal app usage stays far below these numbers. Many users can share one mobile-
 
 1. **Home / live list:** `GET /matches/live` on open and pull-to-refresh. Optionally re-fetch every 60 s while visible to discover newly started matches. Subscribe over the socket to the matches visible on screen (max 20) for live scores.
 2. **Match screen:** subscribe to `match:subscribe {matchId}`; render the `match:snapshot`; apply `match:updated` / `match:started` / `match:finished`. Unsubscribe on leave.
-3. **Scorecard / commentary tabs:** `GET /matches/{id}/scorecard` and `/commentary` when the tab opens; refresh every 30 s while the tab is visible and the match `isLive`. No polling after `isFinished`.
-4. **Team / player / league pages:** fetch on open; cache in the app for several minutes.
-5. **Ads:** `GET /ads?placement=...` on app start (or per screen); cache in the app for a minute or more.
-6. **Push notifications:** `POST /devices/register` on app start and on every FCM token refresh; `POST /devices/deactivate` when the user disables notifications.
+3. **Scorecard / commentary tabs:** `GET /matches/{id}/scorecard` and `/commentary` when the tab opens; refresh (scorecard every 15 s, commentary every 2–5 s) while the tab is visible and the match `isLive`. No polling after `isFinished`.
+4. **Series, news, rankings, squads, venues, head-to-head, etc.:** `GET /feeds/{endpoint}` when the screen opens (list with `GET /feeds`). They are cached on the server, so calling them on every screen open is fine.
+5. **Team / player / league pages:** fetch on open; cache in the app for several minutes.
+6. **Ads:** `GET /ads?placement=...` on app start (or per screen); cache in the app for a minute or more.
+7. **Push notifications:** `POST /devices/register` on app start and on every FCM token refresh; `POST /devices/deactivate` when the user disables notifications.
 
 ---
 

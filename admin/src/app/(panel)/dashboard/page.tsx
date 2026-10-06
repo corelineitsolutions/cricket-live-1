@@ -165,23 +165,23 @@ export default function DashboardPage() {
           />
         </Panel>
 
-        <Panel title="Latiyal quota" description="Shared by every worker and API instance through Redis.">
+        <Panel title="Latiyal usage" description="Counted across every worker and API instance through Redis.">
           <div className="mb-4">
             <div className="mb-1.5 flex items-baseline justify-between text-sm">
               <span className="font-medium text-slate-900">
-                {formatNumber(sm.callsThisHour)} / {formatNumber(sm.hourlyLimit)} calls this hour
+                {formatNumber(sm.callsThisHour)} {sm.hourlyLimit === null ? '' : `/ ${formatNumber(sm.hourlyLimit)} `}calls this hour
               </span>
               <span className="text-slate-500">resets {formatRelative(sm.quotaResetsAt, now)}</span>
             </div>
-            <UsageBar used={sm.callsThisHour ?? 0} limit={sm.hourlyLimit} />
+            {sm.hourlyLimit !== null && <UsageBar used={sm.callsThisHour ?? 0} limit={sm.hourlyLimit} />}
           </div>
           <DescriptionList
             items={[
               { label: 'Calls this hour', value: formatNumber(sm.callsThisHour) },
-              { label: 'Configured limit', value: `${formatNumber(sm.hourlyLimit)} / hour` },
+              { label: 'Configured limit', value: sm.hourlyLimit === null ? 'Unlimited' : `${formatNumber(sm.hourlyLimit)} / hour` },
               {
                 label: 'Remaining quota',
-                value: sm.remainingQuota === null ? 'Unavailable' : (
+                value: sm.remainingQuota === null ? (sm.hourlyLimit === null ? 'Unlimited' : 'Unavailable') : (
                   <span>
                     {formatNumber(sm.remainingQuota)}
                     <span className="text-slate-500"> · {sm.quotaSource === 'api' ? 'from API headers' : 'local count'}</span>
@@ -197,7 +197,13 @@ export default function DashboardPage() {
                   </span>
                 ),
               },
-              { label: 'Scorecard / commentary', value: `${formatNumber(sm.onDemandCallsThisHour)} / ${formatNumber(sm.onDemandHourlyLimit)} calls this hour` },
+              {
+                label: 'App requests (feeds, scorecard, commentary)',
+                value:
+                  sm.onDemandHourlyLimit === null
+                    ? `${formatNumber(sm.onDemandCallsThisHour)} calls this hour`
+                    : `${formatNumber(sm.onDemandCallsThisHour)} / ${formatNumber(sm.onDemandHourlyLimit)} calls this hour`,
+              },
               { label: 'Last HTTP status', value: sm.lastStatus ?? '—' },
             ]}
           />

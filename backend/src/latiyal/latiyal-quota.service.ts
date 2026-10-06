@@ -9,8 +9,11 @@ const HOUR_MS = 3_600_000;
 const QUOTA_KEY_TTL_SECONDS = 3_700;
 const WARNING_RATIO = 0.2;
 const WARNING_LOG_INTERVAL_MS = 60_000;
+/** Budget reported when no hourly cap is configured (a limit of 0 means unlimited). */
+export const UNLIMITED_CALLS = Number.MAX_SAFE_INTEGER;
 
 export interface RateLimitState {
+  /** 0 when unlimited. */
   maxCallsPerHour: number;
   callsThisHour: number;
   windowResetAt: string;
@@ -50,9 +53,10 @@ export function nextHourStart(now: number): number {
 }
 
 /**
- * Hourly call budget shared by every worker through Redis.
- * The local counter enforces LATIYAL_MAX_CALLS_PER_HOUR. When the API reports
- * rate-limit metadata it is authoritative, minus the same safety margin.
+ * Hourly call counter shared by every worker through Redis.
+ * The Latiyal plan has no call limit, so by default (limit 0) calls are only counted.
+ * A positive LATIYAL_MAX_CALLS_PER_HOUR turns the counter into a cap. A 429 or
+ * rate-limit metadata reported by the API is always honoured.
  */
 @Injectable()
 export class LatiyalQuotaService {
@@ -72,10 +76,11 @@ export class LatiyalQuotaService {
     const now = Date.now();
     if (budget === 'on-demand') {
       const max = this.config.latiyalOnDemandMaxCallsPerHour;
-      const used =
-        max > 0
-          ? await this.redis.incrementIfBelow(RedisKey.providerOnDemandQuota(hourBucket(now)), max, QUOTA_KEY_TTL_SECONDS)
-          : null;
+      const used = await this.redis.incrementIfBelow(
+        RedisKey.providerOnDemandQuota(hourBucket(now)),
+        max > 0 ? max : UNLIMITED_CALLS,
+        QUOTA_KEY_TTL_SECONDS,
+      );
       if (used === null) {
         logEvent(this.logger, 'warn', 'rate-limit', { allowed: false, source: 'on-demand', maxCallsPerHour: max });
         return { allowed: false, remaining: 0, retryInMs: Math.max(1000, nextHourStart(now) - now) };
@@ -99,7 +104,7 @@ export class LatiyalQuotaService {
     const max = this.config.latiyalMaxCallsPerHour;
     const count = await this.redis.incrementIfBelow(
       RedisKey.providerQuota(hourBucket(now)),
-      max,
+      max > 0 ? max : UNLIMITED_CALLS,
       QUOTA_KEY_TTL_SECONDS,
     );
     const windowResetAt = nextHourStart(now);
@@ -212,7 +217,7 @@ export class LatiyalQuotaService {
       apiRemaining: stored?.apiRemaining ?? null,
       apiResetAt: stored?.apiResetAt ?? null,
       source: 'local',
-      effectiveRemaining: max,
+      effectiveRemaining: max > 0 ? max : UNLIMITED_CALLS,
       lastRequestAt: stored?.lastRequestAt ?? null,
       lastSuccessAt: stored?.lastSuccessAt ?? null,
       lastErrorAt: stored?.lastErrorAt ?? null,
@@ -241,20 +246,21 @@ export class LatiyalQuotaService {
     if (state.apiRemaining === null || !state.apiResetAt || Date.parse(state.apiResetAt) <= now) {
       return null;
     }
-    const reserve =
-      state.apiLimit !== null ? Math.max(0, state.apiLimit - this.config.latiyalMaxCallsPerHour) : 0;
+    const max = this.config.latiyalMaxCallsPerHour;
+    const reserve = state.apiLimit !== null && max > 0 ? Math.max(0, state.apiLimit - max) : 0;
     return state.apiRemaining - reserve;
   }
 
   private effectiveRemaining(state: RateLimitState, now: number): number {
-    const local = Math.max(0, this.config.latiyalMaxCallsPerHour - state.callsThisHour);
+    const max = this.config.latiyalMaxCallsPerHour;
+    const local = max > 0 ? Math.max(0, max - state.callsThisHour) : UNLIMITED_CALLS;
     const api = this.apiRemaining(state, now);
     return api === null ? local : Math.max(0, Math.min(local, api));
   }
 
   private warnIfLow(remaining: number, max: number): void {
     const now = Date.now();
-    if (remaining > max * WARNING_RATIO || now - this.lastWarningAt < WARNING_LOG_INTERVAL_MS) {
+    if (max <= 0 || remaining > max * WARNING_RATIO || now - this.lastWarningAt < WARNING_LOG_INTERVAL_MS) {
       return;
     }
     this.lastWarningAt = now;

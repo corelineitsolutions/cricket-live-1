@@ -1,0 +1,14 @@
+---
+description: Cricket data provider facts (Latiyal Infotech) that every change must respect
+alwaysApply: true
+---
+
+# Cricket data provider: Latiyal Infotech
+
+- The only data provider is **Latiyal Infotech** ("Cricket Live Line" API V4/V5). Sportmonks was removed; do not reintroduce it.
+- **The Latiyal plan has no API call limit.** Never add call caps, budgets or "save calls" logic. `LATIYAL_MAX_CALLS_PER_HOUR` and `LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR` default to `0` = unlimited (calls are only counted for the dashboard). Still honour a 429 / `Retry-After` if Latiyal ever sends one.
+- Caching is for speed and for Latiyal's recommended refresh rates, not for saving quota.
+- Requests: `${LATIYAL_API_URL}/<endpoint>/<token>`. No params = GET; params = POST multipart form-data (`match_id`, `series_id`, ...). Envelope `{ status, msg, data }`; errors usually come as HTTP 200 with `status:false`.
+- All 51 endpoints (source: `API - Cricket Live Line V4 & V5.postman_collection.json`) are catalogued in `backend/src/latiyal/latiyal-catalog.ts` and served as `GET /api/v1/feeds/{endpoint}?<params>`. Add or change endpoints there.
+- The token lives only in `backend/.env` (gitignored). It is part of the URL, so never log URLs and never send the token to the app.
+- JSON fields named `sportmonksId` (and DB column `sportmonks_id`) keep their names for the mobile contract but hold Latiyal ids.

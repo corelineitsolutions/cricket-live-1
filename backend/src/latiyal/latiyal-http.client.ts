@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { logEvent } from '../common/utils/structured-log';
 import { AppConfigService } from '../config/app-config.service';
-import { LATIYAL_FETCH, LatiyalEndpointName, RETRY_BASE_DELAY_MS } from './latiyal.constants';
+import { LATIYAL_FETCH, RETRY_BASE_DELAY_MS } from './latiyal.constants';
 import { isLatiyalError, LatiyalError, redactSecret } from './latiyal.errors';
 import { QuotaBudgetKind, LatiyalQuotaService } from './latiyal-quota.service';
 import { parseRateLimit, parseRetryAfter } from './rate-limit.parser';
@@ -18,6 +18,8 @@ export interface LatiyalResponse {
 
 export interface LatiyalRequestOptions {
   matchId?: number;
+  /** Form fields. Any field (or `matchId`) turns the request into a POST. */
+  params?: Record<string, string | number>;
   budget?: QuotaBudgetKind;
 }
 
@@ -42,11 +44,18 @@ export class LatiyalHttpClient {
     @Inject(LATIYAL_FETCH) private readonly fetchFn: FetchFn,
   ) {}
 
-  async request(endpoint: LatiyalEndpointName, options: LatiyalRequestOptions = {}): Promise<LatiyalResponse> {
+  async request(endpoint: string, options: LatiyalRequestOptions = {}): Promise<LatiyalResponse> {
     const budget = options.budget ?? 'live';
     const token = this.config.latiyalApiToken.trim();
     if (!token) {
       throw new LatiyalError('not_configured', 'LATIYAL_API_TOKEN is not set');
+    }
+    const form: Record<string, string> = {};
+    for (const [key, value] of Object.entries(options.params ?? {})) {
+      form[key] = String(value);
+    }
+    if (options.matchId !== undefined) {
+      form.match_id = String(options.matchId);
     }
 
     const maxRetries = this.config.latiyalMaxRetries;
@@ -58,7 +67,7 @@ export class LatiyalHttpClient {
       }
 
       try {
-        return await this.attempt(endpoint, options.matchId, token, attempt, budget);
+        return await this.attempt(endpoint, form, token, attempt, budget);
       } catch (error) {
         const latiyalError = isLatiyalError(error)
           ? error
@@ -82,8 +91,8 @@ export class LatiyalHttpClient {
   }
 
   private async attempt(
-    endpoint: LatiyalEndpointName,
-    matchId: number | undefined,
+    endpoint: string,
+    fields: Record<string, string>,
     token: string,
     attempt: number,
     budget: QuotaBudgetKind,
@@ -97,11 +106,14 @@ export class LatiyalHttpClient {
 
     const url = `${this.config.latiyalApiUrl.replace(/\/+$/, '')}/${endpoint}/${encodeURIComponent(token)}`;
     const init: RequestInit = { headers: { Accept: 'application/json' } };
-    if (matchId === undefined) {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) {
       init.method = 'GET';
     } else {
       const form = new FormData();
-      form.append('match_id', String(matchId));
+      for (const [key, value] of entries) {
+        form.append(key, value);
+      }
       init.method = 'POST';
       init.body = form;
     }

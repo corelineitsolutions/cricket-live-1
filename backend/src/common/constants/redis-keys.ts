@@ -27,6 +27,10 @@ export const RedisKey = {
   nextPollAt: () => 'provider:live-score:next-poll-at',
   pollFailures: () => 'provider:live-score:failures',
   providerOnDemandQuota: (hourBucket: string) => `provider:quota:on-demand:${hourBucket}`,
+  /** Last liveMatchList response, reused by the worker for LATIYAL_LIST_INTERVAL_MS. */
+  providerLiveList: () => 'provider:live-score:list',
+  /** Cached Latiyal data feed; `params` is the sorted `key=value&...` query, empty when there are none. */
+  feed: (endpoint: string, params: string) => (params ? `cache:feed:${endpoint}:${params}` : `cache:feed:${endpoint}`),
   matchDetails: (sportmonksId: number) => `cache:match:${sportmonksId}`,
   matchScorecard: (sportmonksId: number) => `cache:match:${sportmonksId}:scorecard`,
   matchCommentary: (sportmonksId: number) => `cache:match:${sportmonksId}:commentary`,

@@ -16,6 +16,9 @@ describe('redis keys', () => {
     expect(RedisKey.providerRateLimit()).toBe('provider:rate-limit');
     expect(RedisKey.providerWorkerStatus()).toBe('provider:worker-status');
     expect(RedisKey.pollLock()).toBe('provider:live-score:poll-lock');
+    expect(RedisKey.providerLiveList()).toBe('provider:live-score:list');
+    expect(RedisKey.feed('seriesList', '')).toBe('cache:feed:seriesList');
+    expect(RedisKey.feed('pointsTable', 'series_id=418')).toBe('cache:feed:pointsTable:series_id=418');
     expect(RedisKey.adsActive(3)).toBe('ads:active:v3');
     expect(RedisKey.adsActiveVersion()).toBe('ads:active:version');
     expect(RedisKey.adminLoginFailures('abc')).toBe('auth:admin-login:failures:abc');

@@ -89,6 +89,20 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
       expect(provider.remainingQuota).toBeLessThan(1_600);
     });
 
+    it('reports unlimited limits as null while still counting calls', async () => {
+      await api.close();
+      api = await createApiTestApp({ db, redis, config: { latiyalMaxCallsPerHour: 0, latiyalOnDemandMaxCallsPerHour: 0 } });
+      auth = await adminAuthHeader(api);
+      const worker = liveScoreHarness({ latiyalMaxCallsPerHour: 0 }, redis);
+      worker.live(latiyalMatch({ id: LIVE_ID }));
+      await worker.sync.runCycle('test-worker');
+
+      const provider = (await dashboard()).data.provider;
+
+      expect(provider).toMatchObject({ hourlyLimit: null, remainingQuota: null, onDemandHourlyLimit: null });
+      expect(provider.callsThisHour).toBeGreaterThanOrEqual(2);
+    });
+
     it('never exposes secrets', async () => {
       await runWorker(latiyalMatch({ id: LIVE_ID }));
       await redis.asService().setJson(RedisKey.providerLastError(), {

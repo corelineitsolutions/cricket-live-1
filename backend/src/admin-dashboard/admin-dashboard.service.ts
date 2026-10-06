@@ -7,7 +7,7 @@ import { FcmService } from '../fcm/fcm.service';
 import { LiveScoreService } from '../live-score/live-score.service';
 import { WorkerStateRepository, WorkerStatus } from '../live-score/worker-state.repository';
 import { RedisService } from '../redis/redis.service';
-import { hourBucket, LatiyalQuotaService } from '../latiyal/latiyal-quota.service';
+import { hourBucket, LatiyalQuotaService, UNLIMITED_CALLS } from '../latiyal/latiyal-quota.service';
 import { RealtimeMetricsService } from '../websocket/realtime-metrics.service';
 import type { DashboardDto, DashboardProviderDto, WorkerHealth } from './dto/dashboard.dto';
 
@@ -16,6 +16,8 @@ const WORKER_SILENCE_FACTOR = 3;
 const MIN_WORKER_SILENCE_MS = 120_000;
 
 const orNull = <T>(promise: Promise<T>): Promise<T | null> => promise.catch(() => null);
+/** A configured hourly limit of 0 means unlimited. */
+const limitOrNull = (limit: number): number | null => (limit > 0 ? limit : null);
 
 export function workerHealth(status: WorkerStatus | null, idleIntervalMs: number, now = Date.now()): WorkerHealth {
   if (!status) {
@@ -107,12 +109,12 @@ export class AdminDashboardService {
         ? { at: lastError.at, kind: lastError.kind, status: lastError.status, message: this.redact(lastError.message) }
         : null,
       callsThisHour: quota?.callsThisHour ?? null,
-      hourlyLimit: this.config.latiyalMaxCallsPerHour,
-      remainingQuota: quota?.effectiveRemaining ?? null,
+      hourlyLimit: limitOrNull(this.config.latiyalMaxCallsPerHour),
+      remainingQuota: quota && quota.effectiveRemaining < UNLIMITED_CALLS ? quota.effectiveRemaining : null,
       quotaSource: quota?.source ?? null,
       quotaResetsAt: quota ? (quota.source === 'api' && quota.apiResetAt ? quota.apiResetAt : quota.windowResetAt) : null,
       onDemandCallsThisHour: onDemandCalls === null ? (quota ? 0 : null) : Number(onDemandCalls),
-      onDemandHourlyLimit: this.config.latiyalOnDemandMaxCallsPerHour,
+      onDemandHourlyLimit: limitOrNull(this.config.latiyalOnDemandMaxCallsPerHour),
       count429: quota?.count429 ?? null,
       last429At: quota?.last429At ?? null,
       lastStatus: quota?.lastStatus ?? null,

@@ -50,6 +50,12 @@ export class AppConfigService {
     return Number(this.config.getOrThrow('LATIYAL_ACTIVE_INTERVAL_MS'));
   }
 
+  /** How long one liveMatchList response is reused by the worker. 0 fetches it every cycle. */
+  get latiyalListIntervalMs(): number {
+    return Number(this.config.getOrThrow('LATIYAL_LIST_INTERVAL_MS'));
+  }
+
+  /** 0 means unlimited (the Latiyal plan has no call limit). */
   get latiyalMaxCallsPerHour(): number {
     return Number(this.config.getOrThrow('LATIYAL_MAX_CALLS_PER_HOUR'));
   }
@@ -62,7 +68,7 @@ export class AppConfigService {
     return Number(this.config.getOrThrow('LATIYAL_MAX_RETRIES'));
   }
 
-  /** Hourly share of LATIYAL_MAX_CALLS_PER_HOUR that user-driven detail requests may use. */
+  /** Hourly cap for user-driven requests (scorecard, commentary, data feeds). 0 means unlimited. */
   get latiyalOnDemandMaxCallsPerHour(): number {
     return Number(this.config.getOrThrow('LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR'));
   }

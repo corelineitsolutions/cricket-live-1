@@ -97,6 +97,89 @@ curl -sS -X POST http://127.0.0.1:3000/api/v1/devices/deactivate \
   -d '{"deviceId":"test-device-001"}'
 
 
+11. Cricket data feeds — every Latiyal endpoint (no login)
+List of all 51 feeds with their parameters and refresh period:
+curl -sS http://127.0.0.1:3000/api/v1/feeds
+
+Every feed answers {"success":true,"data":{"endpoint","params","data","message","updatedAt","stale"}}.
+data.data is the Latiyal "data" payload unchanged. data.data is null (with data.message) when Latiyal
+has nothing for those ids. Parameter names are the Latiyal ones. The ids below are the examples from the
+Latiyal Postman collection; replace them with real ids (match_id from liveMatchList/homeList etc.).
+Responses are cached per feed (1 s for liveMatch, 2 s commentary, 15 s scorecard, up to 24 h for
+reference data), so the app can call these as often as it likes.
+
+Home, live
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/homeList"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/liveMatchList"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/liveMatch?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/commentary?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/scorecardByMatchId?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/matchOverHistory?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/matchProbHistory?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/playingXiByMatchId?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/benchPlayersByMatchId?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/impactPlayersByMatchId?match_id=5484"
+
+Matches
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/upcomingMatches"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/recentMatches"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/matchInfo?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/squadsByMatchId?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/squadsByMatchIdV1?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/groupSquadsByMatchId?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/manOfTheMatch?match_id=5484"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/trackerByMatchId?match_id=5484"
+
+Series
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/seriesList"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/allSeriesList"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/upcomingMatchesBySeriesId?series_id=418"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/recentMatchesBySeriesId?series_id=444"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/pointsTable?series_id=418"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/groupPointsTable?series_id=418"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/pointMatchesList?series_id=332&team_id=37"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/manOfTheSeriesV1?series_id=418"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/venuesBySeriesId?series_id=267"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/newsBySeriesId?series_id=267"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/seriesStatsBySeriesId?series_id=418&type=1&sub_type=1"
+   (type 1 = batting, 2 = bowling; sub_type = which stat)
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/squadsBySeriesId?series_id=402"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/squadsBySeriesIdV1?series_id=402"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/topThreePlayersBySeriesId?series_id=402"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/trackerBySeriesId?series_id=418"
+
+News
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/news"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/newsDetail?news_id=1072"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/seriesNewsDetail?news_id=32"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/newsByPlayerId?player_id=3289"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/newsByVenueId?venue_id=6"
+
+Rankings
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/playerRanking?type=1"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/teamRanking?type=1"
+
+Players
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/playerList?paginate=0"        (V5 plan only)
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/playerInfo?player_id=3289"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/playerMatchList?player_id=3289&type=1"
+
+Teams
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/teamList"                     (V5 plan only)
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/teamFormByTeamId?team_a_id=99&team_b_id=98&match_type=2"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/headToHeadByTeamId?team_a_id=99&team_b_id=98&match_type=2"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/teamComparisonByTeamId?team_a_id=99&team_b_id=98&match_type=2"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/tossComparisonByTeamId?team_a_id=99&team_b_id=98&match_type=2"
+
+Venues
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/venuesDetail?venue_id=6"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/recentMatchesByVenueId?venue_id=9"
+curl -sS "http://127.0.0.1:3000/api/v1/feeds/venueScoringPattern?venue_id=9&match_type=2"
+
+Errors: unknown feed -> 404; missing, unknown or non-numeric parameter -> 400;
+Latiyal down and nothing cached -> 503 (with a cached copy you get 200 and "stale":true).
+
+
 Start here
 curl -sS http://127.0.0.1:3000/health
 curl -sS http://127.0.0.1:3000/api/v1/matches/live

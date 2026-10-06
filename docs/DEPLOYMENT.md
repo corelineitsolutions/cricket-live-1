@@ -130,9 +130,10 @@ cp admin/.env.example admin/.env.production
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `127.0.0.1` / `6379` / the `requirepass` value |
 | `LATIYAL_API_URL` | `https://api.latiyalinfotech.com/apiv5` |
 | `LATIYAL_API_TOKEN` | your Latiyal token. Read only by the worker and the API server side. Never sent to clients or logged |
-| `LATIYAL_IDLE_INTERVAL_MS` / `_LIVE_` / `_ACTIVE_` | `60000` / `3000` / `2000` |
-| `LATIYAL_MAX_CALLS_PER_HOUR` | `20000` (see [quota](#latiyal-quota)) |
-| `LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR` | `2000` (scorecard/commentary share of the budget) |
+| `LATIYAL_IDLE_INTERVAL_MS` / `_LIVE_` / `_ACTIVE_` | `60000` / `1000` / `700` |
+| `LATIYAL_LIST_INTERVAL_MS` | `15000` (how long one `liveMatchList` response is reused; `0` = every poll) |
+| `LATIYAL_MAX_CALLS_PER_HOUR` | `0` = unlimited, the plan has no limit (see [quota](#latiyal-quota)) |
+| `LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR` | `0` = unlimited (optional cap for feeds/scorecard/commentary) |
 | `LATIYAL_TIMEOUT_MS` / `LATIYAL_MAX_RETRIES` | `8000` / `1` |
 | `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_BURST_PER_SECOND` | `600` / `20` per IP per endpoint |
 | `LIVE_SCORE_WORKER_ENABLED` | any; PM2 forces `false` for the API and `true` for the worker |
@@ -267,12 +268,12 @@ Admin panel → Dashboard shows everything below, refreshed every 15 s. The same
 
 | Metric | Meaning | Alert when |
 | --- | --- | --- |
-| `provider.calls.hour` | calls in the current clock hour (all processes) | > 80 % of `provider.calls.limit` |
-| `provider.calls.remaining` | remaining calls (API headers when present, else local count) | < 200 |
-| `provider.calls.limit` | configured `LATIYAL_MAX_CALLS_PER_HOUR` | – |
+| `provider.calls.hour` | calls in the current clock hour (all processes) | > 80 % of `provider.calls.limit` (when a cap is set) |
+| `provider.calls.remaining` | remaining calls (absent when unlimited) | < 200 |
+| `provider.calls.limit` | configured `LATIYAL_MAX_CALLS_PER_HOUR` (absent when unlimited) | – |
 | `provider.last_success` | unix seconds of the last good poll | older than 3 × poll interval (min 2 min) |
 | `provider.last_error` | unix seconds of the last failure | recent and repeating |
-| `provider.poll_interval` | ms until the next poll (60 000 idle / 3 000 live / 2 000 close finish; larger in backoff) | – |
+| `provider.poll_interval` | ms until the next poll (60 000 idle / 1 000 live / 700 close finish; larger in backoff) | – |
 | `provider.live_matches` | live matches in the last poll | – |
 | `provider.429` | 429 responses in the current window | > 0 |
 | `worker.status` | 1 if the worker reported recently | 0 |
@@ -283,20 +284,22 @@ Admin panel → Dashboard shows everything below, refreshed every 15 s. The same
 
 ### Latiyal quota
 
-Each live poll costs 1 `liveMatchList` call plus 1 `liveMatch` call per live match.
+The Latiyal plan has **no call limit**, so `LATIYAL_MAX_CALLS_PER_HOUR` and
+`LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR` default to `0` (unlimited). Calls are still counted per clock
+hour across every process and shown on the dashboard. Set a positive number only if you want a cap
+again; when a cap is reached, polling pauses until the next hour (data is served marked stale).
+A 429 from Latiyal is always honoured (`Retry-After`, then backoff).
+
+Each live poll costs 1 `liveMatch` call per live match; `liveMatchList` is fetched once per
+`LATIYAL_LIST_INTERVAL_MS` (15 s) and reused in between.
 
 | Polling | Calls/hour |
 | --- | --- |
 | idle, 60 s | 60 |
-| live, 3 s, 1 match | 2 400 |
-| live, 3 s, 3 matches | 4 800 |
-| close finish, 2 s, 1 match | 3 600 |
-| on-demand share (scorecard/commentary) | 2 000 |
-| configured cap `LATIYAL_MAX_CALLS_PER_HOUR` | 20 000 |
-
-The cap is shared through Redis by every worker and API instance. When it is reached, polling pauses
-until the next hour (data is served marked stale) instead of exceeding the plan. Lower the cap if your
-Latiyal plan has a stricter hourly limit. A 429 from Latiyal honours `Retry-After` and backs off.
+| live, 1 s, 1 match | 3 600 + 240 list = 3 840 |
+| live, 1 s, 3 matches | 10 800 + 240 list = 11 040 |
+| close finish, 0.7 s, 1 match | ≈ 5 140 + 240 list |
+| app feeds (`/api/v1/feeds/*`), scorecard, commentary | one call per endpoint + params per refresh period, whatever the traffic |
 
 ## 13. Logs
 
