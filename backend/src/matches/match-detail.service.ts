@@ -5,8 +5,8 @@ import { RedisKey } from '../common/constants/redis-keys';
 import { serviceUnavailable } from '../common/utils/http-errors';
 import { logEvent } from '../common/utils/structured-log';
 import { MatchPersistenceService } from '../live-score/match-persistence.service';
-import { isSportmonksError } from '../sportmonks/sportmonks.errors';
-import { SportmonksService } from '../sportmonks/sportmonks.service';
+import { isLatiyalError } from '../latiyal/latiyal.errors';
+import { LatiyalService } from '../latiyal/latiyal.service';
 import { buildCommentary } from './commentary.mapper';
 import type { CommentaryDto, CommentaryItemDto } from './dto/commentary.dto';
 import type { MatchDto } from './dto/match.dto';
@@ -26,8 +26,8 @@ export const DETAIL_STALE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Scorecard and commentary. These need data the live poll does not fetch, so they are
- * loaded from Sportmonks on demand behind a shared cache with request coalescing and a
- * separate hourly budget (SPORTMONKS_ON_DEMAND_MAX_CALLS_PER_HOUR).
+ * loaded from Latiyal on demand behind a shared cache with request coalescing and a
+ * separate hourly budget (LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR).
  */
 @Injectable()
 export class MatchDetailService {
@@ -35,7 +35,7 @@ export class MatchDetailService {
 
   constructor(
     private readonly matches: MatchesService,
-    private readonly sportmonks: SportmonksService,
+    private readonly latiyal: LatiyalService,
     private readonly cache: SingleFlightCache,
     private readonly persistence: MatchPersistenceService,
   ) {}
@@ -52,12 +52,13 @@ export class MatchDetailService {
       RedisKey.matchScorecard(match.matchId),
       this.options(match),
       async () => {
-        const card = await this.sportmonks.getScorecard(match.matchId);
-        if (!card) {
+        const card = await this.latiyal.getScorecard(match.matchId);
+        if (card === null) {
           return null;
         }
-        await this.persistence.persistPlayers(scorecardPlayers(card));
-        return buildScorecardInnings(card);
+        const innings = buildScorecardInnings(card, [match.localTeam, match.visitorTeam]);
+        await this.persistence.persistPlayers(scorecardPlayers(innings));
+        return innings;
       },
     );
     return { ...base, innings: result.value ?? [], updatedAt: result.cachedAt, stale: result.stale };
@@ -74,8 +75,8 @@ export class MatchDetailService {
       RedisKey.matchCommentary(match.matchId),
       this.options(match),
       async () => {
-        const balls = await this.sportmonks.getBalls(match.matchId);
-        return balls ? buildCommentary(balls) : null;
+        const feed = await this.latiyal.getCommentary(match.matchId);
+        return feed === null ? null : buildCommentary(feed);
       },
     );
     return {
@@ -109,7 +110,7 @@ export class MatchDetailService {
       logEvent(this.logger, 'warn', 'detail-unavailable', {
         what,
         key,
-        kind: isSportmonksError(error) ? error.kind : error instanceof Error ? error.name : 'unknown',
+        kind: isLatiyalError(error) ? error.kind : error instanceof Error ? error.name : 'unknown',
       });
       throw serviceUnavailable(`${what} is temporarily unavailable. Try again shortly.`);
     }

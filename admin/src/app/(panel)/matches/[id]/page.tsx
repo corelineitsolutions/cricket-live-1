@@ -98,7 +98,7 @@ export default function MatchDetailPage() {
       <div className="mb-4">{back}</div>
       <PageHeader
         title={match ? `${teamLabel(match.localTeam)} vs ${teamLabel(match.visitorTeam)}` : `Match ${data.matchId}`}
-        description={`Sportmonks #${data.matchId}${data.internalId ? ` · internal ${data.internalId}` : ''}`}
+        description={`Latiyal #${data.matchId}${data.internalId ? ` · internal ${data.internalId}` : ''}`}
         actions={
           <Button variant="secondary" size="sm" onClick={reload} loading={refreshing}>
             Refresh
@@ -106,7 +106,7 @@ export default function MatchDetailPage() {
         }
       />
       <div className="mb-4">
-        <InlineNotice tone="info">Read-only. Scores come from Sportmonks and cannot be edited here.</InlineNotice>
+        <InlineNotice tone="info">Read-only. Scores come from Latiyal and cannot be edited here.</InlineNotice>
       </div>
       {error && (
         <div className="mb-4">

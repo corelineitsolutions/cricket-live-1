@@ -1,13 +1,23 @@
 import { RedisKey } from '../common/constants/redis-keys';
 import { liveScoreHarness } from '../testing/live-score-harness';
-import { jsonResponse, LOCAL_TEAM_ID, rawFixture, VISITOR_TEAM_ID } from '../testing/sportmonks-fixtures';
-import { TEST_SPORTMONKS_TOKEN } from '../testing/test-config';
+import {
+  endpointOf,
+  envelope,
+  jsonResponse,
+  latiyalApi,
+  latiyalMatch,
+  LOCAL_TEAM_ID,
+  matchIdOf,
+  refusal,
+  VISITOR_TEAM_ID,
+} from '../testing/latiyal-fixtures';
+import { TEST_LATIYAL_TOKEN } from '../testing/test-config';
 
 const ID = 61521;
 const INSTANCE = 'test-host:1:abcd1234';
 
 const chase = (score: number, overs: number) =>
-  rawFixture({
+  latiyalMatch({
     runs: [
       [1, LOCAL_TEAM_ID, 180, 6, 20],
       [2, VISITOR_TEAM_ID, score, 3, overs],
@@ -15,11 +25,10 @@ const chase = (score: number, overs: number) =>
   });
 
 const finished = () =>
-  rawFixture({
+  latiyalMatch({
     status: 'Finished',
-    live: false,
     winnerTeamId: LOCAL_TEAM_ID,
-    note: 'Mumbai Strikers won by 20 runs',
+    result: 'Mumbai Strikers won by 20 runs',
     runs: [
       [1, LOCAL_TEAM_ID, 180, 6, 20],
       [2, VISITOR_TEAM_ID, 160, 8, 20],
@@ -29,14 +38,14 @@ const finished = () =>
 describe('LiveScoreSyncService', () => {
   it('stores, persists and publishes a new live match', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(120, 15.2));
+    h.live(chase(120, 15.2));
 
     const decision = await h.sync.runCycle(INSTANCE);
 
     expect(decision).toEqual({ intervalMs: 5_000, mode: 'active', reason: 'active' });
     expect(h.liveIds()).toEqual([ID]);
     expect(h.match(ID)).toMatchObject({ matchId: 'cm_match_1', score: 120, stale: false, isLive: true });
-    expect(h.redis.peekJson(RedisKey.sportmonksLastSuccess())).toMatchObject({ instanceId: INSTANCE, liveMatches: 1 });
+    expect(h.redis.peekJson(RedisKey.providerLastSuccess())).toMatchObject({ instanceId: INSTANCE, liveMatches: 1 });
     expect(await h.redis.get(RedisKey.liveMatchUpdated(ID))).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(h.status()).toMatchObject({ state: 'live', mode: 'active', nextIntervalMs: 5_000 });
 
@@ -45,12 +54,12 @@ describe('LiveScoreSyncService', () => {
     expect(event.data.score).toBe(120);
     expect(h.logs.tagged('match-changed')).toHaveLength(1);
     expect(h.logs.tagged('poll-success')).toHaveLength(1);
-    expect(h.logs.text()).not.toContain(TEST_SPORTMONKS_TOKEN);
+    expect(h.logs.text()).not.toContain(TEST_LATIYAL_TOKEN);
   });
 
   it('publishes nothing and writes no MySQL rows when the data did not change', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(120, 15.2));
+    h.live(chase(120, 15.2));
     await h.sync.runCycle(INSTANCE);
     const updatedAt = h.match(ID)!.lastUpdatedAt;
 
@@ -64,9 +73,9 @@ describe('LiveScoreSyncService', () => {
 
   it('stores each player in MySQL only the first time they appear', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(50, 8));
+    h.live(chase(50, 8));
     await h.sync.runCycle(INSTANCE);
-    h.livescores(chase(54, 8.1));
+    h.live(chase(54, 8.1));
     await h.sync.runCycle(INSTANCE);
 
     const ids = h.playerUpsert.mock.calls.map((call) => (call as unknown as [{ where: { sportmonksId: number } }])[0].where.sportmonksId);
@@ -75,10 +84,10 @@ describe('LiveScoreSyncService', () => {
 
   it('publishes only the changed fields when the score moves, without another MySQL write', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(50, 8));
+    h.live(chase(50, 8));
     await h.sync.runCycle(INSTANCE);
 
-    h.livescores(chase(54, 8.1));
+    h.live(chase(54, 8.1));
     await h.sync.runCycle(INSTANCE);
 
     const events = h.events();
@@ -89,9 +98,9 @@ describe('LiveScoreSyncService', () => {
     expect(h.transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the last snapshot as stale when Sportmonks fails, then clears it on fresh data', async () => {
+  it('keeps the last snapshot as stale when Latiyal fails, then clears it on fresh data', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(50, 8));
+    h.live(chase(50, 8));
     await h.sync.runCycle(INSTANCE);
 
     h.respond(() => jsonResponse({ message: 'error' }, 500));
@@ -103,9 +112,9 @@ describe('LiveScoreSyncService', () => {
     expect(h.events().filter((event) => event.type === 'MATCH_STALE')).toHaveLength(1);
     expect(first.mode).toBe('live');
     expect(h.status()).toMatchObject({ state: 'backoff', consecutiveFailures: 2, reason: 'backoff', nextIntervalMs: 20_000 });
-    expect(h.redis.peekJson(RedisKey.sportmonksLastError())).toMatchObject({ kind: 'http', status: 500 });
+    expect(h.redis.peekJson(RedisKey.providerLastError())).toMatchObject({ kind: 'http', status: 500 });
 
-    h.livescores(chase(50, 8));
+    h.live(chase(50, 8));
     await h.sync.runCycle(INSTANCE);
 
     expect(h.match(ID)).toMatchObject({ score: 50, stale: false });
@@ -115,30 +124,30 @@ describe('LiveScoreSyncService', () => {
 
   it('on 429 keeps serving Redis data and waits for Retry-After', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(50, 8));
+    h.live(chase(50, 8));
     await h.sync.runCycle(INSTANCE);
 
     h.respond(() => jsonResponse({ message: 'Too Many Attempts.' }, 429, { 'retry-after': '120' }));
     const decision = await h.sync.runCycle(INSTANCE);
 
     expect(decision).toMatchObject({ intervalMs: 120_000, reason: 'retry-after' });
-    expect(h.fetchMock).toHaveBeenCalledTimes(2);
+    expect(h.calls()).toEqual(['liveMatchList', 'liveMatch', 'liveMatchList']);
     expect(h.status()).toMatchObject({ state: 'rate-limited' });
     expect(h.logs.tagged('429')).toHaveLength(1);
     expect(await h.reader.getMatchSnapshot(String(ID))).toMatchObject({ score: 50, stale: true });
     expect(await h.reader.getLiveMatchIds()).toEqual([String(ID)]);
 
     const blocked = await h.sync.runCycle(INSTANCE);
-    expect(h.fetchMock).toHaveBeenCalledTimes(2);
+    expect(h.fetchMock).toHaveBeenCalledTimes(3);
     expect(blocked.intervalMs).toBeGreaterThan(100_000);
     expect(h.status()).toMatchObject({ state: 'quota-exhausted' });
   });
 
-  it('stops calling Sportmonks once the hourly budget is used up', async () => {
+  it('stops calling Latiyal once the hourly budget is used up', async () => {
     vi.useFakeTimers({ now: Date.parse('2026-10-01T12:30:00Z') });
     try {
-      const h = liveScoreHarness({ sportmonksMaxCallsPerHour: 2 });
-      h.livescores(chase(50, 8));
+      const h = liveScoreHarness({ latiyalMaxCallsPerHour: 2 });
+      h.live(chase(50, 8));
 
       await h.sync.runCycle(INSTANCE);
       await h.sync.runCycle(INSTANCE);
@@ -155,10 +164,10 @@ describe('LiveScoreSyncService', () => {
 
   it('stores the final state once, leaves the live list and drops to idle polling', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(150, 19));
+    h.live(chase(150, 19));
     await h.sync.runCycle(INSTANCE);
 
-    h.livescores(finished());
+    h.live(finished());
     const decision = await h.sync.runCycle(INSTANCE);
 
     const final = h.events().at(-1)!;
@@ -174,32 +183,31 @@ describe('LiveScoreSyncService', () => {
     expect(h.events().filter((event) => event.type === 'MATCH_FINISHED')).toHaveLength(1);
   });
 
-  it('fetches a match once when it disappears from /livescores to capture its final state', async () => {
+  it('fetches a match once when it disappears from liveMatchList to capture its final state', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(150, 19));
+    h.live(chase(150, 19));
     await h.sync.runCycle(INSTANCE);
 
-    h.respond((url) =>
-      url.pathname.endsWith(`/fixtures/${ID}`) ? jsonResponse({ data: finished() }) : jsonResponse({ data: [] }),
+    h.respond((url, init) =>
+      endpointOf(url) === 'liveMatch' && matchIdOf(init) === ID ? envelope(finished()) : envelope([]),
     );
     await h.sync.runCycle(INSTANCE);
 
-    expect(h.fetchMock).toHaveBeenCalledTimes(3);
+    expect(h.calls()).toEqual(['liveMatchList', 'liveMatch', 'liveMatchList', 'liveMatch']);
     expect(h.events().at(-1)).toMatchObject({ type: 'MATCH_FINISHED', sportmonksId: ID });
+    expect(h.match(ID)).toMatchObject({ status: 'COMPLETED', winnerTeamSportmonksId: LOCAL_TEAM_ID });
     expect(h.liveIds()).toEqual([]);
 
     await h.sync.runCycle(INSTANCE);
-    expect(h.fetchMock).toHaveBeenCalledTimes(4);
+    expect(h.fetchMock).toHaveBeenCalledTimes(5);
   });
 
-  it('removes a vanished match that Sportmonks no longer knows', async () => {
+  it('removes a vanished match that Latiyal no longer knows', async () => {
     const h = liveScoreHarness();
-    h.livescores(chase(150, 19));
+    h.live(chase(150, 19));
     await h.sync.runCycle(INSTANCE);
 
-    h.respond((url) =>
-      url.pathname.includes('/fixtures/') ? jsonResponse({ message: 'not found' }, 404) : jsonResponse({ data: [] }),
-    );
+    h.respond((url) => (endpointOf(url) === 'liveMatch' ? refusal('Data not found') : envelope([])));
     await h.sync.runCycle(INSTANCE);
 
     expect(h.events().at(-1)).toMatchObject({ type: 'MATCH_REMOVED', sportmonksId: ID });
@@ -207,9 +215,25 @@ describe('LiveScoreSyncService', () => {
     expect(h.liveIds()).toEqual([]);
   });
 
-  it('stores a live:true fixture whose Sportmonks status is still NS and leaves idle polling', async () => {
+  it('keeps the last batsmen and bowler when only the liveMatch detail call fails', async () => {
     const h = liveScoreHarness();
-    h.livescores(rawFixture({ id: 71391, status: 'NS', live: true, runs: [] }));
+    h.live(chase(50, 8));
+    await h.sync.runCycle(INSTANCE);
+
+    const api = latiyalApi([chase(54, 8.1)]);
+    h.respond((url, init) => (endpointOf(url) === 'liveMatch' ? jsonResponse({ message: 'down' }, 500) : api(url, init)));
+    await h.sync.runCycle(INSTANCE);
+
+    expect(h.match(ID)).toMatchObject({ score: 54, overs: 8.1, stale: false });
+    expect(h.match(ID)!.batsmen.map((batsman) => batsman.name)).toEqual(['Rohan Mehta', 'Arjun Rao']);
+    expect(h.match(ID)!.bowler?.name).toBe('Kiran Patel');
+    expect(h.status()).toMatchObject({ state: 'live', consecutiveFailures: 0 });
+    expect(h.logs.tagged('poll-error').some((line) => line.includes('"endpoint":"liveMatch"'))).toBe(true);
+  });
+
+  it('stores a listed match whose Latiyal status still says Upcoming and leaves idle polling', async () => {
+    const h = liveScoreHarness();
+    h.live(latiyalMatch({ id: 71391, status: 'Upcoming', runs: [] }));
 
     const decision = await h.sync.runCycle(INSTANCE);
 
@@ -218,7 +242,7 @@ describe('LiveScoreSyncService', () => {
     expect(h.match(71391)).toMatchObject({
       sportmonksId: 71391,
       status: 'LIVE',
-      statusDetail: 'NS',
+      statusDetail: 'Upcoming',
       isLive: true,
       isFinished: false,
     });
@@ -228,26 +252,36 @@ describe('LiveScoreSyncService', () => {
     expect(h.logs.tagged('poll-success')[0]).toContain('"nextIntervalMs":10000');
   });
 
-  it('stays idle when livescores is empty', async () => {
+  it('stays idle when liveMatchList is empty', async () => {
     const h = liveScoreHarness();
-    h.livescores();
+    h.live();
 
     const decision = await h.sync.runCycle(INSTANCE);
 
     expect(decision).toEqual({ intervalMs: 60_000, mode: 'idle', reason: 'idle' });
     expect(h.liveIds()).toEqual([]);
+    expect(h.calls()).toEqual(['liveMatchList']);
     expect(h.logs.tagged('poll-success')[0]).toContain('"fixtures":0');
     expect(h.logs.tagged('poll-success')[0]).toContain('"liveMatches":0');
   });
 
-  it('ignores fixtures that have not started', async () => {
+  it('stays idle when Latiyal answers status:false because nothing is live', async () => {
     const h = liveScoreHarness();
-    h.livescores(rawFixture({ status: 'NS', live: false, runs: [] }));
+    h.respond(() => refusal('No live match found'));
 
     const decision = await h.sync.runCycle(INSTANCE);
 
-    expect(h.events()).toEqual([]);
-    expect(h.liveIds()).toEqual([]);
-    expect(decision.mode).toBe('idle');
+    expect(decision).toEqual({ intervalMs: 60_000, mode: 'idle', reason: 'idle' });
+    expect(h.status()).toMatchObject({ state: 'idle', consecutiveFailures: 0 });
+  });
+
+  it('records a token refusal as a failed poll, not as "nothing live"', async () => {
+    const h = liveScoreHarness();
+    h.respond(() => refusal('Invalid token'));
+
+    await h.sync.runCycle(INSTANCE);
+
+    expect(h.status()).toMatchObject({ state: 'backoff', consecutiveFailures: 1 });
+    expect(h.redis.peekJson(RedisKey.providerLastError())).toMatchObject({ kind: 'unauthorized' });
   });
 });

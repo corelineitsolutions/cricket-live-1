@@ -16,7 +16,7 @@ const UNKNOWN_MATCH_TTL_SECONDS = 30;
 
 /**
  * Match reads. Live matches come from Redis (written by the worker); other matches come
- * from MySQL through a short Redis cache. Nothing here calls Sportmonks.
+ * from MySQL through a short Redis cache. Nothing here calls Latiyal.
  */
 @Injectable()
 export class MatchesService {

@@ -123,7 +123,7 @@ export class MatchDto {
   @ApiProperty({
     example: 61521,
     description:
-      'Public match id (the Sportmonks fixture id). Use it for every match endpoint and for socket subscriptions.',
+      'Public match id (the Latiyal match id). Use it for every match endpoint and for socket subscriptions.',
   })
   matchId!: number;
 

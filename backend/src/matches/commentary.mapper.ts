@@ -1,76 +1,90 @@
-import type { SmBall } from '../sportmonks/sportmonks.types';
-import { COMMENTARY_MAX_ITEMS, CommentaryItemDto, ExtraType } from './dto/commentary.dto';
+import type { LatiyalRecord } from '../latiyal/latiyal.types';
+import { asRecord, pick, pickNumber, pickText, toNumber, toText } from '../latiyal/latiyal.validation';
+import { COMMENTARY_MAX_ITEMS, CommentaryItemDto, CommentaryPlayerDto, ExtraType } from './dto/commentary.dto';
 
-function inningOf(scoreboard: string | null): number | null {
-  const match = scoreboard ? /^S(\d+)$/.exec(scoreboard) : null;
-  return match ? Number(match[1]) : null;
+const TEXT_KEYS = ['commentary', 'comment', 'text', 'title', 'description', 'data'] as const;
+const OVER_KEYS = ['over', 'overs', 'ball_no', 'over_number', 'ball'] as const;
+const MAX_DEPTH = 4;
+
+function isTruthy(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true';
 }
 
-function extraOf(ball: SmBall): { type: ExtraType | null; runs: number } {
-  const score = ball.score;
-  if (!score) {
-    return { type: null, runs: 0 };
+function isBall(record: LatiyalRecord): boolean {
+  return typeof pick(record, TEXT_KEYS) === 'string' && toNumber(pick(record, OVER_KEYS)) !== null;
+}
+
+/** Ball-like records anywhere in the payload, tagged with the innings they were nested under. */
+function collectBalls(value: unknown, inning: number | null, depth: number, out: Array<[LatiyalRecord, number | null]>): void {
+  if (depth > MAX_DEPTH) {
+    return;
   }
-  if (score.noball > 0) {
-    return { type: 'noball', runs: score.noball + score.noball_runs };
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectBalls(item, inning, depth + 1, out));
+    return;
   }
-  if (score.bye > 0) {
-    return { type: 'bye', runs: score.bye };
+  const record = asRecord(value);
+  if (!record) {
+    return;
   }
-  if (score.leg_bye > 0) {
-    return { type: 'legbye', runs: score.leg_bye };
+  if (isBall(record)) {
+    out.push([record, inning]);
+    return;
   }
-  if (score.ball === false) {
-    return { type: 'wide', runs: Math.max(1, score.runs) };
+  for (const [key, child] of Object.entries(record)) {
+    const keyInning = /^\d+$/.test(key) ? Number(key) : (toNumber(/inn\w*[_\s]?(\d+)/i.exec(key)?.[1]) ?? inning);
+    collectBalls(child, keyInning, depth + 1, out);
   }
+}
+
+function player(value: unknown, record: LatiyalRecord, nameKeys: readonly string[], idKeys: readonly string[]): CommentaryPlayerDto {
+  const nested = asRecord(value);
+  const id = nested ? pickNumber(nested, ['player_id', 'id']) : pickNumber(record, idKeys);
+  return {
+    sportmonksId: id !== null && id > 0 ? id : null,
+    name: nested ? pickText(nested, ['name', 'player_name']) : (toText(value) ?? pickText(record, nameKeys)),
+  };
+}
+
+function extraOf(text: string, record: LatiyalRecord): { type: ExtraType | null; runs: number } {
+  const runs = pickNumber(record, ['extra_runs', 'extras']) ?? 0;
+  if (/\bwide\b/i.test(text)) return { type: 'wide', runs: Math.max(1, runs) };
+  if (/no[\s-]?ball/i.test(text)) return { type: 'noball', runs: Math.max(1, runs) };
+  if (/leg[\s-]?bye/i.test(text)) return { type: 'legbye', runs };
+  if (/\bbyes?\b/i.test(text)) return { type: 'bye', runs };
   return { type: null, runs: 0 };
 }
 
-function describe(ball: SmBall, extraType: ExtraType | null): string {
-  const score = ball.score;
-  const bowler = ball.bowler?.fullname ?? 'Bowler';
-  const batsman = ball.batsman?.fullname ?? 'batsman';
-  let outcome: string;
-  if (!score) {
-    outcome = 'no details';
-  } else if (score.is_wicket || score.out) {
-    outcome = score.name ? `OUT (${score.name})` : 'OUT';
-  } else if (score.six) {
-    outcome = 'SIX';
-  } else if (score.four) {
-    outcome = 'FOUR';
-  } else if (extraType === 'wide') {
-    outcome = 'wide';
-  } else if (extraType === 'noball') {
-    outcome = 'no ball';
-  } else if (score.runs === 0 && !extraType) {
-    outcome = 'no run';
-  } else {
-    outcome = score.name ?? `${score.runs} run${score.runs === 1 ? '' : 's'}`;
-  }
-  return `${bowler} to ${batsman}, ${outcome}`;
-}
-
 /** Latest balls first, capped to what the API can return. */
-export function buildCommentary(balls: SmBall[]): CommentaryItemDto[] {
+export function buildCommentary(data: unknown): CommentaryItemDto[] {
+  const balls: Array<[LatiyalRecord, number | null]> = [];
+  collectBalls(data, null, 0, balls);
+
   return balls
-    .map((ball) => {
-      const extra = extraOf(ball);
+    .map(([record, nestedInning], index): CommentaryItemDto => {
+      const text = pickText(record, TEXT_KEYS)!;
+      const result = pickText(record, ['result', 'event', 'type', 'ball_result']);
+      const runs = pickNumber(record, ['runs', 'run', 'score']) ?? 0;
+      const extra = extraOf(`${result ?? ''} ${text}`, record);
+      const wicketFlag = pick(record, ['wicket', 'is_wicket', 'isWicket']);
       return {
-        id: ball.id,
-        inning: inningOf(ball.scoreboard),
-        over: ball.ball,
-        teamSportmonksId: ball.team_id,
-        batsman: { sportmonksId: ball.batsman?.id ?? null, name: ball.batsman?.fullname ?? null },
-        bowler: { sportmonksId: ball.bowler?.id ?? null, name: ball.bowler?.fullname ?? null },
-        runs: ball.score?.runs ?? 0,
-        isFour: ball.score?.four ?? false,
-        isSix: ball.score?.six ?? false,
-        isWicket: Boolean(ball.score?.is_wicket || ball.score?.out),
+        id: pickNumber(record, ['id', 'commentary_id', 'ball_id']) ?? index + 1,
+        inning: pickNumber(record, ['inning', 'innings', 'inning_no']) ?? nestedInning,
+        over: toNumber(pick(record, OVER_KEYS)) ?? 0,
+        teamSportmonksId: pickNumber(record, ['team_id', 'batting_team_id']),
+        batsman: player(pick(record, ['batsman', 'striker']), record, ['batsman_name', 'striker_name'], ['batsman_id', 'striker_id']),
+        bowler: player(pick(record, ['bowler']), record, ['bowler_name'], ['bowler_id']),
+        runs,
+        isFour: isTruthy(pick(record, ['is_four', 'four'])) || (runs === 4 && /\bfour\b/i.test(text)) || result === '4',
+        isSix: isTruthy(pick(record, ['is_six', 'six'])) || (runs === 6 && /\bsix\b/i.test(text)) || result === '6',
+        isWicket:
+          wicketFlag !== undefined
+            ? isTruthy(wicketFlag)
+            : result?.toUpperCase() === 'W' || (/\bout\b|\bwicket\b/i.test(text) && !/not out/i.test(text)),
         extraType: extra.type,
         extraRuns: extra.runs,
-        result: ball.score?.name ?? null,
-        text: describe(ball, extra.type),
+        result,
+        text,
       };
     })
     .sort((a, b) => (b.inning ?? 0) - (a.inning ?? 0) || b.over - a.over || b.id - a.id)

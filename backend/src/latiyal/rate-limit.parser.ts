@@ -31,7 +31,7 @@ function resetFromValue(value: number | null, now: number): string | null {
 
 /**
  * Reads rate-limit metadata from the response headers or the `rate_limit` body field.
- * Returns null when Sportmonks did not send any.
+ * Returns null when the API did not send any.
  */
 export function parseRateLimit(headers: Headers, body: unknown, now = Date.now()): ApiRateLimit | null {
   const limit = headerNumber(headers, ['x-ratelimit-limit', 'ratelimit-limit']);

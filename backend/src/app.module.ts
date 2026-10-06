@@ -23,7 +23,7 @@ import { QueuesModule } from './queues/queues.module';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
 import { SeasonsModule } from './seasons/seasons.module';
-import { SportmonksModule } from './sportmonks/sportmonks.module';
+import { LatiyalModule } from './latiyal/latiyal.module';
 import { TeamsModule } from './teams/teams.module';
 import { WebsocketModule } from './websocket/websocket.module';
 
@@ -39,7 +39,7 @@ import { WebsocketModule } from './websocket/websocket.module';
     DatabaseModule,
     FirebaseModule,
     QueuesModule,
-    SportmonksModule,
+    LatiyalModule,
     LiveScoreModule,
     WebsocketModule,
     HealthModule,

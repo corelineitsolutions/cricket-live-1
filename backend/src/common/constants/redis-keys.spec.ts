@@ -10,12 +10,12 @@ describe('redis keys', () => {
     expect(RedisKey.liveMatchList()).toBe('live:matches');
     expect(RedisKey.liveMatch(123)).toBe('live:match:123');
     expect(RedisKey.liveMatchUpdated(123)).toBe('live:match:123:updated');
-    expect(RedisKey.sportmonksLastPoll()).toBe('sportmonks:last-poll');
-    expect(RedisKey.sportmonksLastSuccess()).toBe('sportmonks:last-success');
-    expect(RedisKey.sportmonksLastError()).toBe('sportmonks:last-error');
-    expect(RedisKey.sportmonksRateLimit()).toBe('sportmonks:rate-limit');
-    expect(RedisKey.sportmonksWorkerStatus()).toBe('sportmonks:worker-status');
-    expect(RedisKey.pollLock()).toBe('sportmonks:live-score:poll-lock');
+    expect(RedisKey.providerLastPoll()).toBe('provider:last-poll');
+    expect(RedisKey.providerLastSuccess()).toBe('provider:last-success');
+    expect(RedisKey.providerLastError()).toBe('provider:last-error');
+    expect(RedisKey.providerRateLimit()).toBe('provider:rate-limit');
+    expect(RedisKey.providerWorkerStatus()).toBe('provider:worker-status');
+    expect(RedisKey.pollLock()).toBe('provider:live-score:poll-lock');
     expect(RedisKey.adsActive(3)).toBe('ads:active:v3');
     expect(RedisKey.adsActiveVersion()).toBe('ads:active:version');
     expect(RedisKey.adminLoginFailures('abc')).toBe('auth:admin-login:failures:abc');

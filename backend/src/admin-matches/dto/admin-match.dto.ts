@@ -13,7 +13,7 @@ export class AdminLiveBoardDto {
   @ApiProperty({ type: [AdminLiveMatchDto] })
   matches!: AdminLiveMatchDto[];
 
-  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Last successful Sportmonks poll.' })
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Last successful Latiyal poll.' })
   updatedAt!: string | null;
 
   @ApiProperty({ example: false })
@@ -65,7 +65,7 @@ export class MatchCacheStateDto {
 }
 
 export class AdminMatchDetailDto {
-  @ApiProperty({ example: 61521, description: 'Sportmonks fixture id (the public matchId).' })
+  @ApiProperty({ example: 61521, description: 'Latiyal match id (the public matchId).' })
   matchId!: number;
 
   @ApiProperty({ type: String, nullable: true })
@@ -74,7 +74,7 @@ export class AdminMatchDetailDto {
   @ApiProperty({ example: true, description: 'Listed in the live feed right now.' })
   inLiveFeed!: boolean;
 
-  @ApiProperty({ type: AdminLiveMatchDto, nullable: true, description: 'Snapshot in Redis, exactly as written by the worker from Sportmonks.' })
+  @ApiProperty({ type: AdminLiveMatchDto, nullable: true, description: 'Snapshot in Redis, exactly as written by the worker from Latiyal.' })
   live!: AdminLiveMatchDto | null;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'When the worker last wrote the snapshot.' })

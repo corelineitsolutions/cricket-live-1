@@ -1,16 +1,16 @@
 import { Module } from '@nestjs/common';
-import { SPORTMONKS_FETCH } from './sportmonks.constants';
-import { FetchFn, SportmonksHttpClient } from './sportmonks-http.client';
-import { SportmonksQuotaService } from './sportmonks-quota.service';
-import { SportmonksService } from './sportmonks.service';
+import { LATIYAL_FETCH } from './latiyal.constants';
+import { FetchFn, LatiyalHttpClient } from './latiyal-http.client';
+import { LatiyalQuotaService } from './latiyal-quota.service';
+import { LatiyalService } from './latiyal.service';
 
 @Module({
   providers: [
-    { provide: SPORTMONKS_FETCH, useValue: ((input, init) => fetch(input, init)) satisfies FetchFn },
-    SportmonksQuotaService,
-    SportmonksHttpClient,
-    SportmonksService,
+    { provide: LATIYAL_FETCH, useValue: ((input, init) => fetch(input, init)) satisfies FetchFn },
+    LatiyalQuotaService,
+    LatiyalHttpClient,
+    LatiyalService,
   ],
-  exports: [SportmonksService, SportmonksQuotaService],
+  exports: [LatiyalService, LatiyalQuotaService],
 })
-export class SportmonksModule {}
+export class LatiyalModule {}

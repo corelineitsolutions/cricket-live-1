@@ -16,7 +16,7 @@ const REFRESH_MS = 15_000;
 const WORKER_HEALTH_TEXT: Record<Dashboard['dependencies']['worker'], string> = {
   up: 'Reporting normally',
   down: 'No report recently: crashed or stuck',
-  disabled: 'Disabled (no Sportmonks token)',
+  disabled: 'Disabled (no Latiyal token)',
   unknown: 'Never reported, or Redis unavailable',
 };
 
@@ -48,7 +48,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { sportmonks: sm, dependencies: deps } = data;
+  const { provider: sm, dependencies: deps } = data;
   const lastSuccessAge = sm.lastSuccessAt ? now - Date.parse(sm.lastSuccessAt) : null;
   const pollIsLate = lastSuccessAge !== null && lastSuccessAge > Math.max(3 * (sm.pollingIntervalMs ?? sm.configuredIntervalsMs.idle), 120_000);
 
@@ -103,7 +103,7 @@ export default function DashboardPage() {
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Panel
-          title="Sportmonks worker"
+          title="Latiyal worker"
           actions={<StatusBadge tone={healthTone(sm.workerState)}>{sm.workerState ? humanize(sm.workerState) : 'No status'}</StatusBadge>}
         >
           {pollIsLate && (
@@ -165,7 +165,7 @@ export default function DashboardPage() {
           />
         </Panel>
 
-        <Panel title="Sportmonks quota" description="Shared by every worker and API instance through Redis.">
+        <Panel title="Latiyal quota" description="Shared by every worker and API instance through Redis.">
           <div className="mb-4">
             <div className="mb-1.5 flex items-baseline justify-between text-sm">
               <span className="font-medium text-slate-900">
@@ -184,7 +184,7 @@ export default function DashboardPage() {
                 value: sm.remainingQuota === null ? 'Unavailable' : (
                   <span>
                     {formatNumber(sm.remainingQuota)}
-                    <span className="text-slate-500"> · {sm.quotaSource === 'api' ? 'from Sportmonks headers' : 'local count'}</span>
+                    <span className="text-slate-500"> · {sm.quotaSource === 'api' ? 'from API headers' : 'local count'}</span>
                   </span>
                 ),
               },

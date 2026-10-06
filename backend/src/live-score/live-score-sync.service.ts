@@ -1,19 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { logEvent } from '../common/utils/structured-log';
 import { AppConfigService } from '../config/app-config.service';
-import { isSportmonksError, redactSecret, SportmonksError } from '../sportmonks/sportmonks.errors';
-import { SportmonksQuotaService } from '../sportmonks/sportmonks-quota.service';
-import { SportmonksService } from '../sportmonks/sportmonks.service';
+import { isLatiyalError, LatiyalError, redactSecret } from '../latiyal/latiyal.errors';
+import { LatiyalQuotaService } from '../latiyal/latiyal-quota.service';
+import { LatiyalService } from '../latiyal/latiyal.service';
+import type { LatiyalMatch, LatiyalRecord } from '../latiyal/latiyal.types';
 import { detectChange } from './change-detection';
-import { normalizeFixture } from './live-match.normalizer';
+import { normalizeLatiyalMatch } from './live-match.normalizer';
 import type { LiveMatch, LiveScoreEventType } from './live-match.types';
 import { FINISHED_MATCH_TTL_SECONDS, LiveStateRepository } from './live-state.repository';
 import { MatchPersistenceService } from './match-persistence.service';
 import { computeNextPoll, PollingDecision, PollingIntervals } from './polling-policy';
 import { WorkerState, WorkerStateRepository } from './worker-state.repository';
 
-/** Live matches missing from /livescores are looked up individually, at most this many per cycle. */
+/** Live matches missing from liveMatchList are looked up individually, at most this many per cycle. */
 export const MAX_MISSING_LOOKUPS_PER_CYCLE = 3;
+/** liveMatch detail (batsmen, bowler, rates) is fetched in parallel for at most this many listed matches. */
+export const MAX_DETAIL_LOOKUPS_PER_CYCLE = 10;
 /** After this many failed lookups a missing match is removed from the live list. */
 export const MAX_MISSING_ATTEMPTS = 3;
 
@@ -27,8 +30,8 @@ export class LiveScoreSyncService {
 
   constructor(
     private readonly config: AppConfigService,
-    private readonly sportmonks: SportmonksService,
-    private readonly quota: SportmonksQuotaService,
+    private readonly latiyal: LatiyalService,
+    private readonly quota: LatiyalQuotaService,
     private readonly liveState: LiveStateRepository,
     private readonly workerState: WorkerStateRepository,
     private readonly persistence: MatchPersistenceService,
@@ -36,9 +39,9 @@ export class LiveScoreSyncService {
 
   intervals(): PollingIntervals {
     return {
-      idleMs: this.config.sportmonksIdleIntervalMs,
-      liveMs: this.config.sportmonksLiveIntervalMs,
-      activeMs: this.config.sportmonksActiveIntervalMs,
+      idleMs: this.config.latiyalIdleIntervalMs,
+      liveMs: this.config.latiyalLiveIntervalMs,
+      activeMs: this.config.latiyalActiveIntervalMs,
     };
   }
 
@@ -47,21 +50,22 @@ export class LiveScoreSyncService {
     await this.workerState.writeLastPoll({ at: new Date(startedAt).toISOString(), instanceId });
     logEvent(this.logger, 'debug', 'poll', { instanceId });
 
-    let fixtures;
+    let fixtures: LatiyalMatch[];
     try {
-      fixtures = await this.sportmonks.getLivescores();
+      fixtures = await this.latiyal.getLiveMatches();
     } catch (error) {
       return this.handleFailure(error, instanceId);
     }
 
     await this.workerState.resetFailures();
-    const now = new Date();
     const previousLiveIds = await this.liveState.getLiveIds();
+    const previous = await this.liveState.getMatches([...previousLiveIds, ...fixtures.map((fixture) => fixture.id)]);
+    const details = await this.fetchDetails(fixtures);
+    const now = new Date();
     const current = fixtures
-      .map((fixture) => normalizeFixture(fixture, now))
+      .map((fixture) => this.normalize(fixture.raw, details.get(fixture.id), previous.get(fixture.id) ?? null, now))
       .filter((match) => match.isLive || match.isFinished);
     const currentIds = new Set(current.map((match) => match.sportmonksId));
-    const previous = await this.liveState.getMatches([...previousLiveIds, ...currentIds]);
 
     const liveMatches: LiveMatch[] = [];
     for (const match of current) {
@@ -114,6 +118,45 @@ export class LiveScoreSyncService {
     return decision;
   }
 
+  /**
+   * liveMatch detail per listed match, fetched in parallel. A failed lookup maps to
+   * `undefined` so the list data is still used and the previous players are kept.
+   */
+  private async fetchDetails(fixtures: LatiyalMatch[]): Promise<Map<number, LatiyalRecord | null | undefined>> {
+    const ids = fixtures.slice(0, MAX_DETAIL_LOOKUPS_PER_CYCLE).map((fixture) => fixture.id);
+    const results = await Promise.all(
+      ids.map(async (id): Promise<[number, LatiyalRecord | null | undefined]> => {
+        try {
+          return [id, await this.latiyal.getLiveMatch(id)];
+        } catch (error) {
+          logEvent(this.logger, 'warn', 'poll-error', {
+            sportmonksId: id,
+            endpoint: 'liveMatch',
+            kind: isLatiyalError(error) ? error.kind : 'unknown',
+          });
+          return [id, undefined];
+        }
+      }),
+    );
+    return new Map(results);
+  }
+
+  private normalize(
+    summary: LatiyalRecord,
+    detail: LatiyalRecord | null | undefined,
+    previous: LiveMatch | null,
+    now: Date,
+    inLiveList = true,
+  ): LiveMatch {
+    const next = normalizeLatiyalMatch(summary, detail ?? null, now, { inLiveList });
+    if (detail === undefined && previous) {
+      next.batsmen = previous.batsmen;
+      next.bowler = previous.bowler;
+    }
+    next.startTime ??= previous?.startTime ?? now.toISOString();
+    return next;
+  }
+
   /** Stores and publishes `next` if it differs from `previous`. Returns the state now in Redis. */
   private async apply(next: LiveMatch, previous: LiveMatch | null): Promise<LiveMatch> {
     next.matchId = previous?.matchId ?? null;
@@ -158,16 +201,16 @@ export class LiveScoreSyncService {
     return next;
   }
 
-  /** A live match vanished from /livescores. Fetch it once to capture the final state. */
+  /** A live match vanished from liveMatchList. Fetch it once to capture the final state. */
   private async resolveMissing(id: number, previous: LiveMatch | null): Promise<LiveMatch | null> {
     if (!previous) {
       return null;
     }
 
     try {
-      const fixture = await this.sportmonks.getFixture(id);
-      if (fixture) {
-        const next = normalizeFixture(fixture, new Date());
+      const detail = await this.latiyal.getLiveMatch(id);
+      if (detail) {
+        const next = this.normalize({ match_id: id }, detail, previous, new Date(), false);
         const stored = await this.apply(next, previous);
         if (!stored.isLive) {
           await this.liveState.clearMissing(id);
@@ -178,7 +221,7 @@ export class LiveScoreSyncService {
       const attempts = await this.liveState.incrementMissing(id);
       logEvent(this.logger, 'warn', 'poll-error', {
         sportmonksId: id,
-        kind: isSportmonksError(error) ? error.kind : 'unknown',
+        kind: isLatiyalError(error) ? error.kind : 'unknown',
         missingAttempts: attempts,
       });
       if (attempts < MAX_MISSING_ATTEMPTS) {
@@ -202,27 +245,27 @@ export class LiveScoreSyncService {
   }
 
   private async handleFailure(error: unknown, instanceId: string): Promise<PollingDecision> {
-    const sportmonksError = isSportmonksError(error)
+    const latiyalError = isLatiyalError(error)
       ? error
-      : new SportmonksError('network', error instanceof Error ? error.message : 'Unknown error');
-    const quotaExhausted = sportmonksError.kind === 'quota_exhausted';
-    const rateLimited = sportmonksError.kind === 'rate_limited';
-    const message = redactSecret(sportmonksError.message, this.config.sportmonksApiToken);
+      : new LatiyalError('network', error instanceof Error ? error.message : 'Unknown error');
+    const quotaExhausted = latiyalError.kind === 'quota_exhausted';
+    const rateLimited = latiyalError.kind === 'rate_limited';
+    const message = redactSecret(latiyalError.message, this.config.latiyalApiToken);
 
     const failures = quotaExhausted ? await this.workerState.getFailures() : await this.workerState.incrementFailures();
     await this.workerState.writeLastError({
       at: new Date().toISOString(),
       instanceId,
-      kind: sportmonksError.kind,
-      status: sportmonksError.status,
+      kind: latiyalError.kind,
+      status: latiyalError.status,
       message,
-      retryAfterMs: sportmonksError.retryAfterMs,
+      retryAfterMs: latiyalError.retryAfterMs,
     });
     logEvent(this.logger, rateLimited || quotaExhausted ? 'warn' : 'error', 'poll-error', {
       instanceId,
-      kind: sportmonksError.kind,
-      status: sportmonksError.status,
-      retryAfterMs: sportmonksError.retryAfterMs,
+      kind: latiyalError.kind,
+      status: latiyalError.status,
+      retryAfterMs: latiyalError.retryAfterMs,
       consecutiveFailures: failures,
       message,
     });
@@ -232,7 +275,7 @@ export class LiveScoreSyncService {
       liveMatches,
       intervals: this.intervals(),
       consecutiveFailures: quotaExhausted ? 0 : failures,
-      retryAfterMs: sportmonksError.retryAfterMs,
+      retryAfterMs: latiyalError.retryAfterMs,
       quota: await this.quota.getBudget(),
     });
     const state: WorkerState = rateLimited ? 'rate-limited' : quotaExhausted ? 'quota-exhausted' : 'backoff';

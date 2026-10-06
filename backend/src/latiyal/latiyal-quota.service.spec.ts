@@ -1,18 +1,18 @@
 import { captureLogs } from '../testing/capture-logs';
 import { FakeRedis } from '../testing/fake-redis';
 import { testConfig } from '../testing/test-config';
-import { hourBucket, SportmonksQuotaService } from './sportmonks-quota.service';
+import { hourBucket, LatiyalQuotaService } from './latiyal-quota.service';
 
 const START = Date.parse('2026-10-01T12:30:00Z');
 
 function setup(maxCallsPerHour = 1600) {
   const redis = new FakeRedis();
-  const quota = new SportmonksQuotaService(redis.asService(), testConfig({ sportmonksMaxCallsPerHour: maxCallsPerHour }));
+  const quota = new LatiyalQuotaService(redis.asService(), testConfig({ latiyalMaxCallsPerHour: maxCallsPerHour }));
   const logs = captureLogs();
   return { redis, quota, logs };
 }
 
-describe('SportmonksQuotaService', () => {
+describe('LatiyalQuotaService', () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: START });
   });
@@ -25,7 +25,7 @@ describe('SportmonksQuotaService', () => {
     expect(hourBucket(START)).toBe('2026100112');
   });
 
-  it('stops at SPORTMONKS_MAX_CALLS_PER_HOUR and resumes in the next hour', async () => {
+  it('stops at LATIYAL_MAX_CALLS_PER_HOUR and resumes in the next hour', async () => {
     const { quota, logs } = setup(3);
 
     for (let i = 0; i < 3; i += 1) {
@@ -42,10 +42,10 @@ describe('SportmonksQuotaService', () => {
 
   it('shares the hourly budget between workers through Redis', async () => {
     const redis = new FakeRedis();
-    const config = testConfig({ sportmonksMaxCallsPerHour: 2 });
+    const config = testConfig({ latiyalMaxCallsPerHour: 2 });
     captureLogs();
-    const workerA = new SportmonksQuotaService(redis.asService(), config);
-    const workerB = new SportmonksQuotaService(redis.asService(), config);
+    const workerA = new LatiyalQuotaService(redis.asService(), config);
+    const workerB = new LatiyalQuotaService(redis.asService(), config);
 
     expect((await workerA.tryConsume()).allowed).toBe(true);
     expect((await workerB.tryConsume()).allowed).toBe(true);

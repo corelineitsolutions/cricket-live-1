@@ -51,12 +51,12 @@ export function nextHourStart(now: number): number {
 
 /**
  * Hourly call budget shared by every worker through Redis.
- * The local counter enforces SPORTMONKS_MAX_CALLS_PER_HOUR. When Sportmonks reports
+ * The local counter enforces LATIYAL_MAX_CALLS_PER_HOUR. When the API reports
  * rate-limit metadata it is authoritative, minus the same safety margin.
  */
 @Injectable()
-export class SportmonksQuotaService {
-  private readonly logger = new Logger(SportmonksQuotaService.name);
+export class LatiyalQuotaService {
+  private readonly logger = new Logger(LatiyalQuotaService.name);
   private lastWarningAt = 0;
 
   constructor(
@@ -71,10 +71,10 @@ export class SportmonksQuotaService {
   async tryConsume(budget: QuotaBudgetKind = 'live'): Promise<QuotaDecision> {
     const now = Date.now();
     if (budget === 'on-demand') {
-      const max = this.config.sportmonksOnDemandMaxCallsPerHour;
+      const max = this.config.latiyalOnDemandMaxCallsPerHour;
       const used =
         max > 0
-          ? await this.redis.incrementIfBelow(RedisKey.sportmonksOnDemandQuota(hourBucket(now)), max, QUOTA_KEY_TTL_SECONDS)
+          ? await this.redis.incrementIfBelow(RedisKey.providerOnDemandQuota(hourBucket(now)), max, QUOTA_KEY_TTL_SECONDS)
           : null;
       if (used === null) {
         logEvent(this.logger, 'warn', 'rate-limit', { allowed: false, source: 'on-demand', maxCallsPerHour: max });
@@ -96,9 +96,9 @@ export class SportmonksQuotaService {
       return { allowed: false, remaining: 0, retryInMs };
     }
 
-    const max = this.config.sportmonksMaxCallsPerHour;
+    const max = this.config.latiyalMaxCallsPerHour;
     const count = await this.redis.incrementIfBelow(
-      RedisKey.sportmonksQuota(hourBucket(now)),
+      RedisKey.providerQuota(hourBucket(now)),
       max,
       QUOTA_KEY_TTL_SECONDS,
     );
@@ -199,8 +199,8 @@ export class SportmonksQuotaService {
   }
 
   private async loadState(now: number): Promise<RateLimitState> {
-    const stored = await this.redis.getJson<RateLimitState>(RedisKey.sportmonksRateLimit());
-    const max = this.config.sportmonksMaxCallsPerHour;
+    const stored = await this.redis.getJson<RateLimitState>(RedisKey.providerRateLimit());
+    const max = this.config.latiyalMaxCallsPerHour;
     const windowResetAt = nextHourStart(now);
     const sameWindow = stored?.windowResetAt === new Date(windowResetAt).toISOString();
 
@@ -233,7 +233,7 @@ export class SportmonksQuotaService {
     state.source = this.apiRemaining(state, now) !== null ? 'api' : 'local';
     state.effectiveRemaining = this.effectiveRemaining(state, now);
     state.updatedAt = new Date(now).toISOString();
-    await this.redis.setJson(RedisKey.sportmonksRateLimit(), state);
+    await this.redis.setJson(RedisKey.providerRateLimit(), state);
   }
 
   /** API remaining minus the margin between the API limit and our configured maximum. */
@@ -242,12 +242,12 @@ export class SportmonksQuotaService {
       return null;
     }
     const reserve =
-      state.apiLimit !== null ? Math.max(0, state.apiLimit - this.config.sportmonksMaxCallsPerHour) : 0;
+      state.apiLimit !== null ? Math.max(0, state.apiLimit - this.config.latiyalMaxCallsPerHour) : 0;
     return state.apiRemaining - reserve;
   }
 
   private effectiveRemaining(state: RateLimitState, now: number): number {
-    const local = Math.max(0, this.config.sportmonksMaxCallsPerHour - state.callsThisHour);
+    const local = Math.max(0, this.config.latiyalMaxCallsPerHour - state.callsThisHour);
     const api = this.apiRemaining(state, now);
     return api === null ? local : Math.max(0, Math.min(local, api));
   }

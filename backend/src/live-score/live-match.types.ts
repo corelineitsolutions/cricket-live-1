@@ -64,7 +64,7 @@ export interface LiveMatch {
   matchType: string | null;
   round: string | null;
   status: MatchStatus;
-  /** Raw Sportmonks status, for example "2nd Innings" or "Innings Break". */
+  /** Raw Latiyal status, for example "Live" or "Innings Break". */
   statusDetail: string | null;
   isLive: boolean;
   /** True once play is over: completed, abandoned, cancelled or postponed. */
@@ -90,7 +90,7 @@ export interface LiveMatch {
   bowler: LiveBowler | null;
   /** When the tracked live data last changed. */
   lastUpdatedAt: string;
-  /** True when the last Sportmonks poll failed and this is the last known state. */
+  /** True when the last Latiyal poll failed and this is the last known state. */
   stale: boolean;
 }
 

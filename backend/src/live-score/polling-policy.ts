@@ -48,7 +48,7 @@ export function pollMode(liveMatches: LiveMatch[]): PollMode {
 }
 
 /**
- * Picks the delay before the next Sportmonks poll. The base interval comes from match
+ * Picks the delay before the next Latiyal poll. The base interval comes from match
  * state; failures, Retry-After and the remaining hourly budget can only lengthen it.
  */
 export function computeNextPoll(input: PollingInput): PollingDecision {

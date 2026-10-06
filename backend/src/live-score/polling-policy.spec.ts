@@ -1,13 +1,12 @@
-import { parseFixture } from '../sportmonks/sportmonks.validation';
-import { LOCAL_TEAM_ID, rawFixture, RawFixtureOptions, VISITOR_TEAM_ID } from '../testing/sportmonks-fixtures';
-import { normalizeFixture } from './live-match.normalizer';
+import { latiyalMatch, LatiyalMatchOptions, LOCAL_TEAM_ID, VISITOR_TEAM_ID } from '../testing/latiyal-fixtures';
+import { normalizeLatiyalMatch } from './live-match.normalizer';
 import { computeNextPoll, isCriticalMatch, MAX_BACKOFF_MS } from './polling-policy';
 
 const intervals = { idleMs: 60_000, liveMs: 10_000, activeMs: 5_000 };
 const HOUR_MS = 3_600_000;
 
-function match(options: RawFixtureOptions) {
-  return normalizeFixture(parseFixture(rawFixture(options))!, new Date());
+function match(options: LatiyalMatchOptions) {
+  return normalizeLatiyalMatch(latiyalMatch(options), null, new Date());
 }
 
 const firstInnings = match({ status: '1st Innings', runs: [[1, LOCAL_TEAM_ID, 64, 1, 7.4]] });
@@ -23,7 +22,7 @@ const lastOvers = match({
     [2, VISITOR_TEAM_ID, 120, 3, 15.2],
   ],
 });
-const finished = match({ status: 'Finished', live: false });
+const finished = match({ status: 'Finished' });
 
 describe('computeNextPoll', () => {
   it('polls every 60 s when nothing is live', () => {
@@ -31,8 +30,8 @@ describe('computeNextPoll', () => {
     expect(computeNextPoll({ liveMatches: [finished], intervals }).mode).toBe('idle');
   });
 
-  it('polls every 10 s when the only fixture is live:true with status NS', () => {
-    const notStartedButLive = match({ id: 71391, status: 'NS', live: true, runs: [] });
+  it('polls every 10 s when the only listed match still says Upcoming', () => {
+    const notStartedButLive = match({ id: 71391, status: 'Upcoming', runs: [] });
 
     expect(notStartedButLive.isLive).toBe(true);
     expect(computeNextPoll({ liveMatches: [notStartedButLive], intervals })).toEqual({

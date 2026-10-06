@@ -1,265 +1,134 @@
-import type {
-  SmBatting,
-  SmBowling,
-  SmFixture,
-  SmLeague,
-  SmPlayer,
-  SmRun,
-  SmSeason,
-  SmTeam,
-  SmVenue,
-} from './sportmonks.types';
+import type { LatiyalMatch, LatiyalRecord } from './latiyal.types';
 
-type Json = Record<string, unknown>;
-
-export function isObject(value: unknown): value is Json {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+export function asRecord(value: unknown): LatiyalRecord | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as LatiyalRecord) : null;
 }
 
-/** Includes may arrive either inline or wrapped as `{ data: ... }`. */
-export function unwrap(value: unknown): unknown {
-  if (isObject(value) && 'data' in value && Object.keys(value).length === 1) {
-    return value.data;
-  }
-  return value;
+function isBlank(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
 }
 
-export function num(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+/** First present value among `keys`. */
+export function pick(source: LatiyalRecord | null, keys: readonly string[]): unknown {
+  if (!source) {
+    return undefined;
   }
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
+  for (const key of keys) {
+    if (!isBlank(source[key])) {
+      return source[key];
+    }
+  }
+  return undefined;
+}
+
+export function toNumber(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.trim().replace(/[()*,]/g, '');
+    if (cleaned === '') {
+      return null;
+    }
+    const parsed = Number(cleaned);
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
 }
 
-export function int(value: unknown): number | null {
-  const parsed = num(value);
-  return parsed !== null && Number.isInteger(parsed) ? parsed : null;
-}
-
-export function str(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null;
+export function toText(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
   }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-export function bool(value: unknown): boolean | null {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (value === 1 || value === '1' || value === 'true') {
-    return true;
-  }
-  if (value === 0 || value === '0' || value === 'false') {
-    return false;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
   }
   return null;
 }
 
-export function list<T>(value: unknown, parse: (item: unknown) => T | null): T[] {
-  const raw = unwrap(value);
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.map(parse).filter((item): item is T => item !== null);
+export function pickNumber(source: LatiyalRecord | null, keys: readonly string[]): number | null {
+  return toNumber(pick(source, keys));
 }
 
-export function team(value: unknown): SmTeam | null {
-  const raw = unwrap(value);
-  if (!isObject(raw) || int(raw.id) === null) {
-    return null;
-  }
-  return {
-    id: int(raw.id)!,
-    name: str(raw.name),
-    code: str(raw.code),
-    image_path: str(raw.image_path),
-  };
+export function pickText(source: LatiyalRecord | null, keys: readonly string[]): string | null {
+  return toText(pick(source, keys));
 }
 
-function league(value: unknown): SmLeague | null {
-  const raw = unwrap(value);
-  if (!isObject(raw) || int(raw.id) === null) {
-    return null;
+export function pickRecord(source: LatiyalRecord | null, keys: readonly string[]): LatiyalRecord | null {
+  const value = pick(source, keys);
+  if (Array.isArray(value)) {
+    return asRecord(value[0]);
   }
-  return {
-    id: int(raw.id)!,
-    name: str(raw.name),
-    code: str(raw.code),
-    image_path: str(raw.image_path),
-    type: str(raw.type),
-  };
+  return asRecord(value);
 }
 
-function season(value: unknown): SmSeason | null {
-  const raw = unwrap(value);
-  if (!isObject(raw) || int(raw.id) === null) {
-    return null;
-  }
-  return { id: int(raw.id)!, name: str(raw.name) };
+/** Arrays, or objects keyed by index ("0", "1" …), as a list of records. */
+export function toRecords(value: unknown): LatiyalRecord[] {
+  const items = Array.isArray(value) ? value : asRecord(value) ? Object.values(value as LatiyalRecord) : [];
+  return items.map(asRecord).filter((item): item is LatiyalRecord => item !== null);
 }
 
-function venue(value: unknown): SmVenue | null {
-  const raw = unwrap(value);
-  if (!isObject(raw) || int(raw.id) === null) {
-    return null;
-  }
-  return { id: int(raw.id)!, name: str(raw.name), city: str(raw.city) };
+export function pickRecords(source: LatiyalRecord | null, keys: readonly string[]): LatiyalRecord[] {
+  return toRecords(pick(source, keys));
 }
 
-export function player(value: unknown): SmPlayer | null {
-  const raw = unwrap(value);
-  if (!isObject(raw) || int(raw.id) === null) {
-    return null;
-  }
-  const fullname =
-    str(raw.fullname) ?? ([str(raw.firstname), str(raw.lastname)].filter(Boolean).join(' ') || null);
-  return { id: int(raw.id)!, fullname, image_path: str(raw.image_path) };
+export const MATCH_ID_KEYS = ['match_id', 'matchId', 'matchid', 'id'] as const;
+
+export function matchIdOf(raw: LatiyalRecord): number | null {
+  const id = pickNumber(raw, MATCH_ID_KEYS);
+  return id !== null && Number.isInteger(id) && id > 0 ? id : null;
 }
 
-export function run(value: unknown): SmRun | null {
-  if (!isObject(value)) {
-    return null;
+/** Match records from a list payload: an array, an index-keyed object or `{ matches: [...] }`. */
+export function parseMatchList(data: unknown): { matches: LatiyalMatch[]; rejected: number } | null {
+  if (data === null || data === undefined || data === '') {
+    return { matches: [], rejected: 0 };
   }
-  const teamId = int(value.team_id);
-  const inning = int(value.inning);
-  if (teamId === null || inning === null) {
-    return null;
-  }
-  return {
-    team_id: teamId,
-    inning,
-    score: int(value.score) ?? 0,
-    wickets: int(value.wickets) ?? 0,
-    overs: num(value.overs) ?? 0,
-  };
-}
-
-export function batting(value: unknown): SmBatting | null {
-  if (!isObject(value)) {
-    return null;
-  }
-  const teamId = int(value.team_id);
-  const playerId = int(value.player_id);
-  if (teamId === null || playerId === null) {
-    return null;
-  }
-  const dismissed = ['catch_stump_player_id', 'runout_by_id', 'batsmanout_id', 'bowling_player_id'].some(
-    (field) => int(value[field]) !== null,
-  );
-  return {
-    team_id: teamId,
-    player_id: playerId,
-    scoreboard: str(value.scoreboard),
-    active: bool(value.active),
-    dismissed,
-    sort: int(value.sort),
-    score: int(value.score) ?? 0,
-    ball: int(value.ball) ?? 0,
-    four_x: int(value.four_x) ?? 0,
-    six_x: int(value.six_x) ?? 0,
-    rate: num(value.rate),
-    batsman: player(value.batsman),
-  };
-}
-
-export function bowling(value: unknown): SmBowling | null {
-  if (!isObject(value)) {
-    return null;
-  }
-  const teamId = int(value.team_id);
-  const playerId = int(value.player_id);
-  if (teamId === null || playerId === null) {
-    return null;
-  }
-  return {
-    team_id: teamId,
-    player_id: playerId,
-    scoreboard: str(value.scoreboard),
-    active: bool(value.active),
-    sort: int(value.sort),
-    updated_at: str(value.updated_at),
-    overs: num(value.overs) ?? 0,
-    medians: int(value.medians) ?? 0,
-    runs: int(value.runs) ?? 0,
-    wickets: int(value.wickets) ?? 0,
-    rate: num(value.rate),
-    bowler: player(value.bowler),
-  };
-}
-
-/** Returns null when the fixture lacks an integer id. Optional fields degrade to null or []. */
-export function parseFixture(value: unknown): SmFixture | null {
-  if (!isObject(value)) {
-    return null;
-  }
-  const id = int(value.id);
-  if (id === null) {
-    return null;
+  let items: unknown[];
+  if (Array.isArray(data)) {
+    items = data;
+  } else {
+    const record = asRecord(data);
+    if (!record) {
+      return null;
+    }
+    const nested = Object.values(record).find(Array.isArray);
+    items = matchIdOf(record) !== null ? [record] : nested ? nested : Object.values(record);
   }
 
-  return {
-    id,
-    league_id: int(value.league_id),
-    season_id: int(value.season_id),
-    round: str(value.round),
-    localteam_id: int(value.localteam_id),
-    visitorteam_id: int(value.visitorteam_id),
-    starting_at: str(value.starting_at),
-    type: str(value.type),
-    live: bool(value.live),
-    status: str(value.status),
-    note: str(value.note),
-    winner_team_id: int(value.winner_team_id),
-    super_over: bool(value.super_over),
-    rpc_target: int(value.rpc_target),
-    rpc_overs: num(value.rpc_overs),
-    localteam: team(value.localteam),
-    visitorteam: team(value.visitorteam),
-    league: league(value.league),
-    season: season(value.season),
-    venue: venue(value.venue),
-    runs: list(value.runs, run),
-    batting: list(value.batting, batting),
-    bowling: list(value.bowling, bowling),
-  };
-}
-
-export interface FixtureListResult {
-  fixtures: SmFixture[];
-  rejected: number;
-}
-
-/** Validates a `{ data: [...] }` envelope. Returns null when the envelope itself is invalid. */
-export function parseFixtureList(body: unknown): FixtureListResult | null {
-  if (!isObject(body) || !Array.isArray(body.data)) {
-    return null;
-  }
-  const fixtures: SmFixture[] = [];
+  const matches: LatiyalMatch[] = [];
   let rejected = 0;
-  for (const item of body.data) {
-    const fixture = parseFixture(item);
-    if (fixture) {
-      fixtures.push(fixture);
+  for (const item of items) {
+    const raw = asRecord(item);
+    const id = raw ? matchIdOf(raw) : null;
+    if (raw && id !== null) {
+      matches.push({ id, raw });
     } else {
       rejected += 1;
     }
   }
-  return { fixtures, rejected };
+  return { matches, rejected };
 }
 
-/** Validates a `{ data: {...} }` envelope for a single fixture. */
-export function parseSingleFixture(body: unknown): SmFixture | null | undefined {
-  if (!isObject(body) || !('data' in body)) {
-    return undefined;
+/** The match record of a per-match payload, which may be wrapped in an array. */
+export function parseMatchDetail(data: unknown): LatiyalRecord | null {
+  if (Array.isArray(data)) {
+    return asRecord(data[0]);
   }
-  if (body.data === null) {
-    return null;
+  return asRecord(data);
+}
+
+/** Overlays `detail` on `base`, ignoring blank detail values so they never erase list data. */
+export function mergeRecords(base: LatiyalRecord, detail: LatiyalRecord | null): LatiyalRecord {
+  if (!detail) {
+    return base;
   }
-  return parseFixture(body.data) ?? undefined;
+  const merged: LatiyalRecord = { ...base };
+  for (const [key, value] of Object.entries(detail)) {
+    if (!isBlank(value)) {
+      merged[key] = value;
+    }
+  }
+  return merged;
 }

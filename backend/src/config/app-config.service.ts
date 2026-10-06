@@ -29,44 +29,42 @@ export class AppConfigService {
     return this.config.get<string>('REDIS_PASSWORD') ?? '';
   }
 
-  get sportmonksApiUrl(): string {
-    return (
-      this.config.get<string>('SPORTMONKS_API_URL') ?? 'https://cricket.sportmonks.com/api/v2.0'
-    );
+  get latiyalApiUrl(): string {
+    return this.config.get<string>('LATIYAL_API_URL') ?? 'https://api.latiyalinfotech.com/apiv5';
   }
 
-  get sportmonksApiToken(): string {
-    return this.config.get<string>('SPORTMONKS_API_TOKEN') ?? '';
+  get latiyalApiToken(): string {
+    return this.config.get<string>('LATIYAL_API_TOKEN') ?? '';
   }
 
-  // Defaults for the Sportmonks settings live in env.validation.ts only.
-  get sportmonksIdleIntervalMs(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_IDLE_INTERVAL_MS'));
+  // Defaults for the Latiyal settings live in env.validation.ts only.
+  get latiyalIdleIntervalMs(): number {
+    return Number(this.config.getOrThrow('LATIYAL_IDLE_INTERVAL_MS'));
   }
 
-  get sportmonksLiveIntervalMs(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_LIVE_INTERVAL_MS'));
+  get latiyalLiveIntervalMs(): number {
+    return Number(this.config.getOrThrow('LATIYAL_LIVE_INTERVAL_MS'));
   }
 
-  get sportmonksActiveIntervalMs(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_ACTIVE_INTERVAL_MS'));
+  get latiyalActiveIntervalMs(): number {
+    return Number(this.config.getOrThrow('LATIYAL_ACTIVE_INTERVAL_MS'));
   }
 
-  get sportmonksMaxCallsPerHour(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_MAX_CALLS_PER_HOUR'));
+  get latiyalMaxCallsPerHour(): number {
+    return Number(this.config.getOrThrow('LATIYAL_MAX_CALLS_PER_HOUR'));
   }
 
-  get sportmonksTimeoutMs(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_TIMEOUT_MS'));
+  get latiyalTimeoutMs(): number {
+    return Number(this.config.getOrThrow('LATIYAL_TIMEOUT_MS'));
   }
 
-  get sportmonksMaxRetries(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_MAX_RETRIES'));
+  get latiyalMaxRetries(): number {
+    return Number(this.config.getOrThrow('LATIYAL_MAX_RETRIES'));
   }
 
-  /** Hourly share of SPORTMONKS_MAX_CALLS_PER_HOUR that user-driven detail requests may use. */
-  get sportmonksOnDemandMaxCallsPerHour(): number {
-    return Number(this.config.getOrThrow('SPORTMONKS_ON_DEMAND_MAX_CALLS_PER_HOUR'));
+  /** Hourly share of LATIYAL_MAX_CALLS_PER_HOUR that user-driven detail requests may use. */
+  get latiyalOnDemandMaxCallsPerHour(): number {
+    return Number(this.config.getOrThrow('LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR'));
   }
 
   get rateLimitPerMinute(): number {

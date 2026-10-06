@@ -10,23 +10,23 @@ export function prefixRedisKey(key: string): string {
 
 /**
  * Logical key names. RedisService adds REDIS_KEY_PREFIX to every key and channel.
- * Live match keys use the Sportmonks fixture id so the hot path never depends on MySQL.
+ * Live match keys use the provider's match id so the hot path never depends on MySQL.
  */
 export const RedisKey = {
   liveMatchList: () => 'live:matches',
   liveMatch: (sportmonksId: number | string) => `live:match:${sportmonksId}`,
   liveMatchUpdated: (sportmonksId: number | string) => `live:match:${sportmonksId}:updated`,
   liveMatchMissing: (sportmonksId: number | string) => `live:match:${sportmonksId}:missing`,
-  sportmonksLastPoll: () => 'sportmonks:last-poll',
-  sportmonksLastSuccess: () => 'sportmonks:last-success',
-  sportmonksLastError: () => 'sportmonks:last-error',
-  sportmonksRateLimit: () => 'sportmonks:rate-limit',
-  sportmonksWorkerStatus: () => 'sportmonks:worker-status',
-  sportmonksQuota: (hourBucket: string) => `sportmonks:quota:${hourBucket}`,
-  pollLock: () => 'sportmonks:live-score:poll-lock',
-  nextPollAt: () => 'sportmonks:live-score:next-poll-at',
-  pollFailures: () => 'sportmonks:live-score:failures',
-  sportmonksOnDemandQuota: (hourBucket: string) => `sportmonks:quota:on-demand:${hourBucket}`,
+  providerLastPoll: () => 'provider:last-poll',
+  providerLastSuccess: () => 'provider:last-success',
+  providerLastError: () => 'provider:last-error',
+  providerRateLimit: () => 'provider:rate-limit',
+  providerWorkerStatus: () => 'provider:worker-status',
+  providerQuota: (hourBucket: string) => `provider:quota:${hourBucket}`,
+  pollLock: () => 'provider:live-score:poll-lock',
+  nextPollAt: () => 'provider:live-score:next-poll-at',
+  pollFailures: () => 'provider:live-score:failures',
+  providerOnDemandQuota: (hourBucket: string) => `provider:quota:on-demand:${hourBucket}`,
   matchDetails: (sportmonksId: number) => `cache:match:${sportmonksId}`,
   matchScorecard: (sportmonksId: number) => `cache:match:${sportmonksId}:scorecard`,
   matchCommentary: (sportmonksId: number) => `cache:match:${sportmonksId}:commentary`,

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { SportmonksModule } from '../sportmonks/sportmonks.module';
+import { LatiyalModule } from '../latiyal/latiyal.module';
 import { LiveScoreSyncService } from './live-score-sync.service';
 import { LiveScoreService } from './live-score.service';
 import { LiveScoreWorker } from './live-score.worker';
@@ -8,7 +8,7 @@ import { MatchPersistenceService } from './match-persistence.service';
 import { WorkerStateRepository } from './worker-state.repository';
 
 @Module({
-  imports: [SportmonksModule],
+  imports: [LatiyalModule],
   providers: [
     LiveStateRepository,
     WorkerStateRepository,

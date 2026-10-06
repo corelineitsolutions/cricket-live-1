@@ -80,30 +80,30 @@ export class WorkerStateRepository {
   }
 
   async writeLastPoll(record: PollRecord): Promise<void> {
-    await this.redis.setJson(RedisKey.sportmonksLastPoll(), record);
+    await this.redis.setJson(RedisKey.providerLastPoll(), record);
   }
 
   async writeLastSuccess(record: SuccessRecord): Promise<void> {
-    await this.redis.setJson(RedisKey.sportmonksLastSuccess(), record);
+    await this.redis.setJson(RedisKey.providerLastSuccess(), record);
   }
 
   async writeLastError(record: ErrorRecord): Promise<void> {
-    await this.redis.setJson(RedisKey.sportmonksLastError(), record);
+    await this.redis.setJson(RedisKey.providerLastError(), record);
   }
 
   async writeStatus(status: WorkerStatus): Promise<void> {
-    await this.redis.setJson(RedisKey.sportmonksWorkerStatus(), status);
+    await this.redis.setJson(RedisKey.providerWorkerStatus(), status);
   }
 
   getLastSuccess(): Promise<SuccessRecord | null> {
-    return this.redis.getJson<SuccessRecord>(RedisKey.sportmonksLastSuccess());
+    return this.redis.getJson<SuccessRecord>(RedisKey.providerLastSuccess());
   }
 
   getLastError(): Promise<ErrorRecord | null> {
-    return this.redis.getJson<ErrorRecord>(RedisKey.sportmonksLastError());
+    return this.redis.getJson<ErrorRecord>(RedisKey.providerLastError());
   }
 
   async getStatus(): Promise<WorkerStatus | null> {
-    return this.redis.getJson<WorkerStatus>(RedisKey.sportmonksWorkerStatus());
+    return this.redis.getJson<WorkerStatus>(RedisKey.providerWorkerStatus());
   }
 }

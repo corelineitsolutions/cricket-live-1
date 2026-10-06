@@ -11,7 +11,7 @@ export interface EntityRepository<Row> {
   findBySportmonksId(sportmonksId: number): Promise<Row | null>;
 }
 
-/** Looks a team, player or league up by Sportmonks id or backend id, through a short Redis cache. */
+/** Looks a team, player or league up by Latiyal id or backend id, through a short Redis cache. */
 export async function lookupEntity<Row, Dto>(
   cache: SingleFlightCache,
   kind: 'team' | 'player' | 'league',

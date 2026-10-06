@@ -4,14 +4,14 @@ import type { DashboardDto } from './dto/dashboard.dto';
 
 /** Metric names are stable: alerting rules and dashboards depend on them. */
 export const METRIC_DEFINITIONS = {
-  'sportmonks.calls.hour': 'Sportmonks calls counted in the current clock hour',
-  'sportmonks.calls.remaining': 'Sportmonks calls still allowed this hour',
-  'sportmonks.calls.limit': 'Configured SPORTMONKS_MAX_CALLS_PER_HOUR',
-  'sportmonks.last_success': 'Unix time (seconds) of the last successful poll',
-  'sportmonks.last_error': 'Unix time (seconds) of the last failed poll',
-  'sportmonks.poll_interval': 'Delay before the next poll, in milliseconds',
-  'sportmonks.live_matches': 'Live matches seen in the last successful poll',
-  'sportmonks.429': 'HTTP 429 responses from Sportmonks in the current quota window',
+  'provider.calls.hour': 'Latiyal calls counted in the current clock hour',
+  'provider.calls.remaining': 'Latiyal calls still allowed this hour',
+  'provider.calls.limit': 'Configured LATIYAL_MAX_CALLS_PER_HOUR',
+  'provider.last_success': 'Unix time (seconds) of the last successful poll',
+  'provider.last_error': 'Unix time (seconds) of the last failed poll',
+  'provider.poll_interval': 'Delay before the next poll, in milliseconds',
+  'provider.live_matches': 'Live matches seen in the last successful poll',
+  'provider.429': 'HTTP 429 responses from Latiyal in the current quota window',
   'worker.status': '1 when the live-score worker reported recently, else 0',
   'redis.status': '1 when Redis answers PING, else 0',
   'mysql.status': '1 when MySQL answers, else 0',
@@ -31,16 +31,16 @@ const seconds = (iso: string | null | undefined) => (iso ? Math.floor(Date.parse
 const flag = (up: boolean) => (up ? 1 : 0);
 
 export function toMetrics(dashboard: DashboardDto): Metrics {
-  const { sportmonks, dependencies } = dashboard;
+  const { provider, dependencies } = dashboard;
   return {
-    'sportmonks.calls.hour': sportmonks.callsThisHour,
-    'sportmonks.calls.remaining': sportmonks.remainingQuota,
-    'sportmonks.calls.limit': sportmonks.hourlyLimit,
-    'sportmonks.last_success': seconds(sportmonks.lastSuccessAt),
-    'sportmonks.last_error': seconds(sportmonks.lastError?.at),
-    'sportmonks.poll_interval': sportmonks.pollingIntervalMs,
-    'sportmonks.live_matches': sportmonks.lastSuccess?.liveMatches ?? null,
-    'sportmonks.429': sportmonks.count429,
+    'provider.calls.hour': provider.callsThisHour,
+    'provider.calls.remaining': provider.remainingQuota,
+    'provider.calls.limit': provider.hourlyLimit,
+    'provider.last_success': seconds(provider.lastSuccessAt),
+    'provider.last_error': seconds(provider.lastError?.at),
+    'provider.poll_interval': provider.pollingIntervalMs,
+    'provider.live_matches': provider.lastSuccess?.liveMatches ?? null,
+    'provider.429': provider.count429,
     'worker.status': flag(dependencies.worker === 'up'),
     'redis.status': flag(dependencies.redis === 'up'),
     'mysql.status': flag(dependencies.mysql === 'up'),

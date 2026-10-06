@@ -6,13 +6,13 @@
  * Secrets are not set here. The API and worker read `backend/.env` (chmod 600);
  * the admin panel reads only `admin/.env.production` (NEXT_PUBLIC_API_URL, no secrets).
  *
- * live-score-api: HTTP + Socket.IO, never polls Sportmonks. To scale, add more fork-mode
+ * live-score-api: HTTP + Socket.IO, never polls Latiyal. To scale, add more fork-mode
  *   entries with distinct PORT values (see live-score-api-2) and list each port in the
  *   nginx upstreams (deploy/nginx/api.example.com.conf). Do not use PM2 cluster mode: nginx
  *   ip_hash cannot pin Socket.IO polling sessions to a worker behind a shared port.
  *   Cross-instance events go through Redis, so instances need no other coordination.
  *
- * live-score-worker: the only process that polls Sportmonks. Keep exactly one instance.
+ * live-score-worker: the only process that polls Latiyal. Keep exactly one instance.
  *   A second copy (accidental `pm2 start`, a deploy overlap, another server) is still safe:
  *   the Redis poll lock and the shared next-poll time are the final protection, so the
  *   call rate never multiplies.

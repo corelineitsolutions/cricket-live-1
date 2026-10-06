@@ -18,8 +18,8 @@ import type {
 } from './dto/admin-match.dto';
 
 /**
- * Read-only match inspection for operators. Sportmonks is the source of truth:
- * nothing here writes match data or calls Sportmonks.
+ * Read-only match inspection for operators. Latiyal is the source of truth:
+ * nothing here writes match data or calls Latiyal.
  */
 @Injectable()
 export class AdminMatchesService {

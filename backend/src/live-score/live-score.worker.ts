@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { logEvent } from '../common/utils/structured-log';
 import { AppConfigService } from '../config/app-config.service';
-import { SportmonksService } from '../sportmonks/sportmonks.service';
+import { LatiyalService } from '../latiyal/latiyal.service';
 import { LiveScoreSyncService, MAX_MISSING_LOOKUPS_PER_CYCLE } from './live-score-sync.service';
 import { WorkerStateRepository } from './worker-state.repository';
 
@@ -12,7 +12,7 @@ const MIN_LOCK_TTL_MS = 30_000;
 const MAX_STARTUP_JITTER_MS = 1_000;
 
 /**
- * The only component that polls Sportmonks on a schedule. Every process may run one,
+ * The only component that polls Latiyal on a schedule. Every process may run one,
  * but a Redis lock plus a shared next-poll timestamp let exactly one cycle run per
  * interval, whatever the number of workers or connected users.
  */
@@ -26,7 +26,7 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
 
   constructor(
     private readonly config: AppConfigService,
-    private readonly sportmonks: SportmonksService,
+    private readonly latiyal: LatiyalService,
     private readonly workerState: WorkerStateRepository,
     private readonly sync: LiveScoreSyncService,
   ) {}
@@ -36,8 +36,8 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
       this.logger.log('Live-score worker disabled in this process (LIVE_SCORE_WORKER_ENABLED=false)');
       return;
     }
-    if (!this.sportmonks.isConfigured()) {
-      this.logger.warn('Live-score worker not started: SPORTMONKS_API_TOKEN is empty');
+    if (!this.latiyal.isConfigured()) {
+      this.logger.warn('Live-score worker not started: LATIYAL_API_TOKEN is empty');
       void this.workerState
         .writeStatus({
           state: 'disabled',
@@ -48,7 +48,7 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
           nextPollAt: null,
           liveMatchCount: 0,
           consecutiveFailures: 0,
-          message: 'SPORTMONKS_API_TOKEN is empty',
+          message: 'LATIYAL_API_TOKEN is empty',
           updatedAt: new Date().toISOString(),
         })
         .catch(() => undefined);
@@ -67,15 +67,15 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
     }
   }
 
-  /** Lock TTL covers the main request plus missing-match lookups, each with retries. */
+  /** Lock TTL covers the list request, the parallel detail batch and missing-match lookups, each with retries. */
   lockTtlMs(): number {
-    const perRequest = this.config.sportmonksTimeoutMs * (this.config.sportmonksMaxRetries + 1);
-    return Math.max(MIN_LOCK_TTL_MS, perRequest * (1 + MAX_MISSING_LOOKUPS_PER_CYCLE) + LOCK_MARGIN_MS);
+    const perRequest = this.config.latiyalTimeoutMs * (this.config.latiyalMaxRetries + 1);
+    return Math.max(MIN_LOCK_TTL_MS, perRequest * (2 + MAX_MISSING_LOOKUPS_PER_CYCLE) + LOCK_MARGIN_MS);
   }
 
   /** Runs at most one cycle and returns the delay before this process should check again. */
   async runOnce(): Promise<number> {
-    const retryDelay = this.config.sportmonksLiveIntervalMs;
+    const retryDelay = this.config.latiyalLiveIntervalMs;
 
     let dueAt: number | null;
     try {
@@ -84,7 +84,7 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
       logEvent(this.logger, 'error', 'poll-error', {
         instanceId: this.instanceId,
         kind: 'redis_unavailable',
-        sportmonksCalled: false,
+        providerCalled: false,
       });
       return retryDelay;
     }
@@ -107,7 +107,7 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
 
     if (!acquired) {
       logEvent(this.logger, 'debug', 'worker-lock', { instanceId: this.instanceId, acquired: false });
-      return this.config.sportmonksActiveIntervalMs;
+      return this.config.latiyalActiveIntervalMs;
     }
 
     logEvent(this.logger, 'debug', 'worker-lock', { instanceId: this.instanceId, acquired: true });
@@ -130,7 +130,7 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
       return;
     }
     this.running = true;
-    let delay = this.config.sportmonksLiveIntervalMs;
+    let delay = this.config.latiyalLiveIntervalMs;
     try {
       delay = await this.runOnce();
     } catch (error) {
@@ -153,6 +153,6 @@ export class LiveScoreWorker implements OnApplicationBootstrap, OnApplicationShu
   }
 
   private waitUntil(epochMs: number): number {
-    return Math.min(Math.max(epochMs - Date.now(), 250), this.config.sportmonksIdleIntervalMs);
+    return Math.min(Math.max(epochMs - Date.now(), 250), this.config.latiyalIdleIntervalMs);
   }
 }

@@ -17,7 +17,7 @@ Expect: HTTP 200 and "status":"ok" (MySQL and Redis up)
 
 2. Live matches (no login) — main test
 curl -sS http://127.0.0.1:3000/api/v1/matches/live
-Expect: HTTP 200. data.matches is [] until Sportmonks has a live game and the worker has polled.
+Expect: HTTP 200. data.matches is [] until Latiyal has a live game and the worker has polled.
 data.stale is false while the worker is healthy.
 
 
@@ -42,7 +42,7 @@ curl -sS "http://127.0.0.1:3000/api/v1/leagues?page=1&limit=20"
 curl -sS http://127.0.0.1:3000/api/v1/leagues/LEAGUE_ID
 curl -sS "http://127.0.0.1:3000/api/v1/seasons?page=1&limit=20"
 curl -sS http://127.0.0.1:3000/api/v1/seasons/SEASON_ID
-TEAM_ID, PLAYER_ID, LEAGUE_ID, SEASON_ID are the numeric sportmonksId values from a match.
+TEAM_ID, PLAYER_ID, LEAGUE_ID, SEASON_ID are the numeric sportmonksId values from a match (the field keeps this name; it now holds the Latiyal id).
 
 
 6. Ads (no login)

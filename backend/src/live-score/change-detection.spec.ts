@@ -1,9 +1,8 @@
-import { parseFixture } from '../sportmonks/sportmonks.validation';
-import { rawFixture, VISITOR_TEAM_ID } from '../testing/sportmonks-fixtures';
+import { latiyalMatch, VISITOR_TEAM_ID } from '../testing/latiyal-fixtures';
 import { detectChange, fingerprint, stableStringify } from './change-detection';
-import { normalizeFixture } from './live-match.normalizer';
+import { normalizeLatiyalMatch } from './live-match.normalizer';
 
-const base = normalizeFixture(parseFixture(rawFixture())!, new Date('2026-10-01T16:25:00Z'));
+const base = normalizeLatiyalMatch(latiyalMatch(), null, new Date('2026-10-01T16:25:00Z'));
 
 describe('detectChange', () => {
   it('reports a first sighting as new', () => {
@@ -17,15 +16,14 @@ describe('detectChange', () => {
   });
 
   it('lists the fields that changed after a boundary', () => {
-    const next = normalizeFixture(
-      parseFixture(
-        rawFixture({
-          runs: [
-            [1, 101, 180, 6, 20],
-            [2, VISITOR_TEAM_ID, 124, 3, 15.3],
-          ],
-        }),
-      )!,
+    const next = normalizeLatiyalMatch(
+      latiyalMatch({
+        runs: [
+          [1, 101, 180, 6, 20],
+          [2, VISITOR_TEAM_ID, 124, 3, 15.3],
+        ],
+      }),
+      null,
       new Date('2026-10-01T16:25:10Z'),
     );
 

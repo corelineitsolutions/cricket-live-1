@@ -15,7 +15,7 @@ export interface Dashboard {
   realtime: { connectedClients: number; activeMatchRooms: number; subscriptions: number; instances: number };
   devices: { registered: number | null; active: number | null };
   ads: { total: number | null; enabled: number | null; visibleNow: number | null };
-  sportmonks: {
+  provider: {
     workerState: string | null;
     workerMessage: string | null;
     workerUpdatedAt: string | null;

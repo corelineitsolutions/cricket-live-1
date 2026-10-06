@@ -70,11 +70,11 @@ export class DashboardLastErrorDto {
   @ApiProperty({ type: Number, nullable: true, example: 503 })
   status!: number | null;
 
-  @ApiProperty({ example: 'Sportmonks request timed out' })
+  @ApiProperty({ example: 'Latiyal request timed out after 8000ms' })
   message!: string;
 }
 
-export class DashboardSportmonksDto {
+export class DashboardProviderDto {
   @ApiProperty({
     type: String,
     nullable: true,
@@ -98,7 +98,7 @@ export class DashboardSportmonksDto {
   @ApiProperty({ type: DashboardPollIntervalsDto, description: 'Configured intervals.' })
   configuredIntervalsMs!: DashboardPollIntervalsDto;
 
-  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Last successful Sportmonks poll.' })
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Last successful Latiyal poll.' })
   lastSuccessAt!: string | null;
 
   @ApiProperty({ type: DashboardLastSuccessDto, nullable: true })
@@ -107,16 +107,16 @@ export class DashboardSportmonksDto {
   @ApiProperty({ type: DashboardLastErrorDto, nullable: true })
   lastError!: DashboardLastErrorDto | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 412, description: 'Sportmonks calls counted this clock hour (all callers).' })
+  @ApiProperty({ type: Number, nullable: true, example: 412, description: 'Latiyal calls counted this clock hour (all callers).' })
   callsThisHour!: number | null;
 
-  @ApiProperty({ example: 1600, description: 'SPORTMONKS_MAX_CALLS_PER_HOUR.' })
+  @ApiProperty({ example: 20000, description: 'LATIYAL_MAX_CALLS_PER_HOUR.' })
   hourlyLimit!: number;
 
-  @ApiProperty({ type: Number, nullable: true, example: 1188, description: 'Calls still allowed this hour (the stricter of our limit and Sportmonks headers).' })
+  @ApiProperty({ type: Number, nullable: true, example: 1188, description: 'Calls still allowed this hour (the stricter of our limit and any API rate-limit headers).' })
   remainingQuota!: number | null;
 
-  @ApiProperty({ type: String, nullable: true, example: 'local', description: '"api" when Sportmonks rate-limit headers are known, else "local".' })
+  @ApiProperty({ type: String, nullable: true, example: 'local', description: '"api" when the API sent rate-limit headers, else "local".' })
   quotaSource!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
@@ -125,16 +125,16 @@ export class DashboardSportmonksDto {
   @ApiProperty({ type: Number, nullable: true, example: 37, description: 'Scorecard/commentary calls this hour.' })
   onDemandCallsThisHour!: number | null;
 
-  @ApiProperty({ example: 400, description: 'SPORTMONKS_ON_DEMAND_MAX_CALLS_PER_HOUR.' })
+  @ApiProperty({ example: 2000, description: 'LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR.' })
   onDemandHourlyLimit!: number;
 
-  @ApiProperty({ type: Number, nullable: true, example: 0, description: 'HTTP 429 responses received from Sportmonks (kept with the quota state, about 1 hour).' })
+  @ApiProperty({ type: Number, nullable: true, example: 0, description: 'HTTP 429 responses received from Latiyal (kept with the quota state, about 1 hour).' })
   count429!: number | null;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   last429At!: string | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 200, description: 'HTTP status of the latest Sportmonks response.' })
+  @ApiProperty({ type: Number, nullable: true, example: 200, description: 'HTTP status of the latest Latiyal response.' })
   lastStatus!: number | null;
 }
 
@@ -148,7 +148,7 @@ export class DashboardDependenciesDto {
   @ApiProperty({
     enum: WORKER_HEALTH,
     description:
-      '"up": the live-score worker reported recently. "down": no report for longer than expected (crashed or stuck). "disabled": no Sportmonks token. "unknown": never reported or Redis unavailable.',
+      '"up": the live-score worker reported recently. "down": no report for longer than expected (crashed or stuck). "disabled": no Latiyal token. "unknown": never reported or Redis unavailable.',
   })
   worker!: WorkerHealth;
 
@@ -175,8 +175,8 @@ export class DashboardDto {
   @ApiProperty({ type: DashboardAdsDto })
   ads!: DashboardAdsDto;
 
-  @ApiProperty({ type: DashboardSportmonksDto })
-  sportmonks!: DashboardSportmonksDto;
+  @ApiProperty({ type: DashboardProviderDto })
+  provider!: DashboardProviderDto;
 
   @ApiProperty({ type: DashboardDependenciesDto })
   dependencies!: DashboardDependenciesDto;

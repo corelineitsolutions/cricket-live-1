@@ -13,3 +13,4 @@ Thumbs.db
 .vscode/
 prisma/*.db
 prisma/*.db-journal
+latiyal-samples/

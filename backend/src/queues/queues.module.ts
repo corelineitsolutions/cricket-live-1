@@ -7,7 +7,7 @@ import { LIVE_SCORE_QUEUE } from './queue.constants';
 
 /**
  * BullMQ connection and the live-score queue.
- * No processor and no repeatable job are registered. Sportmonks polling is a later phase.
+ * No processor and no repeatable job are registered. Latiyal polling is a later phase.
  */
 @Module({
   imports: [

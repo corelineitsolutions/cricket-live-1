@@ -22,7 +22,7 @@ export class AdminMatchesController {
   @Get('live')
   @ApiOperation({
     summary: 'Live matches with internal ids and subscriber counts',
-    description: 'Read-only. Scores come from Sportmonks and cannot be edited.',
+    description: 'Read-only. Scores come from Latiyal and cannot be edited.',
   })
   @ApiOkResponse({ type: AdminLiveBoardEnvelopeDto })
   @ApiServiceUnavailableResponse({ type: ErrorResponseDto, description: 'Live data store unavailable (SERVICE_UNAVAILABLE).' })
@@ -34,7 +34,7 @@ export class AdminMatchesController {
   @ApiOperation({
     summary: 'Inspect one match',
     description:
-      'Accepts the Sportmonks fixture id or the internal id. Shows the live snapshot, the MySQL row and the cache state side by side. Read-only.',
+      'Accepts the Latiyal match id or the internal id. Shows the live snapshot, the MySQL row and the cache state side by side. Read-only.',
   })
   @ApiOkResponse({ type: AdminMatchDetailEnvelopeDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: 'Invalid id (VALIDATION_ERROR).' })

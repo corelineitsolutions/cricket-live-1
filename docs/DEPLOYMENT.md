@@ -9,7 +9,7 @@ replace `api.example.com` and `admin.example.com` everywhere.
                     Nginx ── api.example.com ──► 127.0.0.1:3000  live-score-api    (NestJS REST + Socket.IO)
                        └──── admin.example.com ► 127.0.0.1:3100  live-score-admin  (Next.js, browser → API only)
 
-  live-score-worker (no port) ──► Sportmonks (only this process calls Sportmonks)
+  live-score-worker (no port) ──► Latiyal (only this process calls Latiyal)
   API + worker ──► MySQL 127.0.0.1:3306 (existing server)   API + worker ──► Redis 127.0.0.1:6379
 ```
 
@@ -128,12 +128,12 @@ cp admin/.env.example admin/.env.production
 | `PORT` | `3000` (PM2 sets it per API instance) |
 | `DATABASE_URL` | `mysql://cricket_live:<url-encoded password>@127.0.0.1:3306/cricket_live` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `127.0.0.1` / `6379` / the `requirepass` value |
-| `SPORTMONKS_API_URL` | `https://cricket.sportmonks.com/api/v2.0` |
-| `SPORTMONKS_API_TOKEN` | your token. Read only by the worker and the API server side. Never sent to clients or logged |
-| `SPORTMONKS_IDLE_INTERVAL_MS` / `_LIVE_` / `_ACTIVE_` | `60000` / `10000` / `5000` |
-| `SPORTMONKS_MAX_CALLS_PER_HOUR` | `1600` (below the Sportmonks plan limit, see [quota](#sportmonks-quota)) |
-| `SPORTMONKS_ON_DEMAND_MAX_CALLS_PER_HOUR` | `400` (scorecard/commentary share of the budget) |
-| `SPORTMONKS_TIMEOUT_MS` / `SPORTMONKS_MAX_RETRIES` | `8000` / `2` |
+| `LATIYAL_API_URL` | `https://api.latiyalinfotech.com/apiv5` |
+| `LATIYAL_API_TOKEN` | your Latiyal token. Read only by the worker and the API server side. Never sent to clients or logged |
+| `LATIYAL_IDLE_INTERVAL_MS` / `_LIVE_` / `_ACTIVE_` | `60000` / `3000` / `2000` |
+| `LATIYAL_MAX_CALLS_PER_HOUR` | `20000` (see [quota](#latiyal-quota)) |
+| `LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR` | `2000` (scorecard/commentary share of the budget) |
+| `LATIYAL_TIMEOUT_MS` / `LATIYAL_MAX_RETRIES` | `8000` / `1` |
 | `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_BURST_PER_SECOND` | `600` / `20` per IP per endpoint |
 | `LIVE_SCORE_WORKER_ENABLED` | any; PM2 forces `false` for the API and `true` for the worker |
 | `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | service-account values; key on one line with `\n` |
@@ -153,7 +153,7 @@ NEXT_PUBLIC_API_URL=https://api.example.com
 ```
 
 That is the only admin setting. It is public (inlined into the browser bundle) and must never contain
-secrets. The admin panel has no database, Redis, Sportmonks or Firebase access.
+secrets. The admin panel has no database, Redis, Latiyal or Firebase access.
 
 ## 6. Prisma migrations
 
@@ -189,8 +189,8 @@ npm ci && npm run build                                   # reads admin/.env.pro
 
 | Process | Command | Listens | Notes |
 | --- | --- | --- | --- |
-| `live-score-api` | `dist/main.js` | 127.0.0.1:3000 | `LIVE_SCORE_WORKER_ENABLED=false`, never polls Sportmonks |
-| `live-score-worker` | `dist/worker.js` | – | exactly 1 instance; the only Sportmonks poller |
+| `live-score-api` | `dist/main.js` | 127.0.0.1:3000 | `LIVE_SCORE_WORKER_ENABLED=false`, never polls Latiyal |
+| `live-score-worker` | `dist/worker.js` | – | exactly 1 instance; the only Latiyal poller |
 | `live-score-admin` | `next start -p 3100 -H 127.0.0.1` | 127.0.0.1:3100 | admin UI |
 
 ```bash
@@ -203,7 +203,7 @@ pm2 status
 
 Duplicate polling protection: keep `live-score-worker` at one instance. If a second worker is ever
 started (manual `pm2 start`, deploy overlap, a second server), the Redis poll lock plus the shared
-next-poll time still allow only one Sportmonks call per interval, so the call rate does not multiply.
+next-poll time still allow only one Latiyal call per interval, so the call rate does not multiply.
 This is covered by `src/live-score/rate-limit-audit.spec.ts`.
 
 More API capacity: add `live-score-api-2` (PORT 3001) in the ecosystem file and the matching
@@ -267,34 +267,36 @@ Admin panel → Dashboard shows everything below, refreshed every 15 s. The same
 
 | Metric | Meaning | Alert when |
 | --- | --- | --- |
-| `sportmonks.calls.hour` | calls in the current clock hour (all processes) | > 80 % of `sportmonks.calls.limit` |
-| `sportmonks.calls.remaining` | remaining calls (Sportmonks headers when present, else local count) | < 200 |
-| `sportmonks.calls.limit` | configured `SPORTMONKS_MAX_CALLS_PER_HOUR` | – |
-| `sportmonks.last_success` | unix seconds of the last good poll | older than 3 × poll interval (min 2 min) |
-| `sportmonks.last_error` | unix seconds of the last failure | recent and repeating |
-| `sportmonks.poll_interval` | ms until the next poll (60 000 idle / 10 000 live / 5 000 close finish; larger in backoff) | – |
-| `sportmonks.live_matches` | live matches in the last poll | – |
-| `sportmonks.429` | 429 responses in the current window | > 0 |
+| `provider.calls.hour` | calls in the current clock hour (all processes) | > 80 % of `provider.calls.limit` |
+| `provider.calls.remaining` | remaining calls (API headers when present, else local count) | < 200 |
+| `provider.calls.limit` | configured `LATIYAL_MAX_CALLS_PER_HOUR` | – |
+| `provider.last_success` | unix seconds of the last good poll | older than 3 × poll interval (min 2 min) |
+| `provider.last_error` | unix seconds of the last failure | recent and repeating |
+| `provider.poll_interval` | ms until the next poll (60 000 idle / 3 000 live / 2 000 close finish; larger in backoff) | – |
+| `provider.live_matches` | live matches in the last poll | – |
+| `provider.429` | 429 responses in the current window | > 0 |
 | `worker.status` | 1 if the worker reported recently | 0 |
 | `redis.status` / `mysql.status` | 1 when reachable | 0 |
 | `websocket.connected` / `websocket.rooms` | sockets / match rooms across API instances | – |
 | `devices.total` / `devices.active` | registered / push-enabled devices | – |
 | `ads.active` | ads served right now | – |
 
-### Sportmonks quota
+### Latiyal quota
+
+Each live poll costs 1 `liveMatchList` call plus 1 `liveMatch` call per live match.
 
 | Polling | Calls/hour |
 | --- | --- |
 | idle, 60 s | 60 |
-| live, 10 s | 360 |
-| close finish, 5 s | 720 |
-| worker worst case + on-demand share (400) | 1 120 |
-| configured cap `SPORTMONKS_MAX_CALLS_PER_HOUR` | 1 600 |
-| Sportmonks limit (per endpoint, standard plans) | ~2 000 |
+| live, 3 s, 1 match | 2 400 |
+| live, 3 s, 3 matches | 4 800 |
+| close finish, 2 s, 1 match | 3 600 |
+| on-demand share (scorecard/commentary) | 2 000 |
+| configured cap `LATIYAL_MAX_CALLS_PER_HOUR` | 20 000 |
 
 The cap is shared through Redis by every worker and API instance. When it is reached, polling pauses
-until the next hour (data is served marked stale) instead of exceeding the plan. A 429 from Sportmonks
-honours `Retry-After` and backs off.
+until the next hour (data is served marked stale) instead of exceeding the plan. Lower the cap if your
+Latiyal plan has a stricter hourly limit. A 429 from Latiyal honours `Retry-After` and backs off.
 
 ## 13. Logs
 
@@ -307,7 +309,7 @@ sudo tail -f /var/log/nginx/api.example.com.access.log /var/log/nginx/api.exampl
 sudo journalctl -u redis-server -u mysql --since "1 hour ago"
 ```
 
-Logs never contain the Sportmonks token, passwords, JWTs, Firebase keys or full FCM tokens.
+Logs never contain the Latiyal token, passwords, JWTs, Firebase keys or full FCM tokens.
 
 ## 14. Restart procedure
 
@@ -356,10 +358,10 @@ rewrites live state within one poll.
 
 | Failure | What happens | Recovery |
 | --- | --- | --- |
-| Sportmonks down / timeouts | last good scores stay in Redis and are flagged `stale`; worker backs off | automatic on the next successful poll |
-| Sportmonks 429 | worker honours `Retry-After`, counts it in `sportmonks.429` | automatic |
+| Latiyal down / timeouts | last good scores stay in Redis and are flagged `stale`; worker backs off | automatic on the next successful poll |
+| Latiyal 429 | worker honours `Retry-After`, counts it in `provider.429` | automatic |
 | Hourly cap reached | polling pauses until the next hour, data marked stale | automatic at the hour |
-| Redis down | live endpoints answer `503`, health `503`, rate limiter fails open, worker skips cycles without calling Sportmonks | automatic when Redis returns |
+| Redis down | live endpoints answer `503`, health `503`, rate limiter fails open, worker skips cycles without calling Latiyal | automatic when Redis returns |
 | MySQL down | live scores and sockets keep working from Redis; stored data endpoints and admin lists fail; health `503` | automatic |
 | Worker crash | PM2 restarts it (exponential backoff); lock expires; dashboard shows worker `Down` until it reports | automatic |
 | Two workers | only one polls per interval (Redis lock + shared schedule) | none needed; stop the extra one |

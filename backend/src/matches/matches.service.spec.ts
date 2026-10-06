@@ -42,7 +42,7 @@ const liveMatch = {
 };
 
 describe('MatchesService', () => {
-  it('exposes the Sportmonks id as matchId and hides the internal id', async () => {
+  it('exposes the Latiyal id as matchId and hides the internal id', async () => {
     const { service, repository } = setup({ live: liveMatch });
 
     const match = await service.getMatch('61521');
@@ -75,7 +75,7 @@ describe('MatchesService', () => {
     expect(await service.getMatch('99')).toMatchObject({ isLive: true, stale: true });
   });
 
-  it('resolves a legacy backend id to the Sportmonks id', async () => {
+  it('resolves a legacy backend id to the Latiyal id', async () => {
     const { service, repository, liveScore } = setup({ row: matchRow(99), live: undefined });
     await service.getMatch('cmatch00000000000000000099');
     expect(repository.findById).toHaveBeenCalledWith('cmatch00000000000000000099');

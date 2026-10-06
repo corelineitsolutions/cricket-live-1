@@ -21,26 +21,26 @@ import { LeaguesModule } from '../leagues/leagues.module';
 import { MatchesModule } from '../matches/matches.module';
 import { PlayersModule } from '../players/players.module';
 import { RedisService } from '../redis/redis.service';
-import { SPORTMONKS_FETCH } from '../sportmonks/sportmonks.constants';
-import type { FetchFn } from '../sportmonks/sportmonks-http.client';
+import { LATIYAL_FETCH } from '../latiyal/latiyal.constants';
+import type { FetchFn } from '../latiyal/latiyal-http.client';
 import { TeamsModule } from '../teams/teams.module';
 import { LIVE_NAMESPACE } from '../websocket/realtime.contract';
 import { WebsocketModule } from '../websocket/websocket.module';
 import { FakeDb } from './fake-db';
 import { FakeFirebase } from './fake-firebase';
 import { FakeRedis } from './fake-redis';
-import { jsonResponse } from './sportmonks-fixtures';
+import { jsonResponse, LatiyalResponder } from './latiyal-fixtures';
 import { testConfig } from './test-config';
 
 export type ApiTestConfig = Partial<Record<keyof AppConfigService, unknown>>;
 
 export function apiTestConfig(overrides: ApiTestConfig = {}): AppConfigService {
   return {
-    ...testConfig({ liveScoreWorkerEnabled: false, sportmonksMaxRetries: 0 }),
+    ...testConfig({ liveScoreWorkerEnabled: false, latiyalMaxRetries: 0 }),
     nodeEnv: 'test',
     isProduction: false,
     corsOrigin: '*',
-    sportmonksOnDemandMaxCallsPerHour: 400,
+    latiyalOnDemandMaxCallsPerHour: 400,
     // High by default so functional tests are not throttled; rate-limit tests override these.
     rateLimitPerMinute: 100_000,
     rateLimitBurstPerSecond: 10_000,
@@ -77,11 +77,11 @@ export interface ApiTestOptions {
   config?: ApiTestConfig;
 }
 
-export type Responder = (url: URL) => Response | Promise<Response>;
+export type Responder = LatiyalResponder;
 
 /**
  * The public API (REST + Socket.IO) on a random port, wired like production except that
- * Redis, MySQL and Sportmonks are in-memory fakes. Several apps can share one FakeRedis
+ * Redis, MySQL and Latiyal are in-memory fakes. Several apps can share one FakeRedis
  * to behave like API instances behind a load balancer.
  */
 export async function createApiTestApp(options: ApiTestOptions = {}) {
@@ -91,7 +91,7 @@ export async function createApiTestApp(options: ApiTestOptions = {}) {
   const config = apiTestConfig(options.config);
 
   let responder: Responder = () => jsonResponse({ message: 'not scripted' }, 500);
-  const fetchMock = vi.fn<FetchFn>(async (input) => responder(new URL(String(input))));
+  const fetchMock = vi.fn<FetchFn>(async (input, init) => responder(new URL(String(input)), init));
 
   const moduleRef = await Test.createTestingModule({
     imports: [
@@ -112,7 +112,7 @@ export async function createApiTestApp(options: ApiTestOptions = {}) {
     ],
     providers: [AllExceptionsFilter, { provide: APP_GUARD, useClass: HttpThrottlerGuard }],
   })
-    .overrideProvider(SPORTMONKS_FETCH)
+    .overrideProvider(LATIYAL_FETCH)
     .useValue(fetchMock)
     .overrideProvider(FirebaseService)
     .useValue(firebase)

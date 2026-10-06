@@ -9,7 +9,7 @@ export class MetricsDto {
     type: 'object',
     additionalProperties: { type: 'number', nullable: true },
     description: `Null when the source is unavailable. Names: ${Object.keys(METRIC_DEFINITIONS).join(', ')}.`,
-    example: { 'sportmonks.calls.hour': 412, 'sportmonks.calls.remaining': 1188, 'worker.status': 1, 'websocket.connected': 1250 },
+    example: { 'provider.calls.hour': 412, 'provider.calls.remaining': 19588, 'worker.status': 1, 'websocket.connected': 1250 },
   })
   metrics!: Record<string, number | null>;
 }

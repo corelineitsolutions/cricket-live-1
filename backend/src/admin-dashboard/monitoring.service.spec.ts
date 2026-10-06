@@ -46,10 +46,10 @@ describe('toPrometheus', () => {
   const metrics = Object.fromEntries(Object.keys(METRIC_DEFINITIONS).map((name) => [name, 1])) as Metrics;
 
   it('renders every known metric as a gauge with the cricket_live_ prefix', () => {
-    const text = toPrometheus({ ...metrics, 'sportmonks.calls.hour': 42, 'sportmonks.429': 3 }, 'up');
+    const text = toPrometheus({ ...metrics, 'provider.calls.hour': 42, 'provider.429': 3 }, 'up');
 
-    expect(text).toContain('# TYPE cricket_live_sportmonks_calls_hour gauge\ncricket_live_sportmonks_calls_hour 42\n');
-    expect(text).toContain('cricket_live_sportmonks_429 3\n');
+    expect(text).toContain('# TYPE cricket_live_provider_calls_hour gauge\ncricket_live_provider_calls_hour 42\n');
+    expect(text).toContain('cricket_live_provider_429 3\n');
     expect(text).toContain('cricket_live_websocket_connected 1\n');
     expect(text).toContain('cricket_live_worker_health{health="up"} 1\n');
     expect(text.endsWith('\n')).toBe(true);
@@ -59,9 +59,9 @@ describe('toPrometheus', () => {
   });
 
   it('omits unknown values instead of reporting zero', () => {
-    const text = toPrometheus({ ...metrics, 'redis.status': 0, 'sportmonks.calls.remaining': null }, 'unknown');
+    const text = toPrometheus({ ...metrics, 'redis.status': 0, 'provider.calls.remaining': null }, 'unknown');
 
     expect(text).toContain('cricket_live_redis_status 0\n');
-    expect(text).not.toContain('cricket_live_sportmonks_calls_remaining');
+    expect(text).not.toContain('cricket_live_provider_calls_remaining');
   });
 });

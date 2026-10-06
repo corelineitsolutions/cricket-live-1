@@ -4,7 +4,7 @@ import { ApiTestApp, collect, createApiTestApp, emitWithAck, nextEvent, settle }
 import { FakeDb, matchRow } from '../testing/fake-db';
 import { FakeRedis } from '../testing/fake-redis';
 import { liveScoreHarness } from '../testing/live-score-harness';
-import { LOCAL_TEAM_ID, rawFixture, VISITOR_TEAM_ID } from '../testing/sportmonks-fixtures';
+import { LOCAL_TEAM_ID, latiyalMatch, VISITOR_TEAM_ID } from '../testing/latiyal-fixtures';
 import { RealtimeMetricsService } from './realtime-metrics.service';
 import { SOCKET_LIMITS } from './realtime.contract';
 
@@ -13,7 +13,7 @@ const MATCH_B = 61522;
 const STORED = 61530;
 
 const chase = (id: number, score: number, overs: number) =>
-  rawFixture({
+  latiyalMatch({
     id,
     runs: [
       [1, LOCAL_TEAM_ID, 180, 6, 20],
@@ -37,7 +37,7 @@ describe('Live WebSocket gateway (e2e)', () => {
 
   /** Runs one worker cycle against the shared Redis, which publishes to live-score-updates. */
   async function poll(...fixtures: Array<Record<string, unknown>>) {
-    worker.livescores(...fixtures);
+    worker.live(...fixtures);
     await worker.sync.runCycle('test-worker');
     await settle();
   }
@@ -116,12 +116,11 @@ describe('Live WebSocket gateway (e2e)', () => {
 
     const finished = nextEvent<MatchEvent>(socket, 'match:finished');
     await poll(
-      rawFixture({
+      latiyalMatch({
         id: MATCH_A,
         status: 'Finished',
-        live: false,
         winnerTeamId: LOCAL_TEAM_ID,
-        note: 'Mumbai Strikers won by 20 runs',
+        result: 'Mumbai Strikers won by 20 runs',
         runs: [
           [1, LOCAL_TEAM_ID, 180, 6, 20],
           [2, VISITOR_TEAM_ID, 160, 8, 20],

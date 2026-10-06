@@ -16,7 +16,7 @@ function setup() {
 }
 
 describe('LiveScoreService', () => {
-  it('reads snapshots by Sportmonks id and the live list from Redis', async () => {
+  it('reads snapshots by Latiyal id and the live list from Redis', async () => {
     const { redis, service } = setup();
     await redis.setJson(RedisKey.liveMatch(61521), { sportmonksId: 61521, status: 'LIVE' });
     await redis.setJson(RedisKey.liveMatchList(), [61521, 'junk', 70001]);
@@ -35,10 +35,10 @@ describe('LiveScoreService', () => {
     await expect(service.getLiveBoard()).resolves.toMatchObject({ updatedAt: null, stale: true });
 
     const at = new Date().toISOString();
-    await redis.setJson(RedisKey.sportmonksLastSuccess(), { at });
+    await redis.setJson(RedisKey.providerLastSuccess(), { at });
     await expect(service.getLiveBoard()).resolves.toMatchObject({ updatedAt: at, stale: false });
 
-    await redis.setJson(RedisKey.sportmonksLastSuccess(), { at: new Date(Date.now() - 10 * 60_000).toISOString() });
+    await redis.setJson(RedisKey.providerLastSuccess(), { at: new Date(Date.now() - 10 * 60_000).toISOString() });
     await expect(service.getLiveBoard()).resolves.toMatchObject({ stale: true });
   });
 

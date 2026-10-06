@@ -32,12 +32,14 @@ Contents
 - `<api-host>` is provided by the backend team (the deployment templates use `api.example.com`). Make it a build-time setting in the app (e.g. `--dart-define=API_HOST=...`), not a hard-coded constant.
 - **No authentication.** Mobile users are anonymous. Do not send `Authorization` headers.
 - All responses are JSON (`Content-Type: application/json`). All times are ISO-8601 UTC strings, e.g. `2026-10-01T14:00:00.000Z`.
-- The app never talks to Sportmonks (the data provider) directly. All data comes from this API.
+- The app never talks to Latiyal Infotech (the data provider) directly. All data comes from this API.
 - Health check (no `/api/v1` prefix): `GET https://<api-host>/health`.
 
 ### Identifiers
 
-All public ids are **numbers** (Sportmonks ids):
+All public ids are **numbers** (data-provider ids, now Latiyal). The `sportmonksId` field names are kept
+for compatibility; they hold the Latiyal id. A player or team that Latiyal sends without an id gets a
+stable negative id, which has no `/players/{id}` or `/teams/{id}` page.
 
 | Id | Where it appears | Use it with |
 | --- | --- | --- |
@@ -310,7 +312,7 @@ if (body['success'] == true) {
         "note": "Delhi Royals need 61 runs from 28 balls",
         "startTime": "2026-10-01T14:00:00.000Z",
         "venue": { "name": "Wankhede Stadium", "city": "Mumbai" },
-        "localTeam": { "sportmonksId": 101, "name": "Mumbai Strikers", "shortName": "MUM", "imageUrl": "https://cdn.sportmonks.com/images/cricket/teams/5/101.png" },
+        "localTeam": { "sportmonksId": 101, "name": "Mumbai Strikers", "shortName": "MUM", "imageUrl": "https://cdn.example.com/teams/101.png" },
         "visitorTeam": { "sportmonksId": 202, "name": "Delhi Royals", "shortName": "DEL", "imageUrl": null },
         "winnerTeamSportmonksId": null,
         "innings": [
@@ -476,7 +478,7 @@ Before the match starts: `"innings": []`, `"updatedAt": null`.
     "sportmonksId": 101,
     "name": "Mumbai Strikers",
     "shortName": "MUM",
-    "imageUrl": "https://cdn.sportmonks.com/images/cricket/teams/5/101.png",
+    "imageUrl": "https://cdn.example.com/teams/101.png",
     "country": "India",
     "createdAt": "2026-09-01T10:00:00.000Z",
     "updatedAt": "2026-09-30T10:00:00.000Z"
@@ -855,6 +857,6 @@ Normal app usage stays far below these numbers. Many users can share one mobile-
 - [ ] Honour `Retry-After` on `429`.
 - [ ] Generate a stable `deviceId` once per install; call `POST /devices/register` on start and on token refresh.
 - [ ] `GET /ads?placement=...`; open `clickUrl` externally; show nothing when the list is empty.
-- [ ] Never call Sportmonks or embed any API token. The app needs no credentials at all.
+- [ ] Never call Latiyal or embed any API token. The app needs no credentials at all.
 
 Not for the mobile app: everything under `/api/v1/admin/*` (admin JWT), `GET /metrics` (monitoring token) and `/api/docs` (developer reference only).

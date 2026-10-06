@@ -38,7 +38,7 @@ export class MatchPersistenceService {
       return;
     }
     for (const player of players) {
-      if (!player.name) {
+      if (!player.name || player.sportmonksId <= 0) {
         continue;
       }
       const member = String(player.sportmonksId);
@@ -73,7 +73,8 @@ export class MatchPersistenceService {
     if (!next.league || !next.season || !next.startTime) {
       return false;
     }
-    if (!next.localTeam.sportmonksId || !next.visitorTeam.sportmonksId) {
+    const ids = [next.league.sportmonksId, next.season.sportmonksId, next.localTeam.sportmonksId, next.visitorTeam.sportmonksId];
+    if (ids.some((id) => id === null || id <= 0)) {
       return false;
     }
     if (!previous || !previous.matchId) {

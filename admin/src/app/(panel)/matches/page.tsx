@@ -109,7 +109,7 @@ export default function MatchesPage() {
           </div>
           {error && <InlineNotice>Last refresh failed ({error.describe()}). Showing the previous data.</InlineNotice>}
           {data.matches.length === 0 ? (
-            <EmptyState title="No live matches right now" description="Matches appear here as soon as the worker sees them in the Sportmonks live feed." />
+            <EmptyState title="No live matches right now" description="Matches appear here as soon as the worker sees them in the Latiyal live feed." />
           ) : (
             <DataTable
               caption="Live matches"

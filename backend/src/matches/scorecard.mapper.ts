@@ -1,109 +1,144 @@
+import type { LatiyalRecord } from '../latiyal/latiyal.types';
+import { asRecord, pick, pickNumber, pickRecord, pickText, toNumber, toRecords, toText } from '../latiyal/latiyal.validation';
 import type { PlayerSeed } from '../live-score/match-persistence.service';
-import type { SmBattingDetail, SmBowlingDetail, SmScorecard, SmTeam } from '../sportmonks/sportmonks.types';
+import { parseScoreLines, syntheticId } from '../live-score/live-match.normalizer';
 import type { MatchTeamDto } from './dto/match.dto';
-import type { ScorecardBattingDto, ScorecardBowlingDto, ScorecardInningsDto } from './dto/scorecard.dto';
+import type { ExtrasDto, ScorecardBattingDto, ScorecardBowlingDto, ScorecardInningsDto } from './dto/scorecard.dto';
+
+const BATTING_KEYS = ['batsman', 'batsmen', 'batting', 'batters'] as const;
+const BOWLING_KEYS = ['bolwer', 'bowler', 'bowling', 'bowlers'] as const;
+const NOT_OUT = /not out|batting|^\s*$/i;
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function teamFor(card: SmScorecard, teamId: number): MatchTeamDto {
-  const team: SmTeam | null =
-    card.localteam?.id === teamId ? card.localteam : card.visitorteam?.id === teamId ? card.visitorteam : null;
+function playerId(row: LatiyalRecord, name: string | null, keys: readonly string[]): number {
+  const id = pickNumber(row, keys);
+  return id !== null && id > 0 ? id : syntheticId(name ?? JSON.stringify(row));
+}
+
+function isTruthy(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function toBatting(row: LatiyalRecord): ScorecardBattingDto {
+  const name = pickText(row, ['name', 'batsman_name', 'player_name']);
+  const runs = pickNumber(row, ['run', 'runs', 'r']) ?? 0;
+  const balls = pickNumber(row, ['ball', 'balls', 'b']) ?? 0;
+  const outText = pickText(row, ['out_by', 'how_out', 'dismissal', 'wicket_by', 'out_desc']);
+  const isOut = outText !== null && !NOT_OUT.test(outText);
   return {
-    sportmonksId: teamId,
-    name: team?.name ?? null,
-    shortName: team?.code ?? null,
-    imageUrl: team?.image_path ?? null,
+    sportmonksId: playerId(row, name, ['player_id', 'batsman_id', 'id']),
+    name,
+    imageUrl: pickText(row, ['image', 'img', 'player_img', 'player_image']),
+    runs,
+    balls,
+    fours: pickNumber(row, ['fours', 'four', '4s']) ?? 0,
+    sixes: pickNumber(row, ['sixes', 'six', '6s']) ?? 0,
+    strikeRate: pickNumber(row, ['strike_rate', 'sr', 'strikerate']) ?? (balls > 0 ? round2((runs * 100) / balls) : null),
+    isOut,
+    atCrease: !isOut && (isTruthy(pick(row, ['is_batting', 'on_strike', 'active'])) || /batting/i.test(outText ?? '')),
+    dismissal: isOut ? { type: outText, bowlerName: null, fielderName: null } : null,
+    fallOfWicket: null,
   };
 }
 
-const bySort = <T extends { sort: number | null }>(a: T, b: T) => (a.sort ?? 0) - (b.sort ?? 0);
-
-function toBatting(row: SmBattingDetail): ScorecardBattingDto {
+function toBowling(row: LatiyalRecord): ScorecardBowlingDto {
+  const name = pickText(row, ['name', 'bowler_name', 'player_name']);
   return {
-    sportmonksId: row.player_id,
-    name: row.batsman?.fullname ?? null,
-    imageUrl: row.batsman?.image_path ?? null,
-    runs: row.score,
-    balls: row.ball,
-    fours: row.four_x,
-    sixes: row.six_x,
-    strikeRate: row.rate ?? (row.ball > 0 ? round2((row.score * 100) / row.ball) : null),
-    isOut: row.dismissed,
-    atCrease: row.active === true,
-    dismissal: row.dismissed
-      ? {
-          type: row.result?.name ?? null,
-          bowlerName: row.bowler?.fullname ?? null,
-          fielderName: (row.catchstump ?? row.runoutby)?.fullname ?? null,
-        }
-      : null,
-    fallOfWicket: row.dismissed && row.fow_score !== null ? { score: row.fow_score, overs: row.fow_balls } : null,
+    sportmonksId: playerId(row, name, ['player_id', 'bowler_id', 'id']),
+    name,
+    imageUrl: pickText(row, ['image', 'img', 'player_img', 'player_image']),
+    overs: pickNumber(row, ['over', 'overs', 'o']) ?? 0,
+    maidens: pickNumber(row, ['maiden', 'maidens', 'm']) ?? 0,
+    runs: pickNumber(row, ['run', 'runs', 'r']) ?? 0,
+    wickets: pickNumber(row, ['wicket', 'wickets', 'w']) ?? 0,
+    wides: pickNumber(row, ['wide', 'wides', 'wd']) ?? 0,
+    noBalls: pickNumber(row, ['noball', 'no_ball', 'noballs', 'nb']) ?? 0,
+    economy: pickNumber(row, ['economy', 'eco', 'er', 'econ']),
+    active: isTruthy(pick(row, ['is_bowling', 'active'])),
   };
 }
 
-function toBowling(row: SmBowlingDetail): ScorecardBowlingDto {
-  return {
-    sportmonksId: row.player_id,
-    name: row.bowler?.fullname ?? null,
-    imageUrl: row.bowler?.image_path ?? null,
-    overs: row.overs,
-    maidens: row.medians,
-    runs: row.runs,
-    wickets: row.wickets,
-    wides: row.wide,
-    noBalls: row.noball,
-    economy: row.rate,
-    active: row.active === true,
-  };
-}
-
-/** Builds one entry per innings from a Sportmonks scorecard, oldest innings first. */
-export function buildScorecardInnings(card: SmScorecard): ScorecardInningsDto[] {
-  return [...card.runs]
-    .sort((a, b) => a.inning - b.inning)
-    .map((run) => {
-      const scoreboard = `S${run.inning}`;
-      const inBoard = (row: { scoreboard: string | null }) => row.scoreboard === null || row.scoreboard === scoreboard;
-      const extra = card.scoreboards.find((row) => row.type === 'extra' && row.scoreboard === scoreboard);
-
-      return {
-        inning: run.inning,
-        team: teamFor(card, run.team_id),
-        score: run.score,
-        wickets: run.wickets,
-        overs: run.overs,
-        extras: extra
-          ? {
-              total: extra.wide + extra.noball_runs + extra.bye + extra.leg_bye + extra.penalty,
-              wides: extra.wide,
-              noBalls: extra.noball_runs,
-              byes: extra.bye,
-              legByes: extra.leg_bye,
-              penalty: extra.penalty,
-            }
-          : null,
-        batting: card.batting
-          .filter((row) => row.team_id === run.team_id && inBoard(row))
-          .sort(bySort)
-          .map(toBatting),
-        bowling: card.bowling
-          .filter((row) => row.team_id !== run.team_id && inBoard(row))
-          .sort(bySort)
-          .map(toBowling),
-      };
-    });
-}
-
-/** Every distinct player that appears in the scorecard, for one-time storage. */
-export function scorecardPlayers(card: SmScorecard): PlayerSeed[] {
-  const players = new Map<number, PlayerSeed>();
-  for (const row of card.batting) {
-    players.set(row.player_id, { sportmonksId: row.player_id, name: row.batsman?.fullname ?? null, imageUrl: row.batsman?.image_path ?? null });
+/** `{ total, wide, … }`, a bare total, or text such as "12 (b 2, lb 4, w 5, nb 1)". */
+function toExtras(value: unknown): ExtrasDto | null {
+  const record = asRecord(value);
+  if (record) {
+    const part = (keys: readonly string[]) => pickNumber(record, keys) ?? 0;
+    const extras = {
+      wides: part(['wide', 'wides', 'wd', 'w']),
+      noBalls: part(['noball', 'no_ball', 'noballs', 'nb']),
+      byes: part(['bye', 'byes', 'b']),
+      legByes: part(['legbye', 'leg_bye', 'legbyes', 'lb']),
+      penalty: part(['penalty', 'p']),
+    };
+    const sum = extras.wides + extras.noBalls + extras.byes + extras.legByes + extras.penalty;
+    return { total: pickNumber(record, ['total', 'extras', 'extra']) ?? sum, ...extras };
   }
-  for (const row of card.bowling) {
-    players.set(row.player_id, { sportmonksId: row.player_id, name: row.bowler?.fullname ?? null, imageUrl: row.bowler?.image_path ?? null });
+  const text = toText(value);
+  if (!text) {
+    return null;
+  }
+  const part = (label: string) => toNumber(new RegExp(`\\b${label}\\s*(\\d+)`, 'i').exec(text)?.[1]) ?? 0;
+  const total = toNumber(/^\s*(\d+)/.exec(text)?.[1]);
+  if (total === null) {
+    return null;
+  }
+  return { total, wides: part('w'), noBalls: part('nb'), byes: part('b'), legByes: part('lb'), penalty: part('p') };
+}
+
+function inningsRecords(data: unknown): LatiyalRecord[] {
+  const root = asRecord(data);
+  const container = root ? (pick(root, ['scorecard', 'innings', 'scorecards', 'score_card']) ?? root) : data;
+  return toRecords(container).filter((record) => BATTING_KEYS.some((key) => key in record));
+}
+
+function resolveTeam(info: LatiyalRecord | null, teams: MatchTeamDto[]): MatchTeamDto {
+  const id = pickNumber(info, ['team_id', 'id']);
+  const name = pickText(info, ['name', 'team_name', 'team']);
+  const shortName = pickText(info, ['short_name', 'team_short', 'short']);
+  const labels = [name, shortName].filter(Boolean).map((label) => label!.toLowerCase());
+  const known = teams.find(
+    (team) =>
+      (id !== null && team.sportmonksId === id) ||
+      [team.name, team.shortName].some((label) => label && labels.includes(label.toLowerCase())),
+  );
+  return {
+    sportmonksId: id !== null && id > 0 ? id : (known?.sportmonksId ?? (name ? syntheticId(name) : 0)),
+    name: name ?? known?.name ?? null,
+    shortName: shortName ?? known?.shortName ?? null,
+    imageUrl: pickText(info, ['flag', 'img', 'logo', 'image']) ?? known?.imageUrl ?? null,
+  };
+}
+
+/** One entry per innings from a Latiyal scorecardByMatchId payload, oldest innings first. */
+export function buildScorecardInnings(data: unknown, teams: MatchTeamDto[] = []): ScorecardInningsDto[] {
+  return inningsRecords(data).map((record, index) => {
+    const info = pickRecord(record, ['team', 'batting_team']) ?? record;
+    const line = parseScoreLines(pick(info, ['score', 'scores']), pick(info, ['over', 'overs'])).at(-1);
+    return {
+      inning: pickNumber(record, ['inning', 'innings', 'inning_no']) ?? index + 1,
+      team: resolveTeam(info, teams),
+      score: line?.score ?? 0,
+      wickets: pickNumber(info, ['wicket', 'wickets']) ?? line?.wickets ?? 0,
+      overs: line?.overs ?? pickNumber(info, ['over', 'overs']) ?? 0,
+      extras: toExtras(pick(record, ['extras', 'extra']) ?? pick(info, ['extras', 'extra'])),
+      batting: toRecords(pick(record, BATTING_KEYS)).map(toBatting),
+      bowling: toRecords(pick(record, BOWLING_KEYS)).map(toBowling),
+    };
+  });
+}
+
+/** Every distinct player with a real Latiyal id, for one-time storage. */
+export function scorecardPlayers(innings: ScorecardInningsDto[]): PlayerSeed[] {
+  const players = new Map<number, PlayerSeed>();
+  for (const inning of innings) {
+    for (const row of [...inning.batting, ...inning.bowling]) {
+      if (row.sportmonksId > 0) {
+        players.set(row.sportmonksId, { sportmonksId: row.sportmonksId, name: row.name, imageUrl: row.imageUrl });
+      }
+    }
   }
   return [...players.values()];
 }

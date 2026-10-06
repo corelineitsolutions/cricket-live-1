@@ -9,12 +9,12 @@ const STALE_AFTER_IDLE_INTERVALS = 3;
 
 export interface LiveBoard {
   matches: LiveMatch[];
-  /** Last successful Sportmonks poll, or null if the worker never succeeded. */
+  /** Last successful Latiyal poll, or null if the worker never succeeded. */
   updatedAt: string | null;
   stale: boolean;
 }
 
-/** Read side of the live state. Never calls Sportmonks. */
+/** Read side of the live state. Never calls Latiyal. */
 @Injectable()
 export class LiveScoreService {
   constructor(
@@ -50,7 +50,7 @@ export class LiveScoreService {
     const matches = ids.map((id) => byId.get(id)).filter((match): match is LiveMatch => Boolean(match));
 
     const updatedAt = lastSuccess?.at ?? null;
-    const maxAgeMs = this.config.sportmonksIdleIntervalMs * STALE_AFTER_IDLE_INTERVALS;
+    const maxAgeMs = this.config.latiyalIdleIntervalMs * STALE_AFTER_IDLE_INTERVALS;
     const feedStale = updatedAt === null || Date.now() - Date.parse(updatedAt) > maxAgeMs;
     return { matches, updatedAt, stale: feedStale || matches.some((match) => match.stale) };
   }

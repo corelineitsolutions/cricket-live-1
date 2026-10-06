@@ -19,7 +19,7 @@ export class AdminDashboardController {
   @ApiOperation({
     summary: 'Operational summary',
     description:
-      'Live matches, WebSocket clients and rooms (all instances), devices, ads, Sportmonks worker and quota, and the status of the API, worker, Redis and MySQL. When a dependency is down its figures are null and dependencies shows "down"; the endpoint still answers 200.',
+      'Live matches, WebSocket clients and rooms (all instances), devices, ads, Latiyal worker and quota, and the status of the API, worker, Redis and MySQL. When a dependency is down its figures are null and dependencies shows "down"; the endpoint still answers 200.',
   })
   @ApiOkResponse({ type: DashboardEnvelopeDto })
   getDashboard() {

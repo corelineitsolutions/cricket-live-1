@@ -5,51 +5,29 @@ import { ApiTestApp, createApiTestApp } from '../testing/api-test-app';
 import { adRow, FakeDb, leagueRow, matchRow, playerRow, teamRow } from '../testing/fake-db';
 import { FakeRedis } from '../testing/fake-redis';
 import { liveScoreHarness } from '../testing/live-score-harness';
-import { jsonResponse, rawFixture } from '../testing/sportmonks-fixtures';
-import { TEST_SPORTMONKS_TOKEN } from '../testing/test-config';
+import {
+  endpointOf,
+  envelope,
+  jsonResponse,
+  latiyalCommentary,
+  latiyalMatch,
+  latiyalScorecard,
+  matchIdOf,
+} from '../testing/latiyal-fixtures';
+import { TEST_LATIYAL_TOKEN } from '../testing/test-config';
 import { DETAIL_TTL_SECONDS } from './match-detail.service';
 
 const LIVE_ID = 61521;
 const SCHEDULED_ID = 61530;
 const FINISHED_ID = 61400;
 
-function scorecardBody(id = LIVE_ID) {
-  return {
-    data: {
-      ...rawFixture({ id }),
-      scoreboards: [
-        { scoreboard: 'S2', team_id: 202, type: 'extra', wide: 3, noball_runs: 1, bye: 0, leg_bye: 2, penalty: 0, total: 0, overs: 0, wickets: 0 },
-      ],
-    },
-  };
-}
-
-function ballsBody(id = LIVE_ID) {
-  const ball = (ballId: number, over: number, score: Record<string, unknown>) => ({
-    id: ballId,
-    team_id: 202,
-    ball: over,
-    scoreboard: 'S2',
-    batsman: { id: 9002, fullname: 'Rohan Mehta' },
-    bowler: { id: 7002, fullname: 'Kiran Patel' },
-    score: { name: 'x', runs: 0, four: false, six: false, bye: 0, leg_bye: 0, noball: 0, noball_runs: 0, is_wicket: false, out: false, ball: true, ...score },
-  });
-  return {
-    data: {
-      id,
-      balls: [
-        ball(1, 15.1, { name: '1 Run', runs: 1 }),
-        ball(2, 15.2, { name: 'Four', runs: 4, four: true }),
-        ball(3, 15.3, { name: 'Catch Out', is_wicket: true, out: true }),
-      ],
-    },
-  };
-}
+const scorecardBody = () => envelope(latiyalScorecard());
+const commentaryBody = () => envelope(latiyalCommentary());
 
 /** Seeds Redis through the real worker pipeline, exactly like production. */
 async function runWorker(redis: FakeRedis, ...fixtures: Array<Record<string, unknown>>) {
   const worker = liveScoreHarness({}, redis);
-  worker.livescores(...fixtures);
+  worker.live(...fixtures);
   await worker.sync.runCycle('test-worker');
   return worker;
 }
@@ -87,8 +65,8 @@ describe('Public REST API (e2e)', () => {
   });
 
   describe('GET /api/v1/matches/live', () => {
-    it('returns live matches from Redis without touching MySQL or Sportmonks', async () => {
-      await runWorker(redis, rawFixture());
+    it('returns live matches from Redis without touching MySQL or Latiyal', async () => {
+      await runWorker(redis, latiyalMatch());
       db.match.findUnique.mockClear();
       const queriesBefore = db.queryCount();
 
@@ -136,7 +114,7 @@ describe('Public REST API (e2e)', () => {
 
   describe('GET /api/v1/matches/:id', () => {
     it('serves a live match from Redis', async () => {
-      await runWorker(redis, rawFixture());
+      await runWorker(redis, latiyalMatch());
       const res = await request(api.http).get(`/api/v1/matches/${LIVE_ID}`).expect(200);
       expect(res.body.data).toMatchObject({ matchId: LIVE_ID, source: 'live', score: 120 });
       expect(db.match.findUnique).not.toHaveBeenCalledWith(expect.objectContaining({ where: { sportmonksId: LIVE_ID } }));
@@ -187,13 +165,13 @@ describe('Public REST API (e2e)', () => {
 
   describe('GET /api/v1/matches/:id/scorecard', () => {
     beforeEach(async () => {
-      await runWorker(redis, rawFixture());
+      await runWorker(redis, latiyalMatch());
     });
 
-    it('makes one Sportmonks call for many concurrent requests and caches the result', async () => {
+    it('makes one Latiyal call for many concurrent requests and caches the result', async () => {
       api.respond(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        return jsonResponse(scorecardBody());
+        return scorecardBody();
       });
 
       const responses = await Promise.all(
@@ -203,9 +181,9 @@ describe('Public REST API (e2e)', () => {
 
       expect(responses.every((res) => res.status === 200)).toBe(true);
       expect(api.fetchMock).toHaveBeenCalledTimes(1);
-      const url = new URL(String(api.fetchMock.mock.calls[0][0]));
-      expect(url.pathname).toBe(`/api/v2.0/fixtures/${LIVE_ID}`);
-      expect(url.searchParams.get('include')).toContain('batting.batsman');
+      const [url, init] = api.fetchMock.mock.calls[0];
+      expect(endpointOf(new URL(String(url)))).toBe('scorecardByMatchId');
+      expect(matchIdOf(init)).toBe(LIVE_ID);
       expect(redis.ttlSeconds(RedisKey.matchScorecard(LIVE_ID))).toBe(DETAIL_TTL_SECONDS.live);
 
       const card = responses[0].body.data;
@@ -215,15 +193,19 @@ describe('Public REST API (e2e)', () => {
       expect(second).toMatchObject({
         team: { sportmonksId: 202, name: 'Delhi Royals' },
         score: 120,
-        extras: { total: 6, wides: 3, noBalls: 1, byes: 0, legByes: 2, penalty: 0 },
+        wickets: 3,
+        overs: 15.2,
+        extras: { total: 6, wides: 3, noBalls: 0, byes: 1, legByes: 2, penalty: 0 },
       });
-      expect(second.batting.map((b: { name: string }) => b.name)).toEqual(['Out Opener', 'Rohan Mehta', 'Arjun Rao']);
-      expect(second.bowling.find((b: { active: boolean }) => b.active).name).toBe('Kiran Patel');
-      expect(JSON.stringify(responses[0].body)).not.toContain(TEST_SPORTMONKS_TOKEN);
+      expect(second.batting.map((b: { name: string }) => b.name)).toEqual(['Out Opener', 'Rohan Mehta']);
+      expect(second.batting[0]).toMatchObject({ isOut: true, atCrease: false, dismissal: { type: 'b Patel' } });
+      expect(second.batting[1]).toMatchObject({ isOut: false, atCrease: true, dismissal: null });
+      expect(second.bowling.map((b: { name: string }) => b.name)).toEqual(['Kiran Patel']);
+      expect(JSON.stringify(responses[0].body)).not.toContain(TEST_LATIYAL_TOKEN);
     });
 
     it('stores scorecard players once so GET /players/:id works', async () => {
-      api.respond(() => jsonResponse(scorecardBody()));
+      api.respond(() => scorecardBody());
       await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(200);
       // 9001 is out, so the live worker never saw them; only the scorecard knows this player.
       const res = await request(api.http).get('/api/v1/players/9001').expect(200);
@@ -231,7 +213,7 @@ describe('Public REST API (e2e)', () => {
     });
 
     it('serves the last good copy marked stale when a refresh fails', async () => {
-      api.respond(() => jsonResponse(scorecardBody()));
+      api.respond(() => scorecardBody());
       await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(200);
       await redis.del(RedisKey.matchScorecard(LIVE_ID));
       api.respond(() => jsonResponse({ message: 'boom' }, 500));
@@ -242,7 +224,7 @@ describe('Public REST API (e2e)', () => {
       expect(res.body.data.innings.length).toBeGreaterThan(0);
     });
 
-    it('answers 503 when Sportmonks fails and nothing is cached', async () => {
+    it('answers 503 when Latiyal fails and nothing is cached', async () => {
       api.respond(() => jsonResponse({ message: 'boom' }, 500));
       const res = await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(503);
       expect(res.body).toEqual({
@@ -252,13 +234,13 @@ describe('Public REST API (e2e)', () => {
       });
     });
 
-    it('never calls Sportmonks when Redis is down', async () => {
+    it('never calls Latiyal when Redis is down', async () => {
       redis.down = true;
       await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(503);
       expect(api.fetchMock).not.toHaveBeenCalled();
     });
 
-    it('returns an empty scorecard for a match that has not started, without calling Sportmonks', async () => {
+    it('returns an empty scorecard for a match that has not started, without calling Latiyal', async () => {
       const res = await request(api.http).get(`/api/v1/matches/${SCHEDULED_ID}/scorecard`).expect(200);
       expect(res.body.data).toEqual({
         matchId: SCHEDULED_ID,
@@ -272,21 +254,21 @@ describe('Public REST API (e2e)', () => {
       expect(api.fetchMock).not.toHaveBeenCalled();
     });
 
-    it('returns 404 for an unknown match without calling Sportmonks', async () => {
+    it('returns 404 for an unknown match without calling Latiyal', async () => {
       await request(api.http).get('/api/v1/matches/777777/scorecard').expect(404);
       expect(api.fetchMock).not.toHaveBeenCalled();
     });
 
     it('keeps a finished match scorecard for 24 hours', async () => {
-      api.respond(() => jsonResponse(scorecardBody(FINISHED_ID)));
+      api.respond(() => scorecardBody());
       await request(api.http).get(`/api/v1/matches/${FINISHED_ID}/scorecard`).expect(200);
       expect(redis.ttlSeconds(RedisKey.matchScorecard(FINISHED_ID))).toBe(DETAIL_TTL_SECONDS.finished);
     });
 
-    it('stops calling Sportmonks once the on-demand hourly budget is spent', async () => {
+    it('stops calling Latiyal once the on-demand hourly budget is spent', async () => {
       await api.close();
-      api = await createApiTestApp({ redis, db, config: { sportmonksOnDemandMaxCallsPerHour: 0 } });
-      api.respond(() => jsonResponse(scorecardBody()));
+      api = await createApiTestApp({ redis, db, config: { latiyalOnDemandMaxCallsPerHour: 0 } });
+      api.respond(() => scorecardBody());
 
       await request(api.http).get(`/api/v1/matches/${LIVE_ID}/scorecard`).expect(503);
       expect(api.fetchMock).not.toHaveBeenCalled();
@@ -295,11 +277,11 @@ describe('Public REST API (e2e)', () => {
 
   describe('GET /api/v1/matches/:id/commentary', () => {
     beforeEach(async () => {
-      await runWorker(redis, rawFixture());
+      await runWorker(redis, latiyalMatch());
     });
 
-    it('caches commentary: concurrent and repeated requests share one Sportmonks call', async () => {
-      api.respond(() => jsonResponse(ballsBody()));
+    it('caches commentary: concurrent and repeated requests share one Latiyal call', async () => {
+      api.respond(() => commentaryBody());
 
       const responses = await Promise.all(
         Array.from({ length: 10 }, () => request(api.http).get(`/api/v1/matches/${LIVE_ID}/commentary`)),
@@ -307,13 +289,14 @@ describe('Public REST API (e2e)', () => {
       const limited = await request(api.http).get(`/api/v1/matches/${LIVE_ID}/commentary?limit=2`).expect(200);
 
       expect(api.fetchMock).toHaveBeenCalledTimes(1);
-      expect(new URL(String(api.fetchMock.mock.calls[0][0])).searchParams.get('include')).toContain('balls');
+      expect(endpointOf(new URL(String(api.fetchMock.mock.calls[0][0])))).toBe('commentary');
       expect(responses.every((res) => res.status === 200)).toBe(true);
 
       const items = responses[0].body.data.items;
-      expect(items.map((item: { id: number }) => item.id)).toEqual([3, 2, 1]);
-      expect(items[0]).toMatchObject({ over: 15.3, isWicket: true, text: 'Kiran Patel to Rohan Mehta, OUT (Catch Out)' });
-      expect(items[1]).toMatchObject({ runs: 4, isFour: true, text: 'Kiran Patel to Rohan Mehta, FOUR' });
+      expect(items.map((item: { id: number }) => item.id)).toEqual([4410023, 4410022, 4410021]);
+      expect(items[0]).toMatchObject({ over: 15.2, inning: 2, runs: 4, isFour: true, isWicket: false, text: 'Kiran Patel to Rohan Mehta, FOUR' });
+      expect(items[1]).toMatchObject({ over: 15.1, isWicket: true, batsman: { name: 'Out Opener' }, bowler: { name: 'Kiran Patel' } });
+      expect(items[2]).toMatchObject({ extraType: 'wide', isWicket: false });
       expect(limited.body.data.items).toHaveLength(2);
       expect(limited.body.data.stale).toBe(false);
     });
@@ -332,7 +315,7 @@ describe('Public REST API (e2e)', () => {
   });
 
   describe('teams, players, leagues, ads', () => {
-    it('GET /teams/:id by Sportmonks id', async () => {
+    it('GET /teams/:id by Latiyal id', async () => {
       const res = await request(api.http).get('/api/v1/teams/101').expect(200);
       expect(res.body.data).toMatchObject({ sportmonksId: 101, name: 'Mumbai Strikers', shortName: 'MUM' });
     });

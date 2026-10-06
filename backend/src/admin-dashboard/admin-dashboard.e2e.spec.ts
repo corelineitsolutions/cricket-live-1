@@ -6,8 +6,8 @@ import { ApiTestApp, createApiTestApp, emitWithAck, settle } from '../testing/ap
 import { adRow, FakeDb, matchRow } from '../testing/fake-db';
 import { FakeRedis } from '../testing/fake-redis';
 import { liveScoreHarness } from '../testing/live-score-harness';
-import { rawFixture } from '../testing/sportmonks-fixtures';
-import { TEST_SPORTMONKS_TOKEN } from '../testing/test-config';
+import { latiyalMatch } from '../testing/latiyal-fixtures';
+import { TEST_LATIYAL_TOKEN } from '../testing/test-config';
 
 const LIVE_ID = 61521;
 const STORED_ID = 61530;
@@ -21,7 +21,7 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
 
   async function runWorker(...fixtures: Array<Record<string, unknown>>) {
     const worker = liveScoreHarness({}, redis);
-    worker.livescores(...fixtures);
+    worker.live(...fixtures);
     await worker.sync.runCycle('test-worker');
     return worker;
   }
@@ -52,8 +52,8 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
   const dashboard = async () => (await request(api.http).get('/api/v1/admin/dashboard').set('Authorization', auth).expect(200)).body;
 
   describe('GET /api/v1/admin/dashboard', () => {
-    it('summarises live matches, sockets, devices, ads, Sportmonks and dependencies', async () => {
-      await runWorker(rawFixture({ id: LIVE_ID }));
+    it('summarises live matches, sockets, devices, ads, Latiyal and dependencies', async () => {
+      await runWorker(latiyalMatch({ id: LIVE_ID }));
       const socket = await api.connect();
       await emitWithAck(socket, 'match:subscribe', { matchId: LIVE_ID });
       await settle();
@@ -69,8 +69,8 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
         ads: { total: 3, enabled: 2, visibleNow: 1 },
         dependencies: { api: 'up', worker: 'up', redis: 'up', mysql: 'up' },
       });
-      const sportmonks = body.data.sportmonks;
-      expect(sportmonks).toMatchObject({
+      const provider = body.data.provider;
+      expect(provider).toMatchObject({
         workerState: 'live',
         pollingIntervalMs: expect.any(Number),
         configuredIntervalsMs: { idle: 60_000, live: 10_000, active: 5_000 },
@@ -85,26 +85,26 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
         last429At: null,
         lastStatus: 200,
       });
-      expect(sportmonks.callsThisHour).toBeGreaterThanOrEqual(1);
-      expect(sportmonks.remainingQuota).toBeLessThan(1_600);
+      expect(provider.callsThisHour).toBeGreaterThanOrEqual(1);
+      expect(provider.remainingQuota).toBeLessThan(1_600);
     });
 
     it('never exposes secrets', async () => {
-      await runWorker(rawFixture({ id: LIVE_ID }));
-      await redis.asService().setJson(RedisKey.sportmonksLastError(), {
+      await runWorker(latiyalMatch({ id: LIVE_ID }));
+      await redis.asService().setJson(RedisKey.providerLastError(), {
         at: new Date().toISOString(),
         instanceId: 'test',
         kind: 'http',
         status: 401,
-        message: `Unauthorized for api_token=${TEST_SPORTMONKS_TOKEN}`,
+        message: `Unauthorized for api_token=${TEST_LATIYAL_TOKEN}`,
         retryAfterMs: null,
       });
 
       const body = await dashboard();
       const text = JSON.stringify(body);
 
-      expect(body.data.sportmonks.lastError).toMatchObject({ kind: 'http', status: 401, message: 'Unauthorized for api_token=[redacted]' });
-      for (const secret of [TEST_SPORTMONKS_TOKEN, api.config.jwtSecret, TEST_ADMIN_PASSWORD, DEVICE_TOKEN, db.rows.admin[0]!.passwordHash as string]) {
+      expect(body.data.provider.lastError).toMatchObject({ kind: 'http', status: 401, message: 'Unauthorized for api_token=[redacted]' });
+      for (const secret of [TEST_LATIYAL_TOKEN, api.config.jwtSecret, TEST_ADMIN_PASSWORD, DEVICE_TOKEN, db.rows.admin[0]!.passwordHash as string]) {
         expect(text).not.toContain(secret);
       }
       expect(text).not.toMatch(/password|privateKey|api_token=(?!\[redacted\])/i);
@@ -118,13 +118,13 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
 
       expect(body.data.dependencies).toEqual({ api: 'up', worker: 'unknown', redis: 'down', mysql: 'down' });
       expect(body.data.matches.liveCount).toBeNull();
-      expect(body.data.sportmonks).toMatchObject({ workerState: null, callsThisHour: null, remainingQuota: null, hourlyLimit: 1_600, count429: null });
+      expect(body.data.provider).toMatchObject({ workerState: null, callsThisHour: null, remainingQuota: null, hourlyLimit: 1_600, count429: null });
     });
   });
 
   describe('GET /api/v1/admin/matches', () => {
     it('lists live matches with internal ids and subscriber counts', async () => {
-      await runWorker(rawFixture({ id: LIVE_ID }));
+      await runWorker(latiyalMatch({ id: LIVE_ID }));
       const socket = await api.connect();
       await emitWithAck(socket, 'match:subscribe', { matchId: LIVE_ID });
       await settle();
@@ -137,7 +137,7 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
     });
 
     it('shows the live snapshot, the stored row and cache state side by side', async () => {
-      await runWorker(rawFixture({ id: LIVE_ID }));
+      await runWorker(latiyalMatch({ id: LIVE_ID }));
 
       const res = await request(api.http).get(`/api/v1/admin/matches/${LIVE_ID}`).set('Authorization', auth).expect(200);
 

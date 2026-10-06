@@ -7,11 +7,11 @@ import { FcmService } from '../fcm/fcm.service';
 import { LiveScoreService } from '../live-score/live-score.service';
 import { WorkerStateRepository, WorkerStatus } from '../live-score/worker-state.repository';
 import { RedisService } from '../redis/redis.service';
-import { hourBucket, SportmonksQuotaService } from '../sportmonks/sportmonks-quota.service';
+import { hourBucket, LatiyalQuotaService } from '../latiyal/latiyal-quota.service';
 import { RealtimeMetricsService } from '../websocket/realtime-metrics.service';
-import type { DashboardDto, DashboardSportmonksDto, WorkerHealth } from './dto/dashboard.dto';
+import type { DashboardDto, DashboardProviderDto, WorkerHealth } from './dto/dashboard.dto';
 
-/** The worker writes its status at least once per poll; idle polls are at most SPORTMONKS_IDLE_INTERVAL_MS apart. */
+/** The worker writes its status at least once per poll; idle polls are at most LATIYAL_IDLE_INTERVAL_MS apart. */
 const WORKER_SILENCE_FACTOR = 3;
 const MIN_WORKER_SILENCE_MS = 120_000;
 
@@ -41,7 +41,7 @@ export class AdminDashboardService {
     private readonly redis: RedisService,
     private readonly liveScore: LiveScoreService,
     private readonly workerState: WorkerStateRepository,
-    private readonly quota: SportmonksQuotaService,
+    private readonly quota: LatiyalQuotaService,
     private readonly realtime: RealtimeMetricsService,
     private readonly devices: FcmService,
     private readonly ads: AdsService,
@@ -57,7 +57,7 @@ export class AdminDashboardService {
       orNull(this.ads.countSummary()),
       orNull(this.workerState.getStatus()),
     ]);
-    const sportmonks = await this.sportmonks(status);
+    const provider = await this.provider(status);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -70,22 +70,22 @@ export class AdminDashboardService {
       },
       devices: { registered: devices?.registered ?? null, active: devices?.active ?? null },
       ads: { total: ads?.total ?? null, enabled: ads?.enabled ?? null, visibleNow: ads?.visibleNow ?? null },
-      sportmonks,
+      provider,
       dependencies: {
         api: 'up',
-        worker: workerHealth(status, this.config.sportmonksIdleIntervalMs),
+        worker: workerHealth(status, this.config.latiyalIdleIntervalMs),
         redis: redisStatus,
         mysql: mysqlStatus,
       },
     };
   }
 
-  private async sportmonks(status: WorkerStatus | null): Promise<DashboardSportmonksDto> {
+  private async provider(status: WorkerStatus | null): Promise<DashboardProviderDto> {
     const [lastSuccess, lastError, quota, onDemandCalls] = await Promise.all([
       orNull(this.workerState.getLastSuccess()),
       orNull(this.workerState.getLastError()),
       orNull(this.quota.getState()),
-      orNull(this.redis.get(RedisKey.sportmonksOnDemandQuota(hourBucket(Date.now())))),
+      orNull(this.redis.get(RedisKey.providerOnDemandQuota(hourBucket(Date.now())))),
     ]);
 
     return {
@@ -95,9 +95,9 @@ export class AdminDashboardService {
       pollingIntervalMs: status?.nextIntervalMs ?? null,
       nextPollAt: status?.nextPollAt ?? null,
       configuredIntervalsMs: {
-        idle: this.config.sportmonksIdleIntervalMs,
-        live: this.config.sportmonksLiveIntervalMs,
-        active: this.config.sportmonksActiveIntervalMs,
+        idle: this.config.latiyalIdleIntervalMs,
+        live: this.config.latiyalLiveIntervalMs,
+        active: this.config.latiyalActiveIntervalMs,
       },
       lastSuccessAt: lastSuccess?.at ?? null,
       lastSuccess: lastSuccess
@@ -107,12 +107,12 @@ export class AdminDashboardService {
         ? { at: lastError.at, kind: lastError.kind, status: lastError.status, message: this.redact(lastError.message) }
         : null,
       callsThisHour: quota?.callsThisHour ?? null,
-      hourlyLimit: this.config.sportmonksMaxCallsPerHour,
+      hourlyLimit: this.config.latiyalMaxCallsPerHour,
       remainingQuota: quota?.effectiveRemaining ?? null,
       quotaSource: quota?.source ?? null,
       quotaResetsAt: quota ? (quota.source === 'api' && quota.apiResetAt ? quota.apiResetAt : quota.windowResetAt) : null,
       onDemandCallsThisHour: onDemandCalls === null ? (quota ? 0 : null) : Number(onDemandCalls),
-      onDemandHourlyLimit: this.config.sportmonksOnDemandMaxCallsPerHour,
+      onDemandHourlyLimit: this.config.latiyalOnDemandMaxCallsPerHour,
       count429: quota?.count429 ?? null,
       last429At: quota?.last429At ?? null,
       lastStatus: quota?.lastStatus ?? null,
@@ -121,7 +121,7 @@ export class AdminDashboardService {
 
   /** Error text comes from upstream responses; make sure the API token can never be echoed. */
   private redact(message: string): string {
-    const token = this.config.sportmonksApiToken;
+    const token = this.config.latiyalApiToken;
     return token ? message.split(token).join('[redacted]') : message;
   }
 }

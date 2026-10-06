@@ -43,7 +43,7 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
         })}
       </nav>
       <p className="absolute bottom-4 left-5 right-5 text-xs leading-relaxed text-slate-500">
-        Scores are read-only. Sportmonks is the source of truth.
+        Scores are read-only. Latiyal is the source of truth.
       </p>
     </aside>
   );

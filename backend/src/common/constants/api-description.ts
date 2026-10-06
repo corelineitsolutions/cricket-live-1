@@ -10,10 +10,10 @@ Only admin endpoints (marked with a lock) require a Bearer token from POST /api/
 **Response envelope.** Success: \`{ "success": true, "data": ..., "meta"?: ... }\`.
 Error: \`{ "success": false, "message": "...", "code": "VALIDATION_ERROR", "errors"?: ["..."] }\`.
 
-**Identifiers.** \`matchId\`, team, player and league ids are Sportmonks numeric ids.
+**Identifiers.** \`matchId\`, team, player and league ids are Latiyal numeric ids.
 
-**Live data.** A single backend worker polls Sportmonks and stores live state in Redis.
-API endpoints never call Sportmonks per request; scorecards and commentary are fetched once,
+**Live data.** A single backend worker polls Latiyal and stores live state in Redis.
+API endpoints never call Latiyal per request; scorecards and commentary are fetched once,
 cached, and shared by all users. When upstream data is old, responses carry \`stale: true\`.
 
 **Realtime.** Socket.IO v4 at https://<api-host>/live (path /socket.io, transport websocket).
@@ -25,7 +25,7 @@ Details and payload schemas: GET /api/v1/realtime.
 on app start and whenever the FCM token changes. Pushes are for notifications (match start, result); live scores use the WebSocket.
 
 **Admin.** Login: POST /api/v1/admin/auth/login (5 failed attempts lock the account for 15 minutes; 429 with Retry-After).
-Admin endpoints are read-only for match data: Sportmonks is the source of truth.
+Admin endpoints are read-only for match data: Latiyal is the source of truth.
 
 **Rate limits.** Per client IP and endpoint: RATE_LIMIT_PER_MINUTE (default 600) per minute and
 RATE_LIMIT_BURST_PER_SECOND (default 20) per second. Exceeding returns 429 with a Retry-After header (seconds).

@@ -1,40 +1,17 @@
-export const SPORTMONKS_FETCH = Symbol('SPORTMONKS_FETCH');
-
-export const SportmonksPath = {
-  livescores: '/livescores',
-  fixture: (id: number) => `/fixtures/${id}`,
-} as const;
+export const LATIYAL_FETCH = Symbol('LATIYAL_FETCH');
 
 /**
- * Includes needed for the live scorecard summary. Ball-by-ball, commentary,
- * lineups and full scoreboards are deliberately excluded from the polling payload.
+ * Latiyal endpoint names. The full URL is `${LATIYAL_API_URL}/${endpoint}/${token}`.
+ * List endpoints are GET; per-match endpoints are POST with a `match_id` form field.
  */
-export const LIVE_FIXTURE_INCLUDES = [
-  'localteam',
-  'visitorteam',
-  'league',
-  'season',
-  'venue',
-  'runs',
-  'batting.batsman',
-  'bowling.bowler',
-] as const;
+export const LatiyalEndpoint = {
+  liveMatchList: 'liveMatchList',
+  liveMatch: 'liveMatch',
+  scorecard: 'scorecardByMatchId',
+  commentary: 'commentary',
+  matchInfo: 'matchInfo',
+} as const;
 
-/** Full scorecard for one fixture. Requested on demand and cached, never polled. */
-export const SCORECARD_INCLUDES = [
-  'localteam',
-  'visitorteam',
-  'runs',
-  'scoreboards',
-  'batting.batsman',
-  'batting.bowler',
-  'batting.catchstump',
-  'batting.runoutby',
-  'batting.result',
-  'bowling.bowler',
-] as const;
-
-/** Ball-by-ball feed used as commentary. Requested on demand and cached, never polled. */
-export const COMMENTARY_INCLUDES = ['balls.batsman', 'balls.bowler', 'balls.score'] as const;
+export type LatiyalEndpointName = (typeof LatiyalEndpoint)[keyof typeof LatiyalEndpoint];
 
 export const RETRY_BASE_DELAY_MS = 500;

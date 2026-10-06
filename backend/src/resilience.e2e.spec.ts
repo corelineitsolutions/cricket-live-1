@@ -4,13 +4,13 @@ import { ApiTestApp, collect, createApiTestApp, emitWithAck, nextEvent, settle }
 import { FakeDb, matchRow } from './testing/fake-db';
 import { FakeRedis } from './testing/fake-redis';
 import { liveScoreHarness } from './testing/live-score-harness';
-import { jsonResponse, LOCAL_TEAM_ID, rawFixture, VISITOR_TEAM_ID } from './testing/sportmonks-fixtures';
+import { jsonResponse, LOCAL_TEAM_ID, latiyalMatch, VISITOR_TEAM_ID } from './testing/latiyal-fixtures';
 import { RealtimeMetricsService } from './websocket/realtime-metrics.service';
 
 const MATCH_ID = 61521;
 
 const chase = (score: number, overs: number) =>
-  rawFixture({
+  latiyalMatch({
     id: MATCH_ID,
     runs: [
       [1, LOCAL_TEAM_ID, 180, 6, 20],
@@ -20,7 +20,7 @@ const chase = (score: number, overs: number) =>
 
 /**
  * Failure scenarios across the API, the worker and the shared Redis. Related coverage:
- * worker lock expiry / Redis drop mid-cycle (live-score.worker.spec), Sportmonks failure,
+ * worker lock expiry / Redis drop mid-cycle (live-score.worker.spec), Latiyal failure,
  * 429 and hourly budget (live-score-sync.spec), duplicate-worker call rate
  * (rate-limit-audit.spec), cross-instance delivery (live.gateway.e2e.spec).
  */
@@ -31,7 +31,7 @@ describe('Failure recovery (e2e)', () => {
   let worker: ReturnType<typeof liveScoreHarness>;
 
   async function poll(fixture: Record<string, unknown>) {
-    worker.livescores(fixture);
+    worker.live(fixture);
     await worker.sync.runCycle('test-worker');
     await settle();
   }
@@ -90,7 +90,7 @@ describe('Failure recovery (e2e)', () => {
       await request(api.http).get('/health').expect(200);
     });
 
-    it('never calls Sportmonks from the API, even while Redis is down', async () => {
+    it('never calls Latiyal from the API, even while Redis is down', async () => {
       redis.down = true;
       await request(api.http).get('/api/v1/matches/live').expect(503);
       await request(api.http).get(`/api/v1/matches/${MATCH_ID}/scorecard`);
@@ -98,7 +98,7 @@ describe('Failure recovery (e2e)', () => {
     });
   });
 
-  describe('Sportmonks unavailable', () => {
+  describe('Latiyal unavailable', () => {
     it('keeps the last good scores, flagged stale after repeated failures, and recovers on the next success', async () => {
       await poll(chase(120, 15.2));
       worker.respond(() => jsonResponse({ message: 'Service Unavailable' }, 503));

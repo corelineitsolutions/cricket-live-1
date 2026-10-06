@@ -19,7 +19,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "db:verify": "tsx scripts/verify-db.ts",
-    "audit:secrets": "node scripts/audit-secrets.mjs"
+    "audit:secrets": "node scripts/audit-secrets.mjs",
+    "latiyal:probe": "node scripts/latiyal-probe.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

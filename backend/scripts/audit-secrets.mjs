@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const BACKEND_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = join(BACKEND_ROOT, '..');
 const SECRET_KEYS = [
-  'SPORTMONKS_API_TOKEN',
+  'LATIYAL_API_TOKEN',
   'JWT_SECRET',
   'FIREBASE_PRIVATE_KEY',
   'REDIS_PASSWORD',
@@ -28,7 +28,7 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'coverage', '.turbo']);
 /** Real env files hold the secrets; .env.example is scanned like any other file. */
 const SKIP_FILES = /^\.env(\.(?!example$).*)?$/;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
-const SERVER_ONLY_NAMES = /\b(SPORTMONKS_API_TOKEN|DATABASE_URL|JWT_SECRET|FIREBASE_PRIVATE_KEY|FIREBASE_CLIENT_EMAIL|REDIS_PASSWORD|ADMIN_INITIAL_PASSWORD|METRICS_TOKEN)\b/;
+const SERVER_ONLY_NAMES = /\b(LATIYAL_API_TOKEN|DATABASE_URL|JWT_SECRET|FIREBASE_PRIVATE_KEY|FIREBASE_CLIENT_EMAIL|REDIS_PASSWORD|ADMIN_INITIAL_PASSWORD|METRICS_TOKEN)\b/;
 
 function parseEnv(path) {
   const values = {};

@@ -1,5 +1,6 @@
-export type SportmonksErrorKind =
+export type LatiyalErrorKind =
   | 'not_configured'
+  | 'unauthorized'
   | 'timeout'
   | 'network'
   | 'http'
@@ -7,21 +8,21 @@ export type SportmonksErrorKind =
   | 'quota_exhausted'
   | 'invalid_response';
 
-export interface SportmonksErrorOptions {
+export interface LatiyalErrorOptions {
   status?: number;
   retryAfterMs?: number | null;
   retryable?: boolean;
 }
 
-export class SportmonksError extends Error {
-  readonly kind: SportmonksErrorKind;
+export class LatiyalError extends Error {
+  readonly kind: LatiyalErrorKind;
   readonly status: number | null;
   readonly retryAfterMs: number | null;
   readonly retryable: boolean;
 
-  constructor(kind: SportmonksErrorKind, message: string, options: SportmonksErrorOptions = {}) {
+  constructor(kind: LatiyalErrorKind, message: string, options: LatiyalErrorOptions = {}) {
     super(message);
-    this.name = 'SportmonksError';
+    this.name = 'LatiyalError';
     this.kind = kind;
     this.status = options.status ?? null;
     this.retryAfterMs = options.retryAfterMs ?? null;
@@ -29,8 +30,8 @@ export class SportmonksError extends Error {
   }
 }
 
-export function isSportmonksError(error: unknown): error is SportmonksError {
-  return error instanceof SportmonksError;
+export function isLatiyalError(error: unknown): error is LatiyalError {
+  return error instanceof LatiyalError;
 }
 
 /** Removes the API token from any text before it is logged or stored. */
