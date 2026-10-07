@@ -4,8 +4,8 @@
  * long our server takes to show each new score that Latiyal publishes.
  *
  *   npm run latiyal:delay                          # first live match, 2 minutes, every 1 s
- *   npm run latiyal:delay -- 5484                  # a specific Latiyal match id
- *   npm run latiyal:delay -- 5484 --duration 300 --interval 1000 --server http://127.0.0.1:3000
+ *   npm run latiyal:delay -- <match_id>            # a match from the "Live matches" line
+ *   npm run latiyal:delay -- <match_id> --duration 300 --interval 1000 --server http://127.0.0.1:3000
  *
  * Columns:
  *   LATIYAL  liveMatch called directly on api.latiyalinfotech.com (the source)
@@ -122,16 +122,25 @@ function serverKey(match) {
 }
 
 async function pickMatchId() {
-  if (options.matchId) return options.matchId;
-  const list = await latiyal('liveMatchList');
-  const items = Array.isArray(list) ? list : Object.values(list ?? {});
-  const first = items.find((item) => item && item.match_id);
-  if (!first) {
-    console.log('Latiyal has no live match right now. Run again with a match id: npm run latiyal:delay -- <match_id>');
+  const list = await latiyal('liveMatchList').catch(() => []);
+  const items = (Array.isArray(list) ? list : Object.values(list ?? {})).filter((item) => item && item.match_id);
+  const label = (item) => `${item.match_id} (${item.team_a_short ?? item.team_a ?? '?'} v ${item.team_b_short ?? item.team_b ?? '?'}, ${item.match_status ?? '?'})`;
+  if (items.length > 0) {
+    console.log(`Live matches on Latiyal: ${items.map(label).join(', ')}`);
+  }
+  if (options.matchId) {
+    if (!items.some((item) => Number(item.match_id) === options.matchId)) {
+      console.log(`\nMatch ${options.matchId} is not in Latiyal's live list, so there is no live score to compare.`);
+      console.log('Pick an id from the list above, e.g. npm run latiyal:delay -- <match_id>');
+      process.exit(0);
+    }
+    return options.matchId;
+  }
+  if (items.length === 0) {
+    console.log('Latiyal has no live match right now. Try again when a match is in play.');
     process.exit(0);
   }
-  console.log(`Live matches on Latiyal: ${items.map((item) => `${item.match_id} (${item.team_a_short ?? item.team_a ?? '?'} v ${item.team_b_short ?? item.team_b ?? '?'})`).join(', ')}`);
-  return Number(first.match_id);
+  return Number(items[0].match_id);
 }
 
 const matchId = await pickMatchId();

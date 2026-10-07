@@ -182,9 +182,11 @@ Latiyal down and nothing cached -> 503 (with a cached copy you get 200 and "stal
 
 12. Delay check: is our server behind Latiyal? (run on the server while a match is live)
 cd /home/cricket-live-1/backend
-npm run latiyal:delay                       first live match, every 1 s for 2 minutes
-npm run latiyal:delay -- 5484               a specific Latiyal match id
-npm run latiyal:delay -- 5484 --duration 600 --interval 1000
+npm run latiyal:delay                                 first live match, every 1 s for 2 minutes
+npm run latiyal:delay -- <match_id>                   an id from the "Live matches on Latiyal" line it prints
+npm run latiyal:delay -- <match_id> --duration 600    watch for 10 minutes
+Pick a match where balls are being bowled right now (not stumps, lunch or an innings break),
+otherwise the score never changes and there is nothing to time.
 Each line shows the score from Latiyal directly (https://api.latiyalinfotech.com/apiv5/liveMatch),
 from our /api/v1/matches/{id} (what the app and socket get) and from /api/v1/feeds/liveMatch.
 SAME = our server matches Latiyal. When a new ball appears it prints
