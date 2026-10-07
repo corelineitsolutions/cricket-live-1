@@ -20,7 +20,8 @@
     "prisma:seed": "prisma db seed",
     "db:verify": "tsx scripts/verify-db.ts",
     "audit:secrets": "node scripts/audit-secrets.mjs",
-    "latiyal:probe": "node scripts/latiyal-probe.mjs"
+    "latiyal:probe": "node scripts/latiyal-probe.mjs",
+    "latiyal:delay": "node scripts/latiyal-delay-check.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
