@@ -108,7 +108,24 @@ describe('Cricket data feeds (e2e)', () => {
 
     expect(res.body.data.endpoint).toBe('liveMatch');
     expect(lastCall().endpoint).toBe('liveMatch');
-    expect(redis.ttlSeconds(RedisKey.feed('liveMatch', 'match_id=4012'))).toBe(1);
+    const ttlMs = await redis.ttlMs(RedisKey.feed('liveMatch', 'match_id=4012'));
+    expect(ttlMs).toBeGreaterThan(0);
+    expect(ttlMs).toBeLessThanOrEqual(500);
+  });
+
+  it('caches the live score for half a second and commentary for one second', async () => {
+    api.respond(() => envelope({ score: '120/3' }));
+
+    await request(api.http).get('/api/v1/feeds/liveMatch?match_id=4012').expect(200);
+    await request(api.http).get('/api/v1/feeds/commentary?match_id=4012').expect(200);
+
+    const catalog = await request(api.http).get('/api/v1/feeds').expect(200);
+    const refresh = (endpoint: string) =>
+      catalog.body.data.find((feed: { endpoint: string }) => feed.endpoint === endpoint).refreshSeconds;
+    expect(refresh('liveMatch')).toBe(0.5);
+    expect(refresh('commentary')).toBe(1);
+    expect(await redis.ttlMs(RedisKey.feed('liveMatch', 'match_id=4012'))).toBeLessThanOrEqual(500);
+    expect(redis.ttlSeconds(RedisKey.feed('commentary', 'match_id=4012'))).toBe(1);
   });
 
   it('sends the default for an omitted optional param (playerList paginate=0)', async () => {

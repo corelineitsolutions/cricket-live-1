@@ -27,6 +27,6 @@ on app start and whenever the FCM token changes. Pushes are for notifications (m
 **Admin.** Login: POST /api/v1/admin/auth/login (5 failed attempts lock the account for 15 minutes; 429 with Retry-After).
 Admin endpoints are read-only for match data: Latiyal is the source of truth.
 
-**Rate limits.** Per client IP and endpoint: RATE_LIMIT_PER_MINUTE (default 600) per minute and
+**Rate limits.** Per client IP and endpoint (each /feeds/{endpoint} counted separately): RATE_LIMIT_PER_MINUTE (default 600) per minute and
 RATE_LIMIT_BURST_PER_SECOND (default 20) per second. Exceeding returns 429 with a Retry-After header (seconds).
 `.trim();

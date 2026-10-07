@@ -87,8 +87,8 @@ export const LATIYAL_FEEDS: readonly FeedDefinition[] = [
   { endpoint: 'trackerByMatchId', group: 'matches', summary: 'Match tracker', params: MATCH, ttlSeconds: MINUTE },
 
   { endpoint: 'liveMatchList', group: 'live', summary: 'Matches that are live now', params: [], ttlSeconds: 5 },
-  { endpoint: 'liveMatch', group: 'live', summary: 'Live score, batsmen and bowler of a match', params: MATCH, ttlSeconds: 1 },
-  { endpoint: 'commentary', group: 'live', summary: 'Ball-by-ball commentary of a match', params: MATCH, ttlSeconds: 2 },
+  { endpoint: 'liveMatch', group: 'live', summary: 'Live score, batsmen and bowler of a match', params: MATCH, ttlSeconds: 0.5 },
+  { endpoint: 'commentary', group: 'live', summary: 'Ball-by-ball commentary of a match', params: MATCH, ttlSeconds: 1 },
   { endpoint: 'scorecardByMatchId', group: 'live', summary: 'Full scorecard of a match', params: MATCH, ttlSeconds: 15 },
   { endpoint: 'matchOverHistory', group: 'live', summary: 'Over-by-over history of a match', params: MATCH, ttlSeconds: 30 },
   { endpoint: 'matchProbHistory', group: 'live', summary: 'Win-probability history of a match', params: MATCH, ttlSeconds: 30 },

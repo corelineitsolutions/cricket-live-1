@@ -30,6 +30,14 @@ describe('RedisService', () => {
     expect(client.set).toHaveBeenCalledWith('cricket:v1:ads:active:HOME_BANNER', '[{"id":"ad-1"}]', 'EX', 60);
   });
 
+  it('stores sub-second TTLs in milliseconds', async () => {
+    const client = { set: vi.fn().mockResolvedValue('OK') };
+    const service = serviceWith(client);
+
+    await service.set('cache:feed:liveMatch:match_id=1', '{}', 0.5);
+    expect(client.set).toHaveBeenCalledWith('cricket:v1:cache:feed:liveMatch:match_id=1', '{}', 'PX', 500);
+  });
+
   it('releases a lock only when the token matches', async () => {
     const evalMock = vi.fn().mockResolvedValue(1);
     const service = serviceWith({ eval: evalMock });

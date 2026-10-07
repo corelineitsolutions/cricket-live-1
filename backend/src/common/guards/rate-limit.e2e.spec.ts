@@ -2,6 +2,7 @@ import request from 'supertest';
 import { createApiTestApp } from '../../testing/api-test-app';
 import { FakeDb, teamRow } from '../../testing/fake-db';
 import { FakeRedis } from '../../testing/fake-redis';
+import { envelope } from '../../testing/latiyal-fixtures';
 import { RedisThrottlerStorage } from './redis-throttler.storage';
 
 describe('REST rate limiting (e2e)', () => {
@@ -52,6 +53,21 @@ describe('REST rate limiting (e2e)', () => {
       await request(api.http).get('/api/v1/teams/101').expect(200);
       await request(api.http).get('/api/v1/teams/101').expect(429);
       await request(api.http).get('/api/v1/matches/live').expect(200);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('counts each feed separately, so polling liveMatch does not block other feeds', async () => {
+    const api = await createApiTestApp({ db: seeded(), config: { rateLimitPerMinute: 2, rateLimitBurstPerSecond: 100 } });
+    api.respond(() => envelope({ ok: true }));
+    try {
+      await request(api.http).get('/api/v1/feeds/liveMatch?match_id=1').expect(200);
+      await request(api.http).get('/api/v1/feeds/liveMatch?match_id=1').expect(200);
+      await request(api.http).get('/api/v1/feeds/liveMatch?match_id=1').expect(429);
+      await request(api.http).get('/api/v1/feeds/LIVEMATCH?match_id=1').expect(429);
+      await request(api.http).get('/api/v1/feeds/commentary?match_id=1').expect(200);
+      await request(api.http).get('/api/v1/feeds/matchInfo?match_id=1').expect(200);
     } finally {
       await api.close();
     }

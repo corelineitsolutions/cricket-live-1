@@ -100,7 +100,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     const redisKey = prefixRedisKey(key);
     if (ttlSeconds && ttlSeconds > 0) {
-      await this.client.set(redisKey, value, 'EX', ttlSeconds);
+      if (Number.isInteger(ttlSeconds)) {
+        await this.client.set(redisKey, value, 'EX', ttlSeconds);
+      } else {
+        await this.client.set(redisKey, value, 'PX', Math.max(1, Math.round(ttlSeconds * 1000)));
+      }
       return;
     }
     await this.client.set(redisKey, value);

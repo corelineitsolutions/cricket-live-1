@@ -25,7 +25,6 @@ export class FakeRedis {
     const entry = this.entry(key);
     return entry?.expiresAt ? Math.ceil((entry.expiresAt - Date.now()) / 1000) : null;
   }
-
   peekJson<T>(key: string): T | null {
     const entry = this.entry(key);
     return entry ? (JSON.parse(entry.value) as T) : null;

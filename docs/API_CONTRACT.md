@@ -214,7 +214,7 @@ A player becomes available from `/players/{id}` once they appear in a live match
 | `/matches/{id}` (other) | Database via cache | Up to 5 min |
 | `/scorecard` | Shared cache | At most every 15 s while live; 24 h once finished; 2 min otherwise |
 | `/commentary` | Shared cache | At most every 2 s while live; 24 h once finished; 2 min otherwise |
-| `/feeds/{endpoint}` | Shared cache | Per feed, see `refreshSeconds` in `GET /feeds`: 1 s `liveMatch`, 2 s `commentary`, 15 s scorecard, 1 min home/playing XI, 10–30 min match lists and points tables, 1–6 h news/series/rankings, 24 h venues/team and player lists |
+| `/feeds/{endpoint}` | Shared cache | Per feed, see `refreshSeconds` in `GET /feeds`: 0.5 s `liveMatch`, 1 s `commentary`, 15 s scorecard, 1 min home/playing XI, 10–30 min match lists and points tables, 1–6 h news/series/rankings, 24 h venues/team and player lists |
 | `/teams`, `/players`, `/leagues` | Database via cache | Up to 10 min |
 | `/ads` | Database via cache | Admin changes are visible immediately; schedules (`startAt`/`endAt`) are applied on every request |
 
@@ -847,7 +847,7 @@ UI recommendations:
 
 ## 12. Rate limits
 
-REST limits apply per client IP and per endpoint:
+REST limits apply per client IP and per endpoint. Each `/feeds/{endpoint}` counts as its own endpoint, so polling `liveMatch` does not use up the limit for `commentary` or `matchInfo`. All matches share the same `liveMatch` counter, though: polling 5 live matches once a second uses 5 of the 20 per second.
 
 | Window | Default limit |
 | --- | --- |

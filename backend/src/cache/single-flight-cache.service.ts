@@ -13,7 +13,7 @@ export interface CachedResult<T> {
 }
 
 export interface CacheOptions<T> {
-  /** Seconds the value is considered fresh. May depend on the loaded value. */
+  /** Seconds the value is considered fresh; below 1 it is stored with millisecond precision. May depend on the loaded value. */
   ttlSeconds: number | ((value: T) => number);
   /** Seconds the last good copy is kept for stale fallback. 0 disables it. */
   staleTtlSeconds?: number;
@@ -119,7 +119,7 @@ export class SingleFlightCache {
     const envelope: Envelope<T> = { value, cachedAt: new Date().toISOString() };
     const ttl = typeof options.ttlSeconds === 'function' ? options.ttlSeconds(value) : options.ttlSeconds;
     try {
-      await this.redis.setJson(key, envelope, Math.max(1, Math.round(ttl)));
+      await this.redis.setJson(key, envelope, ttl >= 1 ? Math.round(ttl) : Math.max(0.1, ttl));
       if (options.staleTtlSeconds && value !== null) {
         await this.redis.setJson(RedisKey.stale(key), envelope, options.staleTtlSeconds);
       }

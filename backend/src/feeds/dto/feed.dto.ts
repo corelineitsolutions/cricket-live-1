@@ -25,7 +25,7 @@ export class FeedDefinitionDto {
   @ApiProperty({ type: [FeedParamDto], description: 'Query parameters, using Latiyal names.' })
   params!: FeedParamDto[];
 
-  @ApiProperty({ example: 15, description: 'Seconds a response is cached before Latiyal is asked again.' })
+  @ApiProperty({ example: 15, description: 'Seconds a response is cached before Latiyal is asked again (0.5 for liveMatch).' })
   refreshSeconds!: number;
 
   @ApiProperty({ example: false, description: 'Only available on the Latiyal V5 plan.' })
