@@ -20,7 +20,7 @@ const SECTIONS: Section[] = [
     title: '1. Introduction',
     blocks: [
       {
-        p: `Welcome to ${APP_NAME} (“we,” “our,” or “us”). We provide cricket-related information, including live scores, match schedules, scorecards, ball-by-ball updates, team statistics, player information, and push notifications.`,
+        p: `Welcome to Cricket Master Line AI  (“we,” “our,” or “us”). We provide cricket-related information, including live scores, match schedules, scorecards, ball-by-ball updates, team statistics, player information, and push notifications.`,
       },
       {
         p: 'This Privacy Policy explains how we collect, use, store, and protect information when you use our mobile application or website.',
