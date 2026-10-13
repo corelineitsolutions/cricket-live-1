@@ -8,6 +8,8 @@ const NAV = [
   { href: '/matches', label: 'Live matches', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 5v4.59l3.2 3.2-1.41 1.42L11 12.41V7h2Z' },
   { href: '/devices', label: 'Devices', icon: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 3v13h10V5H7Zm5 14.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z' },
   { href: '/ads', label: 'Ads', icon: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm1 2v10h14V7H5Zm2 2h6v2H7V9Zm0 4h10v2H7v-2Z' },
+  { href: '/identity', label: 'Identity mapping', icon: 'M7 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm10 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM2 18a5 5 0 0 1 10 0v2H2v-2Zm10 0a5 5 0 0 1 10 0v2H12v-2Zm-3-8h6v2H9v-2Z' },
+  { href: '/ai', label: 'AI assistant', icon: 'M12 2a1 1 0 0 1 1 1v1.07A7 7 0 0 1 19 11v4l2 3H3l2-3v-4a7 7 0 0 1 6-6.93V3a1 1 0 0 1 1-1Zm-2 18h4a2 2 0 1 1-4 0Zm-1-8a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm6 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z' },
 ];
 
 export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }) {

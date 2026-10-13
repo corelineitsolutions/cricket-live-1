@@ -5,6 +5,7 @@ import { AdminModule } from './admin/admin.module';
 import { AdminDashboardModule } from './admin-dashboard/admin-dashboard.module';
 import { AdminMatchesModule } from './admin-matches/admin-matches.module';
 import { AdsModule } from './ads/ads.module';
+import { AiModule } from './ai/ai.module';
 import { AppCacheModule } from './cache/cache.module';
 import { HttpThrottlerGuard } from './common/guards/http-throttler.guard';
 import { throttlerOptions } from './common/guards/throttler.config';
@@ -16,6 +17,7 @@ import { FcmModule } from './fcm/fcm.module';
 import { FeedsModule } from './feeds/feeds.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { HealthModule } from './health/health.module';
+import { IdentityModule } from './identity/identity.module';
 import { LeaguesModule } from './leagues/leagues.module';
 import { LiveScoreModule } from './live-score/live-score.module';
 import { MatchesModule } from './matches/matches.module';
@@ -55,6 +57,8 @@ import { WebsocketModule } from './websocket/websocket.module';
     AdsModule,
     AdminDashboardModule,
     AdminMatchesModule,
+    AiModule,
+    IdentityModule,
   ],
   providers: [
     AllExceptionsFilter,

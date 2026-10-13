@@ -178,3 +178,560 @@ model Admin {
 
   @@map("admins")
 }
+
+// ---------------------------------------------------------------------------
+// Historical ball-by-ball data imported from Cricsheet (https://cricsheet.org,
+// ODC-By 1.0). Separate from the live tables above: nothing here references
+// leagues/teams/players/matches. Totals cover Cricsheet's archive only and are
+// not official career figures.
+// ---------------------------------------------------------------------------
+
+enum HistImportRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+enum HistImportFileStatus {
+  IMPORTED
+  REPLACED
+  SKIPPED_UNCHANGED
+  SKIPPED_CHANGED
+  QUARANTINED
+  FAILED
+}
+
+enum HistMatchOutcome {
+  WIN
+  TIE
+  DRAW
+  NO_RESULT
+  UNKNOWN
+}
+
+model HistImportRun {
+  id                 Int                 @id @default(autoincrement())
+  status             HistImportRunStatus @default(RUNNING)
+  sourceLabel        String              @map("source_label") @db.VarChar(191)
+  options            Json
+  parserVersion      Int                 @map("parser_version")
+  filesSeen          Int                 @default(0) @map("files_seen")
+  filesImported      Int                 @default(0) @map("files_imported")
+  filesReplaced      Int                 @default(0) @map("files_replaced")
+  filesSkipped       Int                 @default(0) @map("files_skipped")
+  filesQuarantined   Int                 @default(0) @map("files_quarantined")
+  filesFailed        Int                 @default(0) @map("files_failed")
+  deliveriesImported Int                 @default(0) @map("deliveries_imported")
+  warningsCount      Int                 @default(0) @map("warnings_count")
+  errorSummary       String?             @map("error_summary") @db.VarChar(1000)
+  startedAt          DateTime            @default(now()) @map("started_at")
+  finishedAt         DateTime?           @map("finished_at")
+  rolledBackAt       DateTime?           @map("rolled_back_at")
+
+  files   HistImportFile[]
+  matches HistMatch[]
+
+  @@index([status])
+  @@map("hist_import_runs")
+}
+
+model HistImportFile {
+  id               Int                  @id @default(autoincrement())
+  runId            Int                  @map("run_id")
+  fileName         String               @map("file_name") @db.VarChar(128)
+  cricsheetMatchId String?              @map("cricsheet_match_id") @db.VarChar(32)
+  sha256           String?              @db.Char(64)
+  sizeBytes        Int                  @map("size_bytes")
+  parserVersion    Int                  @map("parser_version")
+  status           HistImportFileStatus
+  deliveries       Int                  @default(0)
+  warningsCount    Int                  @default(0) @map("warnings_count")
+  warningCodes     String?              @map("warning_codes") @db.VarChar(500)
+  errorSummary     String?              @map("error_summary") @db.VarChar(500)
+  createdAt        DateTime             @default(now()) @map("created_at")
+
+  run HistImportRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([runId, fileName])
+  @@index([cricsheetMatchId])
+  @@index([status])
+  @@map("hist_import_files")
+}
+
+/// Cricsheet registry person (8-hex-char id). `name` is the first display name seen;
+/// every variant is kept in hist_person_names.
+model HistPerson {
+  id        String   @id @db.Char(8)
+  name      String   @db.VarChar(191)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  names        HistPersonName[]
+  matchPlayers HistMatchPlayer[]
+
+  @@index([name])
+  @@map("hist_people")
+}
+
+/// Every display name a person has been listed under (e.g. "RG Sharma").
+model HistPersonName {
+  personId String @map("person_id") @db.Char(8)
+  name     String @db.VarChar(191)
+
+  person HistPerson @relation(fields: [personId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([personId, name])
+  @@index([name])
+  @@map("hist_person_names")
+}
+
+model HistTeam {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(191)
+  teamType  String   @map("team_type") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  matchesAsTeam1 HistMatch[]       @relation("HistMatchTeam1")
+  matchesAsTeam2 HistMatch[]       @relation("HistMatchTeam2")
+  matchesWon     HistMatch[]       @relation("HistMatchWinner")
+  matchesToss    HistMatch[]       @relation("HistMatchToss")
+  matchPlayers   HistMatchPlayer[]
+
+  @@unique([name, teamType])
+  @@map("hist_teams")
+}
+
+/// One row per distinct venue name + city as written by Cricsheet. Spelling variants are
+/// deliberately not merged here; identity_venue_map links them after review.
+model HistVenue {
+  id               Int      @id @default(autoincrement())
+  normalizedKey    String   @unique @map("normalized_key") @db.VarChar(191)
+  name             String   @db.VarChar(191)
+  city             String?  @db.VarChar(120)
+  cricsheetVenueId String?  @map("cricsheet_venue_id") @db.Char(8)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  matches HistMatch[]
+
+  @@index([cricsheetVenueId])
+  @@index([name])
+  @@map("hist_venues")
+}
+
+model HistMatch {
+  id               Int              @id @default(autoincrement())
+  cricsheetMatchId String           @unique @map("cricsheet_match_id") @db.VarChar(32)
+  sourceSha256     String           @map("source_sha256") @db.Char(64)
+  formatVersion    String           @map("format_version") @db.VarChar(16)
+  parserVersion    Int              @map("parser_version")
+  importRunId      Int              @map("import_run_id")
+  matchType        String           @map("match_type") @db.VarChar(8)
+  gender           String           @db.VarChar(16)
+  teamType         String           @map("team_type") @db.VarChar(16)
+  season           String           @db.VarChar(16)
+  startDate        DateTime         @map("start_date") @db.Date
+  endDate          DateTime         @map("end_date") @db.Date
+  dates            Json
+  eventName        String?          @map("event_name") @db.VarChar(191)
+  matchNumber      String?          @map("match_number") @db.VarChar(32)
+  matchTypeNumber  Int?             @map("match_type_number")
+  venueId          Int              @map("venue_id")
+  team1Id          Int              @map("team1_id")
+  team2Id          Int              @map("team2_id")
+  tossWinnerId     Int?             @map("toss_winner_id")
+  tossDecision     String?          @map("toss_decision") @db.VarChar(8)
+  tossUncontested  Boolean          @default(false) @map("toss_uncontested")
+  outcome          HistMatchOutcome
+  winnerId         Int?             @map("winner_id")
+  winByRuns        Int?             @map("win_by_runs") @db.UnsignedSmallInt
+  winByWickets     Int?             @map("win_by_wickets") @db.UnsignedTinyInt
+  winByInnings     Boolean          @default(false) @map("win_by_innings")
+  method           String?          @db.VarChar(32)
+  eliminatorTeam   String?          @map("eliminator_team") @db.VarChar(191)
+  bowlOutTeam      String?          @map("bowl_out_team") @db.VarChar(191)
+  oversLimit       Int?             @map("overs_limit") @db.UnsignedSmallInt
+  ballsPerOver     Int              @map("balls_per_over") @db.UnsignedTinyInt
+  neutralVenue     Boolean          @default(false) @map("neutral_venue")
+  hasSuperOver     Boolean          @default(false) @map("has_super_over")
+  deliveriesCount  Int              @default(0) @map("deliveries_count")
+  officials        Json?
+  extraInfo        Json?            @map("extra_info")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  importRun  HistImportRun     @relation(fields: [importRunId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  venue      HistVenue         @relation(fields: [venueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  team1      HistTeam          @relation("HistMatchTeam1", fields: [team1Id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  team2      HistTeam          @relation("HistMatchTeam2", fields: [team2Id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  tossWinner HistTeam?         @relation("HistMatchToss", fields: [tossWinnerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  winner     HistTeam?         @relation("HistMatchWinner", fields: [winnerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  players    HistMatchPlayer[]
+  innings    HistInnings[]
+
+  @@index([matchType, gender, startDate])
+  @@index([venueId])
+  @@index([team1Id])
+  @@index([team2Id])
+  @@index([winnerId])
+  @@index([tossWinnerId])
+  @@index([importRunId])
+  @@map("hist_matches")
+}
+
+model HistMatchPlayer {
+  matchId         Int     @map("match_id")
+  personId        String  @map("person_id") @db.Char(8)
+  teamId          Int     @map("team_id")
+  isPlayerOfMatch Boolean @default(false) @map("is_player_of_match")
+
+  match  HistMatch  @relation(fields: [matchId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  person HistPerson @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  team   HistTeam   @relation(fields: [teamId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([matchId, personId])
+  @@index([personId])
+  @@index([teamId])
+  @@map("hist_match_players")
+}
+
+model HistInnings {
+  matchId             Int     @map("match_id")
+  inningsNo           Int     @map("innings_no") @db.UnsignedTinyInt
+  battingTeamId       Int?    @map("batting_team_id")
+  bowlingTeamId       Int?    @map("bowling_team_id")
+  isSuperOver         Boolean @default(false) @map("is_super_over")
+  declared            Boolean @default(false)
+  forfeited           Boolean @default(false)
+  runs                Int     @default(0) @db.UnsignedSmallInt
+  wickets             Int     @default(0) @db.UnsignedTinyInt
+  legalBalls          Int     @default(0) @map("legal_balls") @db.UnsignedSmallInt
+  deliveries          Int     @default(0) @db.UnsignedSmallInt
+  extras              Int     @default(0) @db.UnsignedSmallInt
+  wides               Int     @default(0) @db.UnsignedSmallInt
+  noballs             Int     @default(0) @db.UnsignedSmallInt
+  byes                Int     @default(0) @db.UnsignedSmallInt
+  legbyes             Int     @default(0) @db.UnsignedSmallInt
+  penaltyInDeliveries Int     @default(0) @map("penalty_in_deliveries") @db.UnsignedSmallInt
+  penaltyPre          Int     @default(0) @map("penalty_pre") @db.UnsignedSmallInt
+  penaltyPost         Int     @default(0) @map("penalty_post") @db.UnsignedSmallInt
+  targetRuns          Int?    @map("target_runs") @db.UnsignedSmallInt
+  targetOvers         String? @map("target_overs") @db.VarChar(8)
+
+  match          HistMatch      @relation(fields: [matchId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deliveriesList HistDelivery[]
+
+  @@id([matchId, inningsNo])
+  @@index([battingTeamId])
+  @@index([bowlingTeamId])
+  @@map("hist_innings")
+}
+
+/// One row per ball row in the source file, in source order (`seq`). Person columns hold
+/// Cricsheet registry ids; they are not foreign keys to keep inserts and indexes lean.
+model HistDelivery {
+  matchId      Int     @map("match_id")
+  inningsNo    Int     @map("innings_no") @db.UnsignedTinyInt
+  seq          Int     @db.UnsignedSmallInt
+  overNo       Int     @map("over_no") @db.UnsignedSmallInt
+  ballNo       Int     @map("ball_no") @db.UnsignedTinyInt
+  legalOverNo  Int     @map("legal_over_no") @db.UnsignedSmallInt
+  legalBallNo  Int     @map("legal_ball_no") @db.UnsignedTinyInt
+  batterId     String  @map("batter_id") @db.Char(8)
+  nonStrikerId String  @map("non_striker_id") @db.Char(8)
+  bowlerId     String  @map("bowler_id") @db.Char(8)
+  runsBatter   Int     @map("runs_batter") @db.UnsignedTinyInt
+  extras       Int     @db.UnsignedTinyInt
+  wides        Int     @db.UnsignedTinyInt
+  noballs      Int     @db.UnsignedTinyInt
+  byes         Int     @db.UnsignedTinyInt
+  legbyes      Int     @db.UnsignedTinyInt
+  penalty      Int     @db.UnsignedTinyInt
+  totalRuns    Int     @map("total_runs") @db.UnsignedTinyInt
+  isLegal      Boolean @map("is_legal")
+  nonBoundary  Boolean @default(false) @map("non_boundary")
+  /// Dismissals on this ball that count as a team wicket (excludes retired hurt / retired not out).
+  teamWickets  Int     @default(0) @map("team_wickets") @db.UnsignedTinyInt
+
+  innings HistInnings  @relation(fields: [matchId, inningsNo], references: [matchId, inningsNo], onDelete: Cascade, onUpdate: Cascade)
+  wickets HistWicket[]
+
+  @@id([matchId, inningsNo, seq])
+  @@index([batterId, matchId])
+  @@index([bowlerId, matchId])
+  @@map("hist_deliveries")
+}
+
+model HistWicket {
+  matchId            Int     @map("match_id")
+  inningsNo          Int     @map("innings_no") @db.UnsignedTinyInt
+  seq                Int     @db.UnsignedSmallInt
+  ordinal            Int     @db.UnsignedTinyInt
+  kind               String  @db.VarChar(32)
+  playerOutId        String? @map("player_out_id") @db.Char(8)
+  playerOutName      String? @map("player_out_name") @db.VarChar(191)
+  bowlerId           String  @map("bowler_id") @db.Char(8)
+  creditedToBowler   Boolean @map("credited_to_bowler")
+  countsAsTeamWicket Boolean @map("counts_as_team_wicket")
+  fielder1Id         String? @map("fielder1_id") @db.Char(8)
+  fielder2Id         String? @map("fielder2_id") @db.Char(8)
+  fielder3Id         String? @map("fielder3_id") @db.Char(8)
+  fielder4Id         String? @map("fielder4_id") @db.Char(8)
+  unresolvedFielders String? @map("unresolved_fielders") @db.VarChar(500)
+
+  delivery HistDelivery @relation(fields: [matchId, inningsNo, seq], references: [matchId, inningsNo, seq], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([matchId, inningsNo, seq, ordinal])
+  @@index([playerOutId])
+  @@index([bowlerId])
+  @@index([fielder1Id])
+  @@map("hist_wickets")
+}
+
+// Summary tables, rebuilt from the tables above by `npm run history:import -- --aggregates-only`.
+// Super-over innings are excluded. `match_type`, `gender` and `team_type` are Cricsheet values.
+
+model HistAggPlayerBatting {
+  personId       String    @map("person_id") @db.Char(8)
+  matchType      String    @map("match_type") @db.VarChar(8)
+  gender         String    @db.VarChar(16)
+  teamType       String    @map("team_type") @db.VarChar(16)
+  matches        Int       @default(0)
+  innings        Int       @default(0)
+  notOuts        Int       @default(0) @map("not_outs")
+  runs           Int       @default(0)
+  ballsFaced     Int       @default(0) @map("balls_faced")
+  fours          Int       @default(0)
+  sixes          Int       @default(0)
+  highest        Int       @default(0)
+  highestNotOut  Boolean   @default(false) @map("highest_not_out")
+  fifties        Int       @default(0)
+  hundreds       Int       @default(0)
+  ducks          Int       @default(0)
+  firstMatchDate DateTime? @map("first_match_date") @db.Date
+  lastMatchDate  DateTime? @map("last_match_date") @db.Date
+
+  @@id([personId, matchType, gender, teamType])
+  @@index([matchType, gender, runs])
+  @@map("hist_agg_player_batting")
+}
+
+model HistAggPlayerBowling {
+  personId      String @map("person_id") @db.Char(8)
+  matchType     String @map("match_type") @db.VarChar(8)
+  gender        String @db.VarChar(16)
+  teamType      String @map("team_type") @db.VarChar(16)
+  innings       Int    @default(0)
+  legalBalls    Int    @default(0) @map("legal_balls")
+  runsConceded  Int    @default(0) @map("runs_conceded")
+  wickets       Int    @default(0)
+  dots          Int    @default(0)
+  foursConceded Int    @default(0) @map("fours_conceded")
+  sixesConceded Int    @default(0) @map("sixes_conceded")
+  wides         Int    @default(0)
+  noballs       Int    @default(0)
+  bestWickets   Int    @default(0) @map("best_wickets")
+  bestRuns      Int    @default(0) @map("best_runs")
+  fourWickets   Int    @default(0) @map("four_wickets")
+  fiveWickets   Int    @default(0) @map("five_wickets")
+
+  @@id([personId, matchType, gender, teamType])
+  @@index([matchType, gender, wickets])
+  @@map("hist_agg_player_bowling")
+}
+
+model HistAggVenue {
+  venueId           Int       @map("venue_id")
+  matchType         String    @map("match_type") @db.VarChar(8)
+  gender            String    @db.VarChar(16)
+  matches           Int       @default(0)
+  resultMatches     Int       @default(0) @map("result_matches")
+  batFirstWins      Int       @default(0) @map("bat_first_wins")
+  chasingWins       Int       @default(0) @map("chasing_wins")
+  ties              Int       @default(0)
+  draws             Int       @default(0)
+  noResults         Int       @default(0) @map("no_results")
+  firstInningsCount Int       @default(0) @map("first_innings_count")
+  firstInningsRuns  Int       @default(0) @map("first_innings_runs")
+  highestTotal      Int       @default(0) @map("highest_total")
+  lowestAllOutTotal Int?      @map("lowest_all_out_total")
+  tossWinnerWins    Int       @default(0) @map("toss_winner_wins")
+  lastMatchDate     DateTime? @map("last_match_date") @db.Date
+
+  @@id([venueId, matchType, gender])
+  @@map("hist_agg_venue")
+}
+
+model HistAggPlayerVenue {
+  personId       String @map("person_id") @db.Char(8)
+  venueId        Int    @map("venue_id")
+  matchType      String @map("match_type") @db.VarChar(8)
+  gender         String @db.VarChar(16)
+  battingInnings Int    @default(0) @map("batting_innings")
+  runs           Int    @default(0)
+  ballsFaced     Int    @default(0) @map("balls_faced")
+  dismissals     Int    @default(0)
+  highest        Int    @default(0)
+  bowlingInnings Int    @default(0) @map("bowling_innings")
+  legalBalls     Int    @default(0) @map("legal_balls")
+  runsConceded   Int    @default(0) @map("runs_conceded")
+  wickets        Int    @default(0)
+
+  @@id([personId, venueId, matchType, gender])
+  @@index([venueId, matchType, gender])
+  @@map("hist_agg_player_venue")
+}
+
+/// team1_id < team2_id so each pairing has exactly one row per format.
+model HistAggHeadToHead {
+  team1Id       Int       @map("team1_id")
+  team2Id       Int       @map("team2_id")
+  matchType     String    @map("match_type") @db.VarChar(8)
+  gender        String    @db.VarChar(16)
+  matches       Int       @default(0)
+  team1Wins     Int       @default(0) @map("team1_wins")
+  team2Wins     Int       @default(0) @map("team2_wins")
+  ties          Int       @default(0)
+  draws         Int       @default(0)
+  noResults     Int       @default(0) @map("no_results")
+  lastMatchDate DateTime? @map("last_match_date") @db.Date
+
+  @@id([team1Id, team2Id, matchType, gender])
+  @@index([team2Id])
+  @@map("hist_agg_head_to_head")
+}
+
+/// Team batting by phase for six-ball limited-overs cricket. Phases: T20/IT20 overs 1-6,
+/// 7-15, 16-20; ODI/ODM overs 1-10, 11-40, 41-50.
+model HistAggTeamPhase {
+  teamId     Int    @map("team_id")
+  matchType  String @map("match_type") @db.VarChar(8)
+  gender     String @db.VarChar(16)
+  phase      String @db.VarChar(16)
+  innings    Int    @default(0)
+  runs       Int    @default(0)
+  legalBalls Int    @default(0) @map("legal_balls")
+  wickets    Int    @default(0)
+  fours      Int    @default(0)
+  sixes      Int    @default(0)
+  dots       Int    @default(0)
+
+  @@id([teamId, matchType, gender, phase])
+  @@map("hist_agg_team_phase")
+}
+
+/// Cricket AI usage per UTC day, provider and model: counters only. Questions, answers,
+/// prompts, device ids and IP addresses are never stored.
+model AiUsageDaily {
+  day              DateTime @db.Date
+  provider         String   @db.VarChar(32)
+  model            String   @db.VarChar(64)
+  requests         Int      @default(0)
+  answered         Int      @default(0)
+  refusedDisabled  Int      @default(0) @map("refused_disabled")
+  refusedQuota     Int      @default(0) @map("refused_quota")
+  refusedBudget    Int      @default(0) @map("refused_budget")
+  refusedBusy      Int      @default(0) @map("refused_busy")
+  errors           Int      @default(0)
+  timeouts         Int      @default(0)
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  toolCalls        Int      @default(0) @map("tool_calls")
+  languageEn       Int      @default(0) @map("language_en")
+  languageHi       Int      @default(0) @map("language_hi")
+  latencyMsTotal   Int      @default(0) @map("latency_ms_total")
+  /// Estimated from LLM_COST_PER_1K_* settings, in the currency those settings use.
+  estimatedCost    Decimal  @default(0) @map("estimated_cost") @db.Decimal(12, 4)
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@id([day, provider, model])
+  @@map("ai_usage_daily")
+}
+
+model HistAggBuild {
+  id         Int       @id @default(autoincrement())
+  status     String    @db.VarChar(16)
+  rowCounts  Json?     @map("row_counts")
+  error      String?   @db.VarChar(1000)
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  @@map("hist_agg_builds")
+}
+
+// ---------------------------------------------------------------------------
+// Identity mapping between Latiyal ids (live) and the Cricsheet history. Rows are
+// proposed by name matching and only used once an admin has CONFIRMED them. No foreign
+// keys: live and history tables can be rebuilt independently.
+// ---------------------------------------------------------------------------
+
+enum IdentityMapStatus {
+  PROPOSED
+  CONFIRMED
+  REJECTED
+}
+
+model IdentityPlayerMap {
+  id              String            @id @default(cuid())
+  /// Latiyal player id (players.sportmonks_id).
+  latiyalPlayerId Int               @map("latiyal_player_id")
+  histPersonId    String            @map("hist_person_id") @db.Char(8)
+  status          IdentityMapStatus @default(PROPOSED)
+  /// exact_name | initials_surname | manual
+  method          String            @db.VarChar(32)
+  confidence      Int               @db.UnsignedTinyInt
+  evidence        Json?
+  reviewedBy      String?           @map("reviewed_by") @db.VarChar(64)
+  reviewedAt      DateTime?         @map("reviewed_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@unique([latiyalPlayerId, histPersonId])
+  @@index([histPersonId])
+  @@index([status, confidence])
+  @@map("identity_player_map")
+}
+
+model IdentityTeamMap {
+  id            String            @id @default(cuid())
+  /// Latiyal team id (teams.sportmonks_id).
+  latiyalTeamId Int               @map("latiyal_team_id")
+  histTeamId    Int               @map("hist_team_id")
+  /// Cricsheet team names do not carry gender; matches are filtered by it.
+  gender        String            @db.VarChar(16)
+  status        IdentityMapStatus @default(PROPOSED)
+  method        String            @db.VarChar(32)
+  confidence    Int               @db.UnsignedTinyInt
+  evidence      Json?
+  reviewedBy    String?           @map("reviewed_by") @db.VarChar(64)
+  reviewedAt    DateTime?         @map("reviewed_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@unique([latiyalTeamId, histTeamId, gender])
+  @@index([histTeamId])
+  @@index([status, confidence])
+  @@map("identity_team_map")
+}
+
+/// Live venues have no Latiyal id in the database, so they are keyed by name + city as
+/// stored on matches (normalized like hist_venues.normalized_key).
+model IdentityVenueMap {
+  id            String            @id @default(cuid())
+  liveVenueKey  String            @map("live_venue_key") @db.VarChar(191)
+  liveVenueName String            @map("live_venue_name") @db.VarChar(191)
+  liveVenueCity String?           @map("live_venue_city") @db.VarChar(120)
+  histVenueId   Int               @map("hist_venue_id")
+  status        IdentityMapStatus @default(PROPOSED)
+  method        String            @db.VarChar(32)
+  confidence    Int               @db.UnsignedTinyInt
+  evidence      Json?
+  reviewedBy    String?           @map("reviewed_by") @db.VarChar(64)
+  reviewedAt    DateTime?         @map("reviewed_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@unique([liveVenueKey, histVenueId])
+  @@index([histVenueId])
+  @@index([status, confidence])
+  @@map("identity_venue_map")
+}

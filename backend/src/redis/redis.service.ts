@@ -20,6 +20,14 @@ end
 return current
 `;
 
+const INCREMENT_BY_WITH_TTL_SCRIPT = `
+local current = redis.call("INCRBY", KEYS[1], ARGV[1])
+if redis.call("TTL", KEYS[1]) < 0 then
+  redis.call("EXPIRE", KEYS[1], ARGV[2])
+end
+return current
+`;
+
 const INCREMENT_IF_BELOW_SCRIPT = `
 local current = tonumber(redis.call("GET", KEYS[1]) or "0")
 if current >= tonumber(ARGV[1]) then
@@ -223,6 +231,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       String(ttlSeconds),
     );
     return Number(count);
+  }
+
+  /** Adds `amount` and sets the expiry if the key has none yet. Returns the new value. */
+  async incrementByWithTtl(key: string, amount: number, ttlSeconds: number): Promise<number> {
+    const value = await this.client.eval(
+      INCREMENT_BY_WITH_TTL_SCRIPT,
+      1,
+      prefixRedisKey(key),
+      String(Math.trunc(amount)),
+      String(ttlSeconds),
+    );
+    return Number(value);
   }
 
   /** Atomically increments the counter unless it already reached `max`. Returns null when refused. */

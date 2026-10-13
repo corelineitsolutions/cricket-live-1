@@ -201,6 +201,31 @@ const SECTIONS: Section[] = [
       },
     ],
   },
+  {
+    title: '14. AI Assistant',
+    blocks: [
+      {
+        p: 'The application may offer an AI assistant that answers cricket questions. When you ask a question, we process the question text, the selected language, the match you are viewing, and your device identifier only to produce the answer and to apply usage limits.',
+      },
+      {
+        list: [
+          'We do not store your questions or the answers, and we do not keep a conversation history.',
+          'Your device identifier and IP address are used only in a one-way, keyed form to enforce short-lived usage limits; they are not stored with your questions.',
+          'We keep only aggregate daily statistics, such as the number of questions asked and answered.',
+          'If an external AI model provider is used, your question and relevant cricket data are sent to that provider to generate the answer, under its own terms. We do not send your device identifier or IP address to it.',
+          'AI answers can be inaccurate. Please check official scorecards for authoritative figures.',
+        ],
+      },
+    ],
+  },
+  {
+    title: '15. Historical Cricket Data',
+    blocks: [
+      {
+        p: 'Historical ball-by-ball statistics are derived from data provided by Cricsheet (cricsheet.org), made available under the Open Data Commons Attribution License (ODC-By 1.0). These statistics cover only the matches in that archive and are not official career totals.',
+      },
+    ],
+  },
 ];
 
 function ListItem({ item }: { item: Item }) {

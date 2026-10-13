@@ -7,6 +7,9 @@ import { AdminModule } from '../admin/admin.module';
 import { AdminDashboardModule } from '../admin-dashboard/admin-dashboard.module';
 import { AdminMatchesModule } from '../admin-matches/admin-matches.module';
 import { AdsModule } from '../ads/ads.module';
+import { LLM_FETCH } from '../ai/ai.constants';
+import { AiModule } from '../ai/ai.module';
+import type { LlmFetch } from '../ai/llm/openai-compatible.provider';
 import { configureHttpApp } from '../app.setup';
 import { AppCacheModule } from '../cache/cache.module';
 import { AllExceptionsFilter } from '../common/filters/all-exceptions.filter';
@@ -18,6 +21,7 @@ import { FcmModule } from '../fcm/fcm.module';
 import { FeedsModule } from '../feeds/feeds.module';
 import { FirebaseService } from '../firebase/firebase.service';
 import { HealthModule } from '../health/health.module';
+import { IdentityModule } from '../identity/identity.module';
 import { LeaguesModule } from '../leagues/leagues.module';
 import { MatchesModule } from '../matches/matches.module';
 import { PlayersModule } from '../players/players.module';
@@ -51,6 +55,22 @@ export function apiTestConfig(overrides: ApiTestConfig = {}): AppConfigService {
     firebaseClientEmail: '',
     firebasePrivateKey: '',
     metricsToken: '',
+    aiEnabled: false,
+    llmProvider: 'mock',
+    llmBaseUrl: '',
+    llmApiKey: '',
+    llmModel: '',
+    llmTimeoutMs: 5_000,
+    llmMaxOutputTokens: 600,
+    llmCostPer1kInputTokens: 0,
+    llmCostPer1kOutputTokens: 0,
+    aiDailyTokenBudget: 0,
+    aiMaxConcurrent: 4,
+    aiRequestsPerDevicePerMinute: 5,
+    aiRequestsPerDevicePerDay: 50,
+    aiRequestsPerIpPerMinute: 1_000,
+    aiRequestTimeoutMs: 10_000,
+    aiHistoryEnabled: false,
     ...overrides,
   } as AppConfigService;
 }
@@ -76,6 +96,7 @@ export interface ApiTestOptions {
   db?: FakeDb;
   firebase?: FakeFirebase;
   config?: ApiTestConfig;
+  llmFetch?: LlmFetch;
 }
 
 export type Responder = LatiyalResponder;
@@ -93,6 +114,8 @@ export async function createApiTestApp(options: ApiTestOptions = {}) {
 
   let responder: Responder = () => jsonResponse({ message: 'not scripted' }, 500);
   const fetchMock = vi.fn<FetchFn>(async (input, init) => responder(new URL(String(input)), init));
+  // Tests never reach a real LLM; scripted responses come from options.llmFetch.
+  const llmFetch = vi.fn<LlmFetch>(options.llmFetch ?? (async () => Promise.reject(new Error('LLM fetch not scripted'))));
 
   const moduleRef = await Test.createTestingModule({
     imports: [
@@ -111,11 +134,15 @@ export async function createApiTestApp(options: ApiTestOptions = {}) {
       AdminMatchesModule,
       FeedsModule,
       HealthModule,
+      AiModule,
+      IdentityModule,
     ],
     providers: [AllExceptionsFilter, { provide: APP_GUARD, useClass: HttpThrottlerGuard }],
   })
     .overrideProvider(LATIYAL_FETCH)
     .useValue(fetchMock)
+    .overrideProvider(LLM_FETCH)
+    .useValue(llmFetch)
     .overrideProvider(FirebaseService)
     .useValue(firebase)
     .compile();
@@ -134,6 +161,7 @@ export async function createApiTestApp(options: ApiTestOptions = {}) {
     firebase,
     config,
     fetchMock,
+    llmFetch,
     baseUrl,
     http: app.getHttpServer(),
     respond(next: Responder) {

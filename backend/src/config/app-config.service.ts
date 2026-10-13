@@ -119,4 +119,74 @@ export class AppConfigService {
     const value = this.config.get<boolean | string>('SWAGGER_ENABLED') ?? true;
     return value === true || value === 'true';
   }
+
+  // Cricket AI assistant. Defaults live in env.validation.ts.
+  get aiEnabled(): boolean {
+    const value = this.config.get<boolean | string>('AI_ENABLED') ?? false;
+    return value === true || value === 'true';
+  }
+
+  get llmProvider(): 'mock' | 'openai-compatible' {
+    return this.config.get<string>('LLM_PROVIDER') === 'openai-compatible' ? 'openai-compatible' : 'mock';
+  }
+
+  get llmBaseUrl(): string {
+    return this.config.get<string>('LLM_BASE_URL') ?? '';
+  }
+
+  get llmApiKey(): string {
+    return this.config.get<string>('LLM_API_KEY') ?? '';
+  }
+
+  get llmModel(): string {
+    return this.config.get<string>('LLM_MODEL') ?? '';
+  }
+
+  get llmTimeoutMs(): number {
+    return Number(this.config.getOrThrow('LLM_TIMEOUT_MS'));
+  }
+
+  get llmMaxOutputTokens(): number {
+    return Number(this.config.getOrThrow('LLM_MAX_OUTPUT_TOKENS'));
+  }
+
+  get llmCostPer1kInputTokens(): number {
+    return Number(this.config.getOrThrow('LLM_COST_PER_1K_INPUT_TOKENS'));
+  }
+
+  get llmCostPer1kOutputTokens(): number {
+    return Number(this.config.getOrThrow('LLM_COST_PER_1K_OUTPUT_TOKENS'));
+  }
+
+  /** Tokens per UTC day across all instances. 0 blocks real providers; the mock ignores it. */
+  get aiDailyTokenBudget(): number {
+    return Number(this.config.getOrThrow('AI_DAILY_TOKEN_BUDGET'));
+  }
+
+  /** Concurrent AI requests per API process. */
+  get aiMaxConcurrent(): number {
+    return Number(this.config.getOrThrow('AI_MAX_CONCURRENT'));
+  }
+
+  get aiRequestsPerDevicePerMinute(): number {
+    return Number(this.config.getOrThrow('AI_REQUESTS_PER_DEVICE_PER_MINUTE'));
+  }
+
+  get aiRequestsPerDevicePerDay(): number {
+    return Number(this.config.getOrThrow('AI_REQUESTS_PER_DEVICE_PER_DAY'));
+  }
+
+  get aiRequestsPerIpPerMinute(): number {
+    return Number(this.config.getOrThrow('AI_REQUESTS_PER_IP_PER_MINUTE'));
+  }
+
+  get aiRequestTimeoutMs(): number {
+    return Number(this.config.getOrThrow('AI_REQUEST_TIMEOUT_MS'));
+  }
+
+  /** Cricsheet history tools for the AI. Enable only after the hist_* migration and an import. */
+  get aiHistoryEnabled(): boolean {
+    const value = this.config.get<boolean | string>('AI_HISTORY_ENABLED') ?? false;
+    return value === true || value === 'true';
+  }
 }

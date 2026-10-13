@@ -10,6 +10,6 @@ import { MatchesService } from './matches.service';
   imports: [LiveScoreModule, LatiyalModule],
   controllers: [MatchesController],
   providers: [MatchesRepository, MatchesService, MatchDetailService],
-  exports: [MatchesService, MatchesRepository],
+  exports: [MatchesService, MatchesRepository, MatchDetailService],
 })
 export class MatchesModule {}

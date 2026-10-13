@@ -144,6 +144,8 @@ cp admin/.env.example admin/.env.production
 | `CORS_ORIGIN` | `https://admin.example.com` (the API logs a warning for `*` in production) |
 | `METRICS_TOKEN` | ≥ 32 chars (`openssl rand -hex 32`) to enable `GET /metrics`; empty disables it |
 | `SWAGGER_ENABLED` | `true` while the Flutter developer needs `/api/docs`; `false` or IP-restricted afterwards |
+| `AI_ENABLED` / `LLM_*` / `AI_*` | AI assistant, off by default; see [Cricket AI assistant](#19-cricket-ai-assistant-and-cricsheet-history) |
+| `HISTORY_DATABASE_URL` | optional target for the Cricsheet history import; falls back to `DATABASE_URL` |
 
 Startup validation rejects missing or weak production values (e.g. short `JWT_SECRET`).
 
@@ -388,3 +390,62 @@ These are covered by `src/resilience.e2e.spec.ts`, `src/live-score/*.spec.ts`,
 - [ ] Swagger disabled or IP-restricted once the mobile integration is done.
 - [ ] Admin panel optionally IP-restricted in nginx.
 - [ ] Backups of MySQL scheduled (e.g. daily `mysqldump` via cron) and restore tested on a non-production server.
+- [ ] AI: `LLM_API_KEY` only in `backend/.env`; `AI_DAILY_TOKEN_BUDGET` set; privacy policy updated before a real (non-mock) provider is enabled.
+
+## 19. Cricket AI assistant and Cricsheet history
+
+The full setup guide is `docs/CRICKET_AI_SETUP.txt`. Short version:
+
+### Migrations
+
+Three additive migrations come with the AI work: `20261012120000_hist_cricsheet_history` (the `hist_*` tables),
+`20261012130000_ai_usage_daily` and `20261012140000_identity_maps`. They only create new tables. Apply them with
+the normal procedure (backup first, then `npx prisma migrate deploy`, see [section 6](#6-prisma-migrations)).
+
+### AI assistant
+
+Off until `AI_ENABLED=true`. Three ways to run it:
+
+| Mode | Settings | Cost |
+| --- | --- | --- |
+| Demo | `LLM_PROVIDER=mock` | none: template answers over live data, no model |
+| Local model (Ollama on the same server) | `LLM_PROVIDER=openai-compatible`, `LLM_BASE_URL=http://127.0.0.1:11434/v1`, `LLM_MODEL=<model>`, `AI_DAILY_TOKEN_BUDGET>0` | server CPU/RAM only |
+| Hosted provider | as above with the provider's `https://…/v1` URL and `LLM_API_KEY` | paid per token; set the `LLM_COST_*` prices and a budget |
+
+- A real provider is refused (`AI_NOT_CONFIGURED`) while the URL is not https (or http to localhost), the
+  model or key is missing, or `AI_DAILY_TOKEN_BUDGET` is `0`.
+- Limits: 5 questions per device per minute, 50 per day, 20 per IP per minute, `AI_MAX_CONCURRENT` per API
+  instance, and the shared daily token budget.
+- Questions, answers, device ids and IP addresses are never stored or logged. Only daily counters are kept
+  (Redis, flushed to `ai_usage_daily` every 5 minutes) and shown on the admin **AI assistant** page.
+- Changing these settings needs an API restart (`pm2 reload live-score-api`); the worker is not affected.
+
+### Cricsheet history import
+
+Data: Cricsheet classic CSV files (licensed ODC-By 1.0, attribution "Data from Cricsheet, cricsheet.org").
+
+```bash
+cd /opt/cricket-live/app/backend
+npm run history:import -- --dir /data/all_csv --dry-run                         # parse only, no database
+npm run history:import -- --dir /data/all_csv --limit 50 --database cricket_live  # small trial
+npm run history:import -- --dir /data/all_csv --database cricket_live --confirm-full-import --allow-production
+npm run history:import -- --help                                                # all flags
+```
+
+- Writes need `--database <name>` equal to the target, `--allow-remote-database` for non-local hosts,
+  `--allow-production` under `NODE_ENV=production`, and `--confirm-full-import` without `--limit`/`--files`.
+- Re-running is safe: unchanged files are skipped. `--resume` continues a stopped run, `--rollback-run <id>`
+  deletes the matches a run wrote, `--aggregates-only` rebuilds the summary tables.
+- The full archive (about 23,000 files, 11.7 million deliveries) needs several GB of MySQL space. Take a backup
+  and check free disk space first, and run it outside match hours.
+- History tables are separate from the live tables; the import never touches live data or Latiyal polling.
+
+### Identity mapping and history answers
+
+1. After the import, open the admin **Identity mapping** page and press **Propose** for teams, venues and players.
+   Proposals come from name matching only; nothing is used until an admin confirms it.
+2. Confirm or reject the proposals (start with teams and venues). Pairs the matcher missed can be added by hand.
+3. Set `AI_HISTORY_ENABLED=true` and reload the API. The assistant can then answer player records,
+   head-to-head, venue and phase questions from the archive, always labelled "Cricsheet archive, not
+   official career totals". Player questions also work without a mapping (by name); team and venue
+   lookups use confirmed mappings first and exact names otherwise.

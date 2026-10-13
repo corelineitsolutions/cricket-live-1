@@ -88,6 +88,8 @@ All endpoints are public (no login, no JWT) and relative to the base URL. Everyt
 | GET | `/feeds/{endpoint}?<params>` | One cricket data feed (series, squads, news, rankings, venues, …) | `Feed` | 400, 404, 429, 503 |
 | POST | `/devices/register` | Register or update this device for push notifications | `Device` | 400, 429 |
 | POST | `/devices/deactivate` | Stop push notifications for this device | `Device` | 400, 404, 429 |
+| GET | `/ai/status` | Whether the AI assistant is available | `AiStatus` | 429 |
+| POST | `/ai/ask` | Ask the cricket AI assistant a question | `AiAnswer` | 400, 429, 502, 503 |
 
 ### Parameters
 
@@ -283,6 +285,61 @@ Response (`200`):
 ```
 
 `POST /devices/deactivate` with `{ "deviceId": "..." }` stops pushes (for example when the user turns notifications off). The record is kept; registering again turns pushes back on. Unknown `deviceId` returns `404 RESOURCE_NOT_FOUND`.
+
+### AI assistant (`/ai`)
+
+Answers cricket questions in English or Hindi using live match data (scores, scorecard, recent commentary) and a run-rate calculator. Questions and answers are **not stored**; the backend keeps only daily counters.
+
+`GET /ai/status` — call before showing the AI entry point:
+
+```json
+{ "success": true, "data": { "available": true, "languages": ["en", "hi"], "maxQuestionLength": 500 } }
+```
+
+Hide the AI feature while `available` is `false`.
+
+`POST /ai/ask`:
+
+```json
+{ "question": "How many runs per over do they need?", "language": "en", "matchId": "61521", "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22" }
+```
+
+| Field | Rules |
+| --- | --- |
+| `question` | 2–500 chars (trimmed) |
+| `language` | optional, `en` (default) or `hi` |
+| `matchId` | optional, numeric string: the match the user is looking at, so "this match" works |
+| `deviceId` | required, the same install id as `/devices/register` (same rules). Only a keyed hash of it is used, for limits |
+
+Response (`200`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "answer": "Delhi Royals need 61 runs from 28 balls (required rate 13.07).",
+    "language": "en",
+    "sources": ["Match 61521"],
+    "mocked": false,
+    "disclaimer": "AI answers can be wrong. Check the scorecard for official figures.",
+    "generatedAt": "2026-10-09T12:00:00.000Z"
+  }
+}
+```
+
+Always show `disclaimer` under the answer. `mocked: true` means demo mode (template answers, no AI model). Answers can take several seconds; show a loading state and do not retry automatically.
+
+Historical figures (player records, head-to-head, venue records) come from the Cricsheet archive; their `sources` entries start with `Cricsheet archive:`. When one does, show the attribution line **"Historical data: Cricsheet (cricsheet.org), ODC-By 1.0"** under the answer (required by the data licence).
+
+| HTTP | `error.code` | Meaning / what the app should do |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | Bad body; fix the request |
+| 429 | `AI_QUOTA_EXCEEDED` | Limit per device (5/min, 50/day) or per IP (20/min). Show the message |
+| 503 | `AI_DISABLED`, `AI_NOT_CONFIGURED` | Assistant off; hide the feature |
+| 503 | `AI_BUDGET_EXHAUSTED` | Daily limit of the service reached; try again tomorrow |
+| 503 | `AI_BUSY` | Too many questions at once; try again in a few seconds |
+| 503 | `AI_TIMEOUT` | Took too long; let the user retry |
+| 502 | `AI_PROVIDER_ERROR` | The AI model failed; let the user retry |
 
 ---
 

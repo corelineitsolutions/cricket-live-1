@@ -46,6 +46,14 @@ export const RedisKey = {
   adsActiveVersion: () => 'ads:active:version',
   adminLoginFailures: (subject: string) => `auth:admin-login:failures:${subject}`,
   metric: (name: string) => `metrics:${name}`,
+  /** AI quotas use a keyed hash of the device id / IP, never the raw value. */
+  aiDeviceMinute: (hash: string, minute: number) => `ai:quota:device:${hash}:m:${minute}`,
+  aiDeviceDay: (hash: string, day: string) => `ai:quota:device:${hash}:d:${day}`,
+  aiIpMinute: (hash: string, minute: number) => `ai:quota:ip:${hash}:m:${minute}`,
+  aiTokens: (day: string) => `ai:tokens:${day}`,
+  /** Aggregate usage counter; `combo` is base64url("provider|model"). */
+  aiUsage: (day: string, combo: string, field: string) => `ai:usage:${day}:${combo}:${field}`,
+  aiUsageFlushLock: () => 'lock:ai:usage-flush',
 };
 
 export const RedisChannel = {

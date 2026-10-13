@@ -153,6 +153,14 @@ export class FakeRedis {
     return next;
   }
 
+  async incrementByWithTtl(key: string, amount: number, ttlSeconds: number): Promise<number> {
+    this.check();
+    const entry = this.entry(key);
+    const next = Number(entry?.value ?? 0) + Math.trunc(amount);
+    this.write(key, String(next), entry?.expiresAt ? entry.expiresAt - Date.now() : ttlSeconds * 1000);
+    return next;
+  }
+
   async incrementIfBelow(key: string, max: number, ttlSeconds: number): Promise<number | null> {
     this.check();
     const current = Number(this.entry(key)?.value ?? 0);

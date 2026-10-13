@@ -1,0 +1,337 @@
+version,1.8.0
+info,balls_per_over,6
+info,team,Brisbane Heat
+info,team,Sydney Sixers
+info,team_type,club
+info,gender,male
+info,season,2016/17
+info,date,2017/01/25
+info,event,Big Bash League
+info,match_id,1023647
+info,match_type,T20
+info,overs,20
+info,venue,"Brisbane Cricket Ground, Woolloongabba"
+info,city,Brisbane
+info,toss_winner,Sydney Sixers
+info,toss_decision,field
+info,player_of_match,MC Henriques
+info,umpire,GA Abood
+info,umpire,GC Joshua
+info,reserve_umpire,DM Koch
+info,tv_umpire,P Wilson
+info,match_referee,RW Stratford
+info,super_over,3
+info,super_over,4
+info,target_overs,2,20
+info,target_runs,2,168
+info,outcome,tie
+info,eliminator,Sydney Sixers
+info,player,Brisbane Heat,JJ Peirson
+info,player,Brisbane Heat,BB McCullum
+info,player,Brisbane Heat,SD Heazlett
+info,player,Brisbane Heat,AI Ross
+info,player,Brisbane Heat,JA Burns
+info,player,Brisbane Heat,BCJ Cutting
+info,player,Brisbane Heat,M Labuschagne
+info,player,Brisbane Heat,JD Wildermuth
+info,player,Brisbane Heat,MT Steketee
+info,player,Brisbane Heat,MJ Swepson
+info,player,Brisbane Heat,S Badree
+info,player,Sydney Sixers,DP Hughes
+info,player,Sydney Sixers,NJ Maddinson
+info,player,Sydney Sixers,C Munro
+info,player,Sydney Sixers,MC Henriques
+info,player,Sydney Sixers,MJ Lumb
+info,player,Sydney Sixers,BJ Haddin
+info,player,Sydney Sixers,J Botha
+info,player,Sydney Sixers,SA Abbott
+info,player,Sydney Sixers,BJ Dwarshuis
+info,player,Sydney Sixers,NM Lyon
+info,player,Sydney Sixers,JM Bird
+info,registry,people,AI Ross,fb0d68b4
+info,registry,people,BB McCullum,b8a55852
+info,registry,people,BCJ Cutting,2e11c706
+info,registry,people,BJ Dwarshuis,e1b9f3a9
+info,registry,people,BJ Haddin,b0c772ee
+info,registry,people,C Munro,af2c687b
+info,registry,people,DM Koch,6d10c034
+info,registry,people,DP Hughes,f3982af9
+info,registry,people,GA Abood,a4af5528
+info,registry,people,GC Joshua,4c47ebf2
+info,registry,people,J Botha,7c503806
+info,registry,people,JA Burns,7a5f232a
+info,registry,people,JD Wildermuth,f1c61793
+info,registry,people,JJ Peirson,2b55c3b4
+info,registry,people,JM Bird,bc773eeb
+info,registry,people,M Labuschagne,fa433be6
+info,registry,people,MC Henriques,32198ae0
+info,registry,people,MJ Lumb,11df3dc8
+info,registry,people,MJ Swepson,86b4bf88
+info,registry,people,MT Steketee,903560ed
+info,registry,people,NJ Maddinson,44afbf2d
+info,registry,people,NM Lyon,96a6a7ad
+info,registry,people,P Wilson,68304a36
+info,registry,people,RW Stratford,85489579
+info,registry,people,S Badree,76388dc8
+info,registry,people,SA Abbott,1a2676c5
+info,registry,people,SD Heazlett,e00a9155
+ball,1,0.1,Brisbane Heat,JJ Peirson,BB McCullum,JM Bird,4,0,,,,,,"","",0.1,,,,
+ball,1,0.2,Brisbane Heat,JJ Peirson,BB McCullum,JM Bird,0,0,,,,,,"","",0.2,,,,
+ball,1,0.3,Brisbane Heat,JJ Peirson,BB McCullum,JM Bird,0,0,,,,,,"","",0.3,,,,
+ball,1,0.4,Brisbane Heat,JJ Peirson,BB McCullum,JM Bird,0,0,,,,,,"","",0.4,,,,
+ball,1,0.5,Brisbane Heat,JJ Peirson,BB McCullum,JM Bird,1,0,,,,,,"","",0.5,,,,
+ball,1,0.6,Brisbane Heat,BB McCullum,JJ Peirson,JM Bird,4,0,,,,,,"","",0.6,,,,
+ball,1,1.1,Brisbane Heat,JJ Peirson,BB McCullum,BJ Dwarshuis,2,0,,,,,,"","",1.1,,,,
+ball,1,1.2,Brisbane Heat,JJ Peirson,BB McCullum,BJ Dwarshuis,4,0,,,,,,"","",1.2,,,,
+ball,1,1.3,Brisbane Heat,JJ Peirson,BB McCullum,BJ Dwarshuis,0,0,,,,,,"","",1.3,,,,
+ball,1,1.4,Brisbane Heat,JJ Peirson,BB McCullum,BJ Dwarshuis,4,0,,,,,,"","",1.4,,,,
+ball,1,1.5,Brisbane Heat,JJ Peirson,BB McCullum,BJ Dwarshuis,1,0,,,,,,"","",1.5,,,,
+ball,1,1.6,Brisbane Heat,BB McCullum,JJ Peirson,BJ Dwarshuis,0,0,,,,,,"","",1.6,,,,
+ball,1,2.1,Brisbane Heat,JJ Peirson,BB McCullum,SA Abbott,2,0,,,,,,"","",2.1,,,,
+ball,1,2.2,Brisbane Heat,JJ Peirson,BB McCullum,SA Abbott,1,0,,,,,,"","",2.2,,,,
+ball,1,2.3,Brisbane Heat,BB McCullum,JJ Peirson,SA Abbott,0,0,,,,,,"","",2.3,,,,
+ball,1,2.4,Brisbane Heat,BB McCullum,JJ Peirson,SA Abbott,1,0,,,,,,"","",2.4,,,,
+ball,1,2.5,Brisbane Heat,JJ Peirson,BB McCullum,SA Abbott,0,0,,,,,,caught,JJ Peirson,2.5,,BJ Haddin,,
+ball,1,2.6,Brisbane Heat,BB McCullum,SD Heazlett,SA Abbott,6,0,,,,,,"","",2.6,,,,
+ball,1,3.1,Brisbane Heat,SD Heazlett,BB McCullum,NM Lyon,0,0,,,,,,"","",3.1,,,,
+ball,1,3.2,Brisbane Heat,SD Heazlett,BB McCullum,NM Lyon,0,0,,,,,,"","",3.2,,,,
+ball,1,3.3,Brisbane Heat,SD Heazlett,BB McCullum,NM Lyon,0,0,,,,,,"","",3.3,,,,
+ball,1,3.4,Brisbane Heat,SD Heazlett,BB McCullum,NM Lyon,0,0,,,,,,stumped,SD Heazlett,3.4,,BJ Haddin,,
+ball,1,3.5,Brisbane Heat,AI Ross,BB McCullum,NM Lyon,1,0,,,,,,"","",3.5,,,,
+ball,1,3.6,Brisbane Heat,BB McCullum,AI Ross,NM Lyon,0,0,,,,,,"","",3.6,,,,
+ball,1,4.1,Brisbane Heat,AI Ross,BB McCullum,JM Bird,0,0,,,,,,"","",4.1,,,,
+ball,1,4.2,Brisbane Heat,AI Ross,BB McCullum,JM Bird,0,0,,,,,,"","",4.2,,,,
+ball,1,4.3,Brisbane Heat,AI Ross,BB McCullum,JM Bird,0,0,,,,,,"","",4.3,,,,
+ball,1,4.4,Brisbane Heat,AI Ross,BB McCullum,JM Bird,1,0,,,,,,"","",4.4,,,,
+ball,1,4.5,Brisbane Heat,BB McCullum,AI Ross,JM Bird,4,0,,,,,,"","",4.5,,,,
+ball,1,4.6,Brisbane Heat,BB McCullum,AI Ross,JM Bird,0,0,,,,,,"","",4.6,,,,
+ball,1,5.1,Brisbane Heat,AI Ross,BB McCullum,NM Lyon,0,0,,,,,,"","",5.1,,,,
+ball,1,5.2,Brisbane Heat,AI Ross,BB McCullum,NM Lyon,1,0,,,,,,"","",5.2,,,,
+ball,1,5.3,Brisbane Heat,BB McCullum,AI Ross,NM Lyon,1,0,,,,,,"","",5.3,,,,
+ball,1,5.4,Brisbane Heat,AI Ross,BB McCullum,NM Lyon,1,0,,,,,,"","",5.4,,,,
+ball,1,5.5,Brisbane Heat,BB McCullum,AI Ross,NM Lyon,1,0,,,,,,"","",5.5,,,,
+ball,1,5.6,Brisbane Heat,AI Ross,BB McCullum,NM Lyon,0,0,,,,,,"","",5.6,,,,
+ball,1,6.1,Brisbane Heat,BB McCullum,AI Ross,JM Bird,1,0,,,,,,"","",6.1,,,,
+ball,1,6.2,Brisbane Heat,AI Ross,BB McCullum,JM Bird,0,0,,,,,,"","",6.2,,,,
+ball,1,6.3,Brisbane Heat,AI Ross,BB McCullum,JM Bird,2,1,,1,,,,"","",6.3,,,,
+ball,1,6.4,Brisbane Heat,AI Ross,BB McCullum,JM Bird,0,0,,,,,,"","",6.3,,,,
+ball,1,6.5,Brisbane Heat,AI Ross,BB McCullum,JM Bird,1,0,,,,,,"","",6.4,,,,
+ball,1,6.6,Brisbane Heat,BB McCullum,AI Ross,JM Bird,6,0,,,,,,"","",6.5,,,,
+ball,1,6.7,Brisbane Heat,BB McCullum,AI Ross,JM Bird,0,1,1,,,,,"","",6.6,,,,
+ball,1,6.8,Brisbane Heat,BB McCullum,AI Ross,JM Bird,1,0,,,,,,"","",6.6,,,,
+ball,1,7.1,Brisbane Heat,BB McCullum,AI Ross,J Botha,1,0,,,,,,"","",7.1,,,,
+ball,1,7.2,Brisbane Heat,AI Ross,BB McCullum,J Botha,0,0,,,,,,"","",7.2,,,,
+ball,1,7.3,Brisbane Heat,AI Ross,BB McCullum,J Botha,1,0,,,,,,"","",7.3,,,,
+ball,1,7.4,Brisbane Heat,BB McCullum,AI Ross,J Botha,0,0,,,,,,"","",7.4,,,,
+ball,1,7.5,Brisbane Heat,BB McCullum,AI Ross,J Botha,0,1,,,,1,,"","",7.5,,,,
+ball,1,7.6,Brisbane Heat,AI Ross,BB McCullum,J Botha,1,0,,,,,,"","",7.6,,,,
+ball,1,8.1,Brisbane Heat,AI Ross,BB McCullum,SA Abbott,1,0,,,,,,"","",8.1,,,,
+ball,1,8.2,Brisbane Heat,BB McCullum,AI Ross,SA Abbott,1,0,,,,,,"","",8.2,,,,
+ball,1,8.3,Brisbane Heat,AI Ross,BB McCullum,SA Abbott,0,0,,,,,,"","",8.3,,,,
+ball,1,8.4,Brisbane Heat,AI Ross,BB McCullum,SA Abbott,0,0,,,,,,"","",8.4,,,,
+ball,1,8.5,Brisbane Heat,AI Ross,BB McCullum,SA Abbott,1,0,,,,,,"","",8.5,,,,
+ball,1,8.6,Brisbane Heat,BB McCullum,AI Ross,SA Abbott,0,0,,,,,,"","",8.6,,,,
+ball,1,9.1,Brisbane Heat,AI Ross,BB McCullum,J Botha,1,0,,,,,,"","",9.1,,,,
+ball,1,9.2,Brisbane Heat,BB McCullum,AI Ross,J Botha,6,0,,,,,,"","",9.2,,,,
+ball,1,9.3,Brisbane Heat,BB McCullum,AI Ross,J Botha,0,0,,,,,,"","",9.3,,,,
+ball,1,9.4,Brisbane Heat,BB McCullum,AI Ross,J Botha,1,0,,,,,,"","",9.4,,,,
+ball,1,9.5,Brisbane Heat,AI Ross,BB McCullum,J Botha,2,0,,,,,,"","",9.5,,,,
+ball,1,9.6,Brisbane Heat,AI Ross,BB McCullum,J Botha,0,0,,,,,,"","",9.6,,,,
+ball,1,10.1,Brisbane Heat,BB McCullum,AI Ross,BJ Dwarshuis,4,0,,,,,,"","",10.1,,,,
+ball,1,10.2,Brisbane Heat,BB McCullum,AI Ross,BJ Dwarshuis,1,0,,,,,,"","",10.2,,,,
+ball,1,10.3,Brisbane Heat,AI Ross,BB McCullum,BJ Dwarshuis,0,0,,,,,,"","",10.3,,,,
+ball,1,10.4,Brisbane Heat,AI Ross,BB McCullum,BJ Dwarshuis,1,0,,,,,,"","",10.4,,,,
+ball,1,10.5,Brisbane Heat,BB McCullum,AI Ross,BJ Dwarshuis,2,0,,,,,,"","",10.5,,,,
+ball,1,10.6,Brisbane Heat,BB McCullum,AI Ross,BJ Dwarshuis,1,0,,,,,,"","",10.6,,,,
+ball,1,11.1,Brisbane Heat,BB McCullum,AI Ross,NM Lyon,4,0,,,,,,"","",11.1,,,,
+ball,1,11.2,Brisbane Heat,BB McCullum,AI Ross,NM Lyon,0,0,,,,,,caught,BB McCullum,11.2,,SA Abbott,,
+ball,1,11.3,Brisbane Heat,JA Burns,AI Ross,NM Lyon,2,0,,,,,,"","",11.3,,,,
+ball,1,11.4,Brisbane Heat,JA Burns,AI Ross,NM Lyon,6,0,,,,,,"","",11.4,,,,
+ball,1,11.5,Brisbane Heat,JA Burns,AI Ross,NM Lyon,0,0,,,,,,"","",11.5,,,,
+ball,1,11.6,Brisbane Heat,JA Burns,AI Ross,NM Lyon,2,0,,,,,,"","",11.6,,,,
+ball,1,12.1,Brisbane Heat,AI Ross,JA Burns,JM Bird,1,0,,,,,,"","",12.1,,,,
+ball,1,12.2,Brisbane Heat,JA Burns,AI Ross,JM Bird,0,0,,,,,,"","",12.2,,,,
+ball,1,12.3,Brisbane Heat,JA Burns,AI Ross,JM Bird,4,0,,,,,,"","",12.3,,,,
+ball,1,12.4,Brisbane Heat,JA Burns,AI Ross,JM Bird,1,0,,,,,,"","",12.4,,,,
+ball,1,12.5,Brisbane Heat,AI Ross,JA Burns,JM Bird,1,0,,,,,,"","",12.5,,,,
+ball,1,12.6,Brisbane Heat,JA Burns,AI Ross,JM Bird,2,0,,,,,,"","",12.6,,,,
+ball,1,13.1,Brisbane Heat,AI Ross,JA Burns,NM Lyon,0,0,,,,,,caught,AI Ross,13.1,,SA Abbott,,
+ball,1,13.2,Brisbane Heat,JA Burns,BCJ Cutting,NM Lyon,1,0,,,,,,"","",13.2,,,,
+ball,1,13.3,Brisbane Heat,BCJ Cutting,JA Burns,NM Lyon,0,0,,,,,,caught,BCJ Cutting,13.3,,MJ Lumb,,
+ball,1,13.4,Brisbane Heat,M Labuschagne,JA Burns,NM Lyon,1,0,,,,,,"","",13.4,,,,
+ball,1,13.5,Brisbane Heat,JA Burns,M Labuschagne,NM Lyon,1,0,,,,,,"","",13.5,,,,
+ball,1,13.6,Brisbane Heat,M Labuschagne,JA Burns,NM Lyon,1,0,,,,,,"","",13.6,,,,
+ball,1,14.1,Brisbane Heat,M Labuschagne,JA Burns,BJ Dwarshuis,1,0,,,,,,"","",14.1,,,,
+ball,1,14.2,Brisbane Heat,JA Burns,M Labuschagne,BJ Dwarshuis,1,0,,,,,,"","",14.2,,,,
+ball,1,14.3,Brisbane Heat,M Labuschagne,JA Burns,BJ Dwarshuis,1,0,,,,,,"","",14.3,,,,
+ball,1,14.4,Brisbane Heat,JA Burns,M Labuschagne,BJ Dwarshuis,0,0,,,,,,"","",14.4,,,,
+ball,1,14.5,Brisbane Heat,JA Burns,M Labuschagne,BJ Dwarshuis,0,0,,,,,,caught,JA Burns,14.5,,BJ Haddin,,
+ball,1,14.6,Brisbane Heat,JD Wildermuth,M Labuschagne,BJ Dwarshuis,1,0,,,,,,"","",14.6,,,,
+ball,1,15.1,Brisbane Heat,JD Wildermuth,M Labuschagne,J Botha,0,0,,,,,,"","",15.1,,,,
+ball,1,15.2,Brisbane Heat,JD Wildermuth,M Labuschagne,J Botha,1,0,,,,,,"","",15.2,,,,
+ball,1,15.3,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,1,0,,,,,,"","",15.3,,,,
+ball,1,15.4,Brisbane Heat,JD Wildermuth,M Labuschagne,J Botha,1,0,,,,,,"","",15.4,,,,
+ball,1,15.5,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,1,0,,,,,,"","",15.5,,,,
+ball,1,15.6,Brisbane Heat,JD Wildermuth,M Labuschagne,J Botha,0,5,5,,,,,"","",15.6,,,,
+ball,1,15.7,Brisbane Heat,JD Wildermuth,M Labuschagne,J Botha,1,0,,,,,,"","",15.6,,,,
+ball,1,16.1,Brisbane Heat,JD Wildermuth,M Labuschagne,SA Abbott,6,0,,,,,,"","",16.1,,,,
+ball,1,16.2,Brisbane Heat,JD Wildermuth,M Labuschagne,SA Abbott,1,0,,,,,,"","",16.2,,,,
+ball,1,16.3,Brisbane Heat,M Labuschagne,JD Wildermuth,SA Abbott,1,0,,,,,,"","",16.3,,,,
+ball,1,16.4,Brisbane Heat,JD Wildermuth,M Labuschagne,SA Abbott,6,0,,,,,,"","",16.4,,,,
+ball,1,16.5,Brisbane Heat,JD Wildermuth,M Labuschagne,SA Abbott,2,0,,,,,,"","",16.5,,,,
+ball,1,16.6,Brisbane Heat,JD Wildermuth,M Labuschagne,SA Abbott,4,0,,,,,,"","",16.6,,,,
+ball,1,17.1,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,1,0,,,,,,"","",17.1,,,,
+ball,1,17.2,Brisbane Heat,JD Wildermuth,M Labuschagne,J Botha,1,0,,,,,,"","",17.2,,,,
+ball,1,17.3,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,2,0,,,,,,"","",17.3,,,,
+ball,1,17.4,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,4,0,,,,,,"","",17.4,,,,
+ball,1,17.5,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,0,0,,,,,,"","",17.5,,,,
+ball,1,17.6,Brisbane Heat,M Labuschagne,JD Wildermuth,J Botha,1,0,,,,,,"","",17.6,,,,
+ball,1,18.1,Brisbane Heat,M Labuschagne,JD Wildermuth,BJ Dwarshuis,1,0,,,,,,"","",18.1,,,,
+ball,1,18.2,Brisbane Heat,JD Wildermuth,M Labuschagne,BJ Dwarshuis,0,0,,,,,,"","",18.2,,,,
+ball,1,18.3,Brisbane Heat,JD Wildermuth,M Labuschagne,BJ Dwarshuis,4,1,,1,,,,"","",18.3,,,,
+ball,1,18.4,Brisbane Heat,JD Wildermuth,M Labuschagne,BJ Dwarshuis,1,0,,,,,,"","",18.3,,,,
+ball,1,18.5,Brisbane Heat,M Labuschagne,JD Wildermuth,BJ Dwarshuis,2,0,,,,,,"","",18.4,,,,
+ball,1,18.6,Brisbane Heat,M Labuschagne,JD Wildermuth,BJ Dwarshuis,1,0,,,,,,"","",18.5,,,,
+ball,1,18.7,Brisbane Heat,JD Wildermuth,M Labuschagne,BJ Dwarshuis,0,1,,,,1,,"","",18.6,,,,
+ball,1,19.1,Brisbane Heat,JD Wildermuth,M Labuschagne,SA Abbott,0,0,,,,,,caught,JD Wildermuth,19.1,,NM Lyon,,
+ball,1,19.2,Brisbane Heat,M Labuschagne,MT Steketee,SA Abbott,1,0,,,,,,"","",19.2,,,,
+ball,1,19.3,Brisbane Heat,MT Steketee,M Labuschagne,SA Abbott,0,0,,,,,,caught,MT Steketee,19.3,,NM Lyon,,
+ball,1,19.4,Brisbane Heat,M Labuschagne,MJ Swepson,SA Abbott,0,0,,,,,,caught,M Labuschagne,19.4,,BJ Haddin,,
+ball,1,19.5,Brisbane Heat,S Badree,MJ Swepson,SA Abbott,2,0,,,,,,"","",19.5,,,,
+ball,1,19.6,Brisbane Heat,S Badree,MJ Swepson,SA Abbott,4,0,,,,,,"","",19.6,,,,
+ball,2,0.1,Sydney Sixers,DP Hughes,NJ Maddinson,JA Burns,1,0,,,,,,"","",0.1,,,,
+ball,2,0.2,Sydney Sixers,NJ Maddinson,DP Hughes,JA Burns,0,0,,,,,,"","",0.2,,,,
+ball,2,0.3,Sydney Sixers,NJ Maddinson,DP Hughes,JA Burns,1,0,,,,,,"","",0.3,,,,
+ball,2,0.4,Sydney Sixers,DP Hughes,NJ Maddinson,JA Burns,1,0,,,,,,"","",0.4,,,,
+ball,2,0.5,Sydney Sixers,NJ Maddinson,DP Hughes,JA Burns,0,0,,,,,,bowled,NJ Maddinson,0.5,,,,
+ball,2,0.6,Sydney Sixers,C Munro,DP Hughes,JA Burns,3,0,,,,,,"","",0.6,,,,
+ball,2,1.1,Sydney Sixers,C Munro,DP Hughes,S Badree,1,0,,,,,,"","",1.1,,,,
+ball,2,1.2,Sydney Sixers,DP Hughes,C Munro,S Badree,0,0,,,,,,"","",1.2,,,,
+ball,2,1.3,Sydney Sixers,DP Hughes,C Munro,S Badree,1,0,,,,,,"","",1.3,,,,
+ball,2,1.4,Sydney Sixers,C Munro,DP Hughes,S Badree,4,0,,,,,,"","",1.4,,,,
+ball,2,1.5,Sydney Sixers,C Munro,DP Hughes,S Badree,0,0,,,,,,"","",1.5,,,,
+ball,2,1.6,Sydney Sixers,C Munro,DP Hughes,S Badree,4,0,,,,,,"","",1.6,,,,
+ball,2,2.1,Sydney Sixers,DP Hughes,C Munro,JA Burns,0,0,,,,,,"","",2.1,,,,
+ball,2,2.2,Sydney Sixers,DP Hughes,C Munro,JA Burns,1,0,,,,,,"","",2.2,,,,
+ball,2,2.3,Sydney Sixers,C Munro,DP Hughes,JA Burns,4,0,,,,,,"","",2.3,,,,
+ball,2,2.4,Sydney Sixers,C Munro,DP Hughes,JA Burns,0,0,,,,,,"","",2.4,,,,
+ball,2,2.5,Sydney Sixers,C Munro,DP Hughes,JA Burns,4,0,,,,,,"","",2.5,,,,
+ball,2,2.6,Sydney Sixers,C Munro,DP Hughes,JA Burns,2,0,,,,,,"","",2.6,,,,
+ball,2,3.1,Sydney Sixers,DP Hughes,C Munro,S Badree,1,0,,,,,,"","",3.1,,,,
+ball,2,3.2,Sydney Sixers,C Munro,DP Hughes,S Badree,1,0,,,,,,"","",3.2,,,,
+ball,2,3.3,Sydney Sixers,DP Hughes,C Munro,S Badree,4,0,,,,,,"","",3.3,,,,
+ball,2,3.4,Sydney Sixers,DP Hughes,C Munro,S Badree,0,0,,,,,,"","",3.4,,,,
+ball,2,3.5,Sydney Sixers,DP Hughes,C Munro,S Badree,1,0,,,,,,"","",3.5,,,,
+ball,2,3.6,Sydney Sixers,C Munro,DP Hughes,S Badree,0,0,,,,,,caught,C Munro,3.6,,BB McCullum,,
+ball,2,4.1,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,0,0,,,,,,"","",4.1,,,,
+ball,2,4.2,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,0,0,,,,,,"","",4.2,,,,
+ball,2,4.3,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,0,0,,,,,,"","",4.3,,,,
+ball,2,4.4,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,2,0,,,,,,"","",4.4,,,,
+ball,2,4.5,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,0,0,,,,,,"","",4.5,,,,
+ball,2,4.6,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,1,0,,,,,,"","",4.6,,,,
+ball,2,5.1,Sydney Sixers,DP Hughes,MC Henriques,S Badree,1,0,,,,,,"","",5.1,,,,
+ball,2,5.2,Sydney Sixers,MC Henriques,DP Hughes,S Badree,1,0,,,,,,"","",5.2,,,,
+ball,2,5.3,Sydney Sixers,DP Hughes,MC Henriques,S Badree,0,0,,,,,,"","",5.3,,,,
+ball,2,5.4,Sydney Sixers,DP Hughes,MC Henriques,S Badree,4,0,,,,,,"","",5.4,,,,
+ball,2,5.5,Sydney Sixers,DP Hughes,MC Henriques,S Badree,0,0,,,,,,"","",5.5,,,,
+ball,2,5.6,Sydney Sixers,DP Hughes,MC Henriques,S Badree,0,0,,,,,,"","",5.6,,,,
+ball,2,6.1,Sydney Sixers,MC Henriques,DP Hughes,MT Steketee,1,0,,,,,,"","",6.1,,,,
+ball,2,6.2,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,1,0,,,,,,"","",6.2,,,,
+ball,2,6.3,Sydney Sixers,MC Henriques,DP Hughes,MT Steketee,1,0,,,,,,"","",6.3,,,,
+ball,2,6.4,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,4,0,,,,,,"","",6.4,,,,
+ball,2,6.5,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,0,0,,,,,,"","",6.5,,,,
+ball,2,6.6,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,1,0,,,,,,"","",6.6,,,,
+ball,2,7.1,Sydney Sixers,DP Hughes,MC Henriques,MJ Swepson,1,0,,,,,,"","",7.1,,,,
+ball,2,7.2,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,1,0,,,,,,"","",7.2,,,,
+ball,2,7.3,Sydney Sixers,DP Hughes,MC Henriques,MJ Swepson,1,0,,,,,,"","",7.3,,,,
+ball,2,7.4,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,2,0,,,,,,"","",7.4,,,,
+ball,2,7.5,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,1,0,,,,,,"","",7.5,,,,
+ball,2,7.6,Sydney Sixers,DP Hughes,MC Henriques,MJ Swepson,0,0,,,,,,"","",7.6,,,,
+ball,2,8.1,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,1,0,,,,,,"","",8.1,,,,
+ball,2,8.2,Sydney Sixers,DP Hughes,MC Henriques,JD Wildermuth,4,0,,,,,,"","",8.2,,,,
+ball,2,8.3,Sydney Sixers,DP Hughes,MC Henriques,JD Wildermuth,1,0,,,,,,"","",8.3,,,,
+ball,2,8.4,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,2,0,,,,,,"","",8.4,,,,
+ball,2,8.5,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,0,0,,,,,,"","",8.5,,,,
+ball,2,8.6,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,1,0,,,,,,"","",8.6,,,,
+ball,2,9.1,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,4,0,,,,,,"","",9.1,,,,
+ball,2,9.2,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,0,0,,,,,,"","",9.2,,,,
+ball,2,9.3,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,4,0,,,,,,"","",9.3,,,,
+ball,2,9.4,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,4,0,,,,,,"","",9.4,,,,
+ball,2,9.5,Sydney Sixers,MC Henriques,DP Hughes,MJ Swepson,1,0,,,,,,"","",9.5,,,,
+ball,2,9.6,Sydney Sixers,DP Hughes,MC Henriques,MJ Swepson,2,0,,,,,,"","",9.6,,,,
+ball,2,10.1,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,1,0,,,,,,"","",10.1,,,,
+ball,2,10.2,Sydney Sixers,DP Hughes,MC Henriques,JD Wildermuth,1,0,,,,,,"","",10.2,,,,
+ball,2,10.3,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,4,0,,,,,,"","",10.3,,,,
+ball,2,10.4,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,3,0,,,,,,"","",10.4,,,,
+ball,2,10.5,Sydney Sixers,DP Hughes,MC Henriques,JD Wildermuth,1,0,,,,,,"","",10.5,,,,
+ball,2,10.6,Sydney Sixers,MC Henriques,DP Hughes,JD Wildermuth,1,0,,,,,,"","",10.6,,,,
+ball,2,11.1,Sydney Sixers,MC Henriques,DP Hughes,M Labuschagne,2,0,,,,,,"","",11.1,,,,
+ball,2,11.2,Sydney Sixers,MC Henriques,DP Hughes,M Labuschagne,6,0,,,,,,"","",11.2,,,,
+ball,2,11.3,Sydney Sixers,MC Henriques,DP Hughes,M Labuschagne,0,0,,,,,,"","",11.3,,,,
+ball,2,11.4,Sydney Sixers,MC Henriques,DP Hughes,M Labuschagne,4,0,,,,,,"","",11.4,,,,
+ball,2,11.5,Sydney Sixers,MC Henriques,DP Hughes,M Labuschagne,6,0,,,,,,"","",11.5,,,,
+ball,2,11.6,Sydney Sixers,MC Henriques,DP Hughes,M Labuschagne,0,0,,,,,,"","",11.6,,,,
+ball,2,12.1,Sydney Sixers,DP Hughes,MC Henriques,BCJ Cutting,0,1,1,,,,,"","",12.1,,,,
+ball,2,12.2,Sydney Sixers,DP Hughes,MC Henriques,BCJ Cutting,2,0,,,,,,"","",12.1,,,,
+ball,2,12.3,Sydney Sixers,DP Hughes,MC Henriques,BCJ Cutting,1,0,,,,,,"","",12.2,,,,
+ball,2,12.4,Sydney Sixers,MC Henriques,DP Hughes,BCJ Cutting,1,0,,,,,,"","",12.3,,,,
+ball,2,12.5,Sydney Sixers,DP Hughes,MC Henriques,BCJ Cutting,3,0,,,,,,"","",12.4,,,,
+ball,2,12.6,Sydney Sixers,MC Henriques,DP Hughes,BCJ Cutting,1,0,,,,,,"","",12.5,,,,
+ball,2,12.7,Sydney Sixers,DP Hughes,MC Henriques,BCJ Cutting,1,0,,,,,,"","",12.6,,,,
+ball,2,13.1,Sydney Sixers,DP Hughes,MC Henriques,S Badree,1,0,,,,,,"","",13.1,,,,
+ball,2,13.2,Sydney Sixers,MC Henriques,DP Hughes,S Badree,1,0,,,,,,"","",13.2,,,,
+ball,2,13.3,Sydney Sixers,DP Hughes,MC Henriques,S Badree,0,0,,,,,,"","",13.3,,,,
+ball,2,13.4,Sydney Sixers,DP Hughes,MC Henriques,S Badree,0,0,,,,,,"","",13.4,,,,
+ball,2,13.5,Sydney Sixers,DP Hughes,MC Henriques,S Badree,1,0,,,,,,"","",13.5,,,,
+ball,2,13.6,Sydney Sixers,MC Henriques,DP Hughes,S Badree,6,0,,,,,,"","",13.6,,,,
+ball,2,14.1,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,1,0,,,,,,"","",14.1,,,,
+ball,2,14.2,Sydney Sixers,MC Henriques,DP Hughes,MT Steketee,1,0,,,,,,"","",14.2,,,,
+ball,2,14.3,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,1,0,,,,,,"","",14.3,,,,
+ball,2,14.4,Sydney Sixers,MC Henriques,DP Hughes,MT Steketee,1,0,,,,,,"","",14.4,,,,
+ball,2,14.5,Sydney Sixers,DP Hughes,MC Henriques,MT Steketee,0,0,,,,,,caught,DP Hughes,14.5,,M Labuschagne,,
+ball,2,14.6,Sydney Sixers,MC Henriques,MJ Lumb,MT Steketee,1,0,,,,,,"","",14.6,,,,
+ball,2,15.1,Sydney Sixers,MC Henriques,MJ Lumb,MJ Swepson,1,0,,,,,,"","",15.1,,,,
+ball,2,15.2,Sydney Sixers,MJ Lumb,MC Henriques,MJ Swepson,0,0,,,,,,"","",15.2,,,,
+ball,2,15.3,Sydney Sixers,MJ Lumb,MC Henriques,MJ Swepson,2,0,,,,,,"","",15.3,,,,
+ball,2,15.4,Sydney Sixers,MJ Lumb,MC Henriques,MJ Swepson,0,0,,,,,,stumped,MJ Lumb,15.4,,JJ Peirson,,
+ball,2,15.5,Sydney Sixers,BJ Haddin,MC Henriques,MJ Swepson,2,0,,,,,,"","",15.5,,,,
+ball,2,15.6,Sydney Sixers,BJ Haddin,MC Henriques,MJ Swepson,1,0,,,,,,"","",15.6,,,,
+ball,2,16.1,Sydney Sixers,BJ Haddin,MC Henriques,MT Steketee,1,0,,,,,,"","",16.1,,,,
+ball,2,16.2,Sydney Sixers,MC Henriques,BJ Haddin,MT Steketee,0,1,1,,,,,"","",16.2,,,,
+ball,2,16.3,Sydney Sixers,MC Henriques,BJ Haddin,MT Steketee,0,0,,,,,,caught,MC Henriques,16.2,,JA Burns,,
+ball,2,16.4,Sydney Sixers,BJ Haddin,J Botha,MT Steketee,0,0,,,,,,"","",16.3,,,,
+ball,2,16.5,Sydney Sixers,BJ Haddin,J Botha,MT Steketee,2,0,,,,,,"","",16.4,,,,
+ball,2,16.6,Sydney Sixers,BJ Haddin,J Botha,MT Steketee,1,0,,,,,,"","",16.5,,,,
+ball,2,16.7,Sydney Sixers,J Botha,BJ Haddin,MT Steketee,0,0,,,,,,"","",16.6,,,,
+ball,2,17.1,Sydney Sixers,BJ Haddin,J Botha,MJ Swepson,0,0,,,,,,run out,BJ Haddin,17.1,,S Badree,JJ Peirson,
+ball,2,17.2,Sydney Sixers,SA Abbott,J Botha,MJ Swepson,1,0,,,,,,"","",17.2,,,,
+ball,2,17.3,Sydney Sixers,J Botha,SA Abbott,MJ Swepson,1,0,,,,,,"","",17.3,,,,
+ball,2,17.4,Sydney Sixers,SA Abbott,J Botha,MJ Swepson,1,0,,,,,,"","",17.4,,,,
+ball,2,17.5,Sydney Sixers,J Botha,SA Abbott,MJ Swepson,0,0,,,,,,"","",17.5,,,,
+ball,2,17.6,Sydney Sixers,J Botha,SA Abbott,MJ Swepson,1,0,,,,,,"","",17.6,,,,
+ball,2,18.1,Sydney Sixers,J Botha,SA Abbott,JD Wildermuth,4,0,,,,,,"","",18.1,,,,
+ball,2,18.2,Sydney Sixers,J Botha,SA Abbott,JD Wildermuth,4,0,,,,,,"","",18.2,,,,
+ball,2,18.3,Sydney Sixers,J Botha,SA Abbott,JD Wildermuth,0,0,,,,,,"","",18.3,,,,
+ball,2,18.4,Sydney Sixers,J Botha,SA Abbott,JD Wildermuth,4,0,,,,,,"","",18.4,,,,
+ball,2,18.5,Sydney Sixers,J Botha,SA Abbott,JD Wildermuth,1,0,,,,,,"","",18.5,,,,
+ball,2,18.6,Sydney Sixers,SA Abbott,J Botha,JD Wildermuth,0,0,,,,,,caught,SA Abbott,18.6,,M Labuschagne,,
+ball,2,19.1,Sydney Sixers,J Botha,BJ Dwarshuis,BCJ Cutting,0,0,,,,,,"","",19.1,,,,
+ball,2,19.2,Sydney Sixers,J Botha,BJ Dwarshuis,BCJ Cutting,1,0,,,,,,"","",19.2,,,,
+ball,2,19.3,Sydney Sixers,BJ Dwarshuis,J Botha,BCJ Cutting,1,0,,,,,,"","",19.3,,,,
+ball,2,19.4,Sydney Sixers,J Botha,BJ Dwarshuis,BCJ Cutting,0,0,,,,,,caught,J Botha,19.4,,JJ Peirson,,
+ball,2,19.5,Sydney Sixers,NM Lyon,BJ Dwarshuis,BCJ Cutting,0,1,,,,1,,"","",19.5,,,,
+ball,2,19.6,Sydney Sixers,BJ Dwarshuis,NM Lyon,BCJ Cutting,2,0,,,,,,"","",19.6,,,,
+ball,3,0.1,Sydney Sixers,C Munro,MC Henriques,BCJ Cutting,0,1,,,1,,,"","",0.1,,,,
+ball,3,0.2,Sydney Sixers,MC Henriques,C Munro,BCJ Cutting,2,0,,,,,,"","",0.2,,,,
+ball,3,0.3,Sydney Sixers,MC Henriques,C Munro,BCJ Cutting,6,0,,,,,,"","",0.3,,,,
+ball,3,0.4,Sydney Sixers,MC Henriques,C Munro,BCJ Cutting,0,2,,2,,,,"","",0.4,,,,
+ball,3,0.5,Sydney Sixers,C Munro,MC Henriques,BCJ Cutting,0,1,,,1,,,"","",0.4,,,,
+ball,3,0.6,Sydney Sixers,MC Henriques,C Munro,BCJ Cutting,6,0,,,,,,"","",0.5,,,,
+ball,3,0.7,Sydney Sixers,MC Henriques,C Munro,BCJ Cutting,4,0,,,,,,"","",0.6,,,,
+ball,4,0.1,Brisbane Heat,BB McCullum,BCJ Cutting,SA Abbott,0,0,,,,,,"","",0.1,,,,
+ball,4,0.2,Brisbane Heat,BB McCullum,BCJ Cutting,SA Abbott,2,0,,,,,,"","",0.2,,,,
+ball,4,0.3,Brisbane Heat,BB McCullum,BCJ Cutting,SA Abbott,0,1,1,,,,,"","",0.3,,,,
+ball,4,0.4,Brisbane Heat,BB McCullum,BCJ Cutting,SA Abbott,4,0,,,,,,"","",0.3,,,,
+ball,4,0.5,Brisbane Heat,BB McCullum,BCJ Cutting,SA Abbott,1,0,,,,,,"","",0.4,,,,
+ball,4,0.6,Brisbane Heat,BCJ Cutting,BB McCullum,SA Abbott,1,0,,,,,,"","",0.5,,,,
+ball,4,0.7,Brisbane Heat,BB McCullum,BCJ Cutting,SA Abbott,6,0,,,,,,"","",0.6,,,,

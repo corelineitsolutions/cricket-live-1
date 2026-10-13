@@ -1,0 +1,173 @@
+version,1.8.0
+info,balls_per_over,6
+info,team,Trinidad and Tobago
+info,team,Windward Islands
+info,team_type,club
+info,gender,female
+info,season,2018/19
+info,date,2019/03/29
+info,event,Women's T20 Blaze
+info,match_id,wi_201706
+info,match_type,T20
+info,overs,20
+info,venue,"Guyana National Stadium, Providence"
+info,city,
+info,toss_winner,Windward Islands
+info,toss_decision,bat
+info,umpire,B Joseph
+info,umpire,Ryan Willoughby
+info,winner,Trinidad and Tobago
+info,winner_wickets,7
+info,method,D/L
+info,player,Trinidad and Tobago,SACA King
+info,player,Trinidad and Tobago,LAGL Kirby
+info,player,Trinidad and Tobago,B Cooper
+info,player,Trinidad and Tobago,R Vincent
+info,player,Trinidad and Tobago,R Boyce
+info,player,Trinidad and Tobago,MR Aguilleira
+info,player,Trinidad and Tobago,C Isaac
+info,player,Trinidad and Tobago,A Mohammed
+info,player,Trinidad and Tobago,L Ramdeen
+info,player,Trinidad and Tobago,K Ramharack
+info,player,Trinidad and Tobago,F Walters
+info,player,Windward Islands,CP Jack
+info,player,Windward Islands,SN Adams
+info,player,Windward Islands,JB Nero
+info,player,Windward Islands,ASS Fletcher
+info,player,Windward Islands,AK Peters
+info,player,Windward Islands,NK Crafton
+info,player,Windward Islands,PS Etienne
+info,player,Windward Islands,K Homer
+info,player,Windward Islands,Q Joseph
+info,player,Windward Islands,C Noel
+info,player,Windward Islands,EG Turtin
+info,registry,people,A Mohammed,a49985e6
+info,registry,people,AK Peters,badd245f
+info,registry,people,ASS Fletcher,42d9dd09
+info,registry,people,B Cooper,ac0edb42
+info,registry,people,B Joseph,b77d2322
+info,registry,people,C Isaac,f9258912
+info,registry,people,C Noel,83848df7
+info,registry,people,CP Jack,32a32368
+info,registry,people,EG Turtin,dadccb0e
+info,registry,people,F Walters,2d42b539
+info,registry,people,JB Nero,7bf606c6
+info,registry,people,K Homer,4dae1243
+info,registry,people,K Ramharack,321c980e
+info,registry,people,L Ramdeen,632fbfbc
+info,registry,people,LAGL Kirby,fe6d2da9
+info,registry,people,MR Aguilleira,4e7aa570
+info,registry,people,NK Crafton,6fa7dcd8
+info,registry,people,PS Etienne,5fab5186
+info,registry,people,Q Joseph,d6164dc0
+info,registry,people,R Boyce,98d4cb14
+info,registry,people,R Vincent,3431c12e
+info,registry,people,Ryan Willoughby,ae172431
+info,registry,people,SACA King,77851c2d
+info,registry,people,SN Adams,5b61afae
+ball,1,0.1,Windward Islands,CP Jack,SN Adams,C Isaac,1,0,,,,,,"","",0.1,,,,
+ball,1,0.2,Windward Islands,SN Adams,CP Jack,C Isaac,0,0,,,,,,"","",0.2,,,,
+ball,1,0.3,Windward Islands,SN Adams,CP Jack,C Isaac,1,0,,,,,,"","",0.3,,,,
+ball,1,0.4,Windward Islands,CP Jack,SN Adams,C Isaac,0,0,,,,,,"","",0.4,,,,
+ball,1,0.5,Windward Islands,CP Jack,SN Adams,C Isaac,0,0,,,,,,"","",0.5,,,,
+ball,1,0.6,Windward Islands,CP Jack,SN Adams,C Isaac,1,0,,,,,,"","",0.6,,,,
+ball,1,1.1,Windward Islands,CP Jack,SN Adams,A Mohammed,1,0,,,,,,"","",1.1,,,,
+ball,1,1.2,Windward Islands,SN Adams,CP Jack,A Mohammed,1,0,,,,,,"","",1.2,,,,
+ball,1,1.3,Windward Islands,CP Jack,SN Adams,A Mohammed,0,0,,,,,,"","",1.3,,,,
+ball,1,1.4,Windward Islands,CP Jack,SN Adams,A Mohammed,0,0,,,,,,"","",1.4,,,,
+ball,1,1.5,Windward Islands,CP Jack,SN Adams,A Mohammed,1,0,,,,,,"","",1.5,,,,
+ball,1,1.6,Windward Islands,SN Adams,CP Jack,A Mohammed,1,0,,,,,,"","",1.6,,,,
+ball,1,2.1,Windward Islands,SN Adams,CP Jack,C Isaac,1,0,,,,,,"","",2.1,,,,
+ball,1,2.2,Windward Islands,CP Jack,SN Adams,C Isaac,4,0,,,,,,"","",2.2,,,,
+ball,1,2.3,Windward Islands,CP Jack,SN Adams,C Isaac,4,0,,,,,,"","",2.3,,,,
+ball,1,2.4,Windward Islands,CP Jack,SN Adams,C Isaac,0,0,,,,,,"","",2.4,,,,
+ball,1,2.5,Windward Islands,CP Jack,SN Adams,C Isaac,0,0,,,,,,"","",2.5,,,,
+ball,1,2.6,Windward Islands,CP Jack,SN Adams,C Isaac,0,0,,,,,,"","",2.6,,,,
+ball,1,3.1,Windward Islands,SN Adams,CP Jack,A Mohammed,0,0,,,,,,"","",3.1,,,,
+ball,1,3.2,Windward Islands,SN Adams,CP Jack,A Mohammed,1,0,,,,,,"","",3.2,,,,
+ball,1,3.3,Windward Islands,CP Jack,SN Adams,A Mohammed,0,0,,,,,,bowled,CP Jack,3.3,,,,
+ball,1,3.4,Windward Islands,JB Nero,SN Adams,A Mohammed,0,0,,,,,,"","",3.4,,,,
+ball,1,3.5,Windward Islands,JB Nero,SN Adams,A Mohammed,4,0,,,,,,"","",3.5,,,,
+ball,1,3.6,Windward Islands,JB Nero,SN Adams,A Mohammed,0,0,,,,,,"","",3.6,,,,
+ball,1,4.1,Windward Islands,SN Adams,JB Nero,K Ramharack,4,0,,,,,,"","",4.1,,,,
+ball,1,4.2,Windward Islands,SN Adams,JB Nero,K Ramharack,0,0,,,,,,"","",4.2,,,,
+ball,1,4.3,Windward Islands,SN Adams,JB Nero,K Ramharack,2,0,,,,,,"","",4.3,,,,
+ball,1,4.4,Windward Islands,SN Adams,JB Nero,K Ramharack,1,0,,,,,,"","",4.4,,,,
+ball,1,4.5,Windward Islands,JB Nero,SN Adams,K Ramharack,1,0,,,,,,"","",4.5,,,,
+ball,1,4.6,Windward Islands,SN Adams,JB Nero,K Ramharack,1,0,,,,,,"","",4.6,,,,
+ball,1,5.1,Windward Islands,SN Adams,JB Nero,F Walters,1,0,,,,,,"","",5.1,,,,
+ball,1,5.2,Windward Islands,JB Nero,SN Adams,F Walters,0,0,,,,,,"","",5.2,,,,
+ball,1,5.3,Windward Islands,JB Nero,SN Adams,F Walters,0,0,,,,,,"","",5.3,,,,
+ball,1,5.4,Windward Islands,JB Nero,SN Adams,F Walters,1,0,,,,,,"","",5.4,,,,
+ball,1,5.5,Windward Islands,SN Adams,JB Nero,F Walters,0,0,,,,,,stumped,SN Adams,5.5,,MR Aguilleira,,
+ball,1,5.6,Windward Islands,ASS Fletcher,JB Nero,F Walters,0,0,,,,,,"","",5.6,,,,
+ball,1,6.1,Windward Islands,JB Nero,ASS Fletcher,SACA King,0,0,,,,,,"","",6.1,,,,
+ball,1,6.2,Windward Islands,JB Nero,ASS Fletcher,SACA King,1,0,,,,,,"","",6.2,,,,
+ball,1,6.3,Windward Islands,ASS Fletcher,JB Nero,SACA King,1,0,,,,,,"","",6.3,,,,
+ball,1,6.4,Windward Islands,JB Nero,ASS Fletcher,SACA King,1,0,,,,,,"","",6.4,,,,
+ball,1,6.5,Windward Islands,ASS Fletcher,JB Nero,SACA King,2,0,,,,,,"","",6.5,,,,
+ball,1,6.6,Windward Islands,ASS Fletcher,JB Nero,SACA King,4,0,,,,,,"","",6.6,,,,
+ball,1,7.1,Windward Islands,JB Nero,ASS Fletcher,F Walters,2,0,,,,,,"","",7.1,,,,
+ball,1,7.2,Windward Islands,JB Nero,ASS Fletcher,F Walters,1,0,,,,,,"","",7.2,,,,
+ball,1,7.3,Windward Islands,ASS Fletcher,JB Nero,F Walters,1,0,,,,,,"","",7.3,,,,
+ball,1,7.4,Windward Islands,JB Nero,ASS Fletcher,F Walters,1,0,,,,,,"","",7.4,,,,
+ball,1,7.5,Windward Islands,ASS Fletcher,JB Nero,F Walters,1,0,,,,,,"","",7.5,,,,
+ball,1,7.6,Windward Islands,JB Nero,ASS Fletcher,F Walters,1,0,,,,,,"","",7.6,,,,
+ball,1,8.1,Windward Islands,JB Nero,ASS Fletcher,L Ramdeen,0,0,,,,,,"","",8.1,,,,
+ball,1,8.2,Windward Islands,JB Nero,ASS Fletcher,L Ramdeen,0,0,,,,,,"","",8.2,,,,
+ball,1,8.3,Windward Islands,JB Nero,ASS Fletcher,L Ramdeen,4,0,,,,,,"","",8.3,,,,
+ball,1,8.4,Windward Islands,JB Nero,ASS Fletcher,L Ramdeen,0,0,,,,,,"","",8.4,,,,
+ball,1,8.5,Windward Islands,JB Nero,ASS Fletcher,L Ramdeen,1,0,,,,,,"","",8.5,,,,
+ball,1,8.6,Windward Islands,ASS Fletcher,JB Nero,L Ramdeen,0,0,,,,,,"","",8.6,,,,
+ball,1,9.1,Windward Islands,JB Nero,ASS Fletcher,F Walters,1,0,,,,,,"","",9.1,,,,
+ball,1,9.2,Windward Islands,ASS Fletcher,JB Nero,F Walters,4,0,,,,,,"","",9.2,,,,
+ball,1,9.3,Windward Islands,ASS Fletcher,JB Nero,F Walters,0,0,,,,,,bowled,ASS Fletcher,9.3,,,,
+ball,1,9.4,Windward Islands,AK Peters,JB Nero,F Walters,1,0,,,,,,"","",9.4,,,,
+ball,2,0.1,Trinidad and Tobago,SACA King,LAGL Kirby,PS Etienne,4,0,,,,,,"","",0.1,,,,
+ball,2,0.2,Trinidad and Tobago,SACA King,LAGL Kirby,PS Etienne,4,0,,,,,,"","",0.2,,,,
+ball,2,0.3,Trinidad and Tobago,SACA King,LAGL Kirby,PS Etienne,2,0,,,,,,"","",0.3,,,,
+ball,2,0.4,Trinidad and Tobago,SACA King,LAGL Kirby,PS Etienne,1,0,,,,,,"","",0.4,,,,
+ball,2,0.5,Trinidad and Tobago,LAGL Kirby,SACA King,PS Etienne,1,0,,,,,,"","",0.5,,,,
+ball,2,0.6,Trinidad and Tobago,SACA King,LAGL Kirby,PS Etienne,0,0,,,,,,"","",0.6,,,,
+ball,2,1.1,Trinidad and Tobago,LAGL Kirby,SACA King,AK Peters,1,0,,,,,,"","",1.1,,,,
+ball,2,1.2,Trinidad and Tobago,SACA King,LAGL Kirby,AK Peters,1,0,,,,,,"","",1.2,,,,
+ball,2,1.3,Trinidad and Tobago,LAGL Kirby,SACA King,AK Peters,1,0,,,,,,"","",1.3,,,,
+ball,2,1.4,Trinidad and Tobago,SACA King,LAGL Kirby,AK Peters,4,0,,,,,,"","",1.4,,,,
+ball,2,1.5,Trinidad and Tobago,SACA King,LAGL Kirby,AK Peters,1,0,,,,,,"","",1.5,,,,
+ball,2,1.6,Trinidad and Tobago,LAGL Kirby,SACA King,AK Peters,2,0,,,,,,"","",1.6,,,,
+ball,2,2.1,Trinidad and Tobago,SACA King,LAGL Kirby,ASS Fletcher,1,0,,,,,,"","",2.1,,,,
+ball,2,2.2,Trinidad and Tobago,LAGL Kirby,SACA King,ASS Fletcher,0,0,,,,,,"","",2.2,,,,
+ball,2,2.3,Trinidad and Tobago,LAGL Kirby,SACA King,ASS Fletcher,0,0,,,,,,lbw,LAGL Kirby,2.3,,,,
+ball,2,2.4,Trinidad and Tobago,B Cooper,SACA King,ASS Fletcher,1,0,,,,,,"","",2.4,,,,
+ball,2,2.5,Trinidad and Tobago,SACA King,B Cooper,ASS Fletcher,1,0,,,,,,"","",2.5,,,,
+ball,2,2.6,Trinidad and Tobago,B Cooper,SACA King,ASS Fletcher,0,0,,,,,,"","",2.6,,,,
+ball,2,3.1,Trinidad and Tobago,SACA King,B Cooper,AK Peters,1,0,,,,,,"","",3.1,,,,
+ball,2,3.2,Trinidad and Tobago,B Cooper,SACA King,AK Peters,4,0,,,,,,"","",3.2,,,,
+ball,2,3.3,Trinidad and Tobago,B Cooper,SACA King,AK Peters,0,0,,,,,,"","",3.3,,,,
+ball,2,3.4,Trinidad and Tobago,B Cooper,SACA King,AK Peters,0,1,1,,,,,"","",3.4,,,,
+ball,2,3.5,Trinidad and Tobago,B Cooper,SACA King,AK Peters,1,0,,,,,,"","",3.4,,,,
+ball,2,3.6,Trinidad and Tobago,SACA King,B Cooper,AK Peters,1,0,,,,,,"","",3.5,,,,
+ball,2,3.7,Trinidad and Tobago,B Cooper,SACA King,AK Peters,0,0,,,,,,"","",3.6,,,,
+ball,2,4.1,Trinidad and Tobago,SACA King,B Cooper,ASS Fletcher,1,0,,,,,,"","",4.1,,,,
+ball,2,4.2,Trinidad and Tobago,B Cooper,SACA King,ASS Fletcher,1,0,,,,,,"","",4.2,,,,
+ball,2,4.3,Trinidad and Tobago,SACA King,B Cooper,ASS Fletcher,2,0,,,,,,"","",4.3,,,,
+ball,2,4.4,Trinidad and Tobago,SACA King,B Cooper,ASS Fletcher,0,0,,,,,,"","",4.4,,,,
+ball,2,4.5,Trinidad and Tobago,SACA King,B Cooper,ASS Fletcher,1,0,,,,,,"","",4.5,,,,
+ball,2,4.6,Trinidad and Tobago,B Cooper,SACA King,ASS Fletcher,2,0,,,,,,"","",4.6,,,,
+ball,2,5.1,Trinidad and Tobago,SACA King,B Cooper,CP Jack,0,0,,,,,,bowled,SACA King,5.1,,,,
+ball,2,5.2,Trinidad and Tobago,R Vincent,B Cooper,CP Jack,0,0,,,,,,"","",5.2,,,,
+ball,2,5.3,Trinidad and Tobago,R Vincent,B Cooper,CP Jack,1,0,,,,,,"","",5.3,,,,
+ball,2,5.4,Trinidad and Tobago,B Cooper,R Vincent,CP Jack,0,0,,,,,,"","",5.4,,,,
+ball,2,5.5,Trinidad and Tobago,B Cooper,R Vincent,CP Jack,6,0,,,,,,"","",5.5,,,,
+ball,2,5.6,Trinidad and Tobago,B Cooper,R Vincent,CP Jack,1,0,,,,,,"","",5.6,,,,
+ball,2,6.1,Trinidad and Tobago,B Cooper,R Vincent,Q Joseph,0,0,,,,,,"","",6.1,,,,
+ball,2,6.2,Trinidad and Tobago,B Cooper,R Vincent,Q Joseph,0,0,,,,,,run out,R Vincent,6.2,,Q Joseph,,
+ball,2,6.3,Trinidad and Tobago,B Cooper,R Boyce,Q Joseph,1,0,,,,,,"","",6.3,,,,
+ball,2,6.4,Trinidad and Tobago,R Boyce,B Cooper,Q Joseph,0,0,,,,,,"","",6.4,,,,
+ball,2,6.5,Trinidad and Tobago,R Boyce,B Cooper,Q Joseph,1,0,,,,,,"","",6.5,,,,
+ball,2,6.6,Trinidad and Tobago,B Cooper,R Boyce,Q Joseph,2,0,,,,,,"","",6.6,,,,
+ball,2,7.1,Trinidad and Tobago,R Boyce,B Cooper,CP Jack,4,0,,,,,,"","",7.1,,,,
+ball,2,7.2,Trinidad and Tobago,R Boyce,B Cooper,CP Jack,1,0,,,,,,"","",7.2,,,,
+ball,2,7.3,Trinidad and Tobago,B Cooper,R Boyce,CP Jack,0,0,,,,,,"","",7.3,,,,
+ball,2,7.4,Trinidad and Tobago,B Cooper,R Boyce,CP Jack,0,0,,,,,,"","",7.4,,,,
+ball,2,7.5,Trinidad and Tobago,B Cooper,R Boyce,CP Jack,1,0,,,,,,"","",7.5,,,,

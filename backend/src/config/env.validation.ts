@@ -35,6 +35,23 @@ export const envValidationSchema = Joi.object({
     .optional()
     .when('NODE_ENV', { is: 'production', then: Joi.string().allow('').min(32) }),
   SWAGGER_ENABLED: Joi.boolean().default(true),
+  AI_ENABLED: Joi.boolean().default(false),
+  LLM_PROVIDER: Joi.string().valid('mock', 'openai-compatible').default('mock'),
+  LLM_BASE_URL: Joi.string().allow('').default(''),
+  LLM_API_KEY: Joi.string().allow('').default(''),
+  LLM_MODEL: Joi.string().allow('').max(64).default(''),
+  LLM_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(20000),
+  LLM_MAX_OUTPUT_TOKENS: Joi.number().integer().min(64).max(4096).default(600),
+  LLM_COST_PER_1K_INPUT_TOKENS: Joi.number().min(0).default(0),
+  LLM_COST_PER_1K_OUTPUT_TOKENS: Joi.number().min(0).default(0),
+  AI_DAILY_TOKEN_BUDGET: Joi.number().integer().min(0).default(0),
+  AI_MAX_CONCURRENT: Joi.number().integer().min(1).max(100).default(4),
+  AI_REQUESTS_PER_DEVICE_PER_MINUTE: Joi.number().integer().min(1).max(1000).default(5),
+  AI_REQUESTS_PER_DEVICE_PER_DAY: Joi.number().integer().min(1).max(100000).default(50),
+  AI_REQUESTS_PER_IP_PER_MINUTE: Joi.number().integer().min(1).max(10000).default(20),
+  // Below nginx proxy_read_timeout (30 s in deploy/nginx), so clients get AI_TIMEOUT rather than a 504 page.
+  AI_REQUEST_TIMEOUT_MS: Joi.number().integer().min(2000).max(300000).default(25000),
+  AI_HISTORY_ENABLED: Joi.boolean().default(false),
 })
   .unknown(true)
   .prefs({ abortEarly: false, convert: true });

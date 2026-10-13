@@ -1,0 +1,540 @@
+==========================================================================================
+ CRICKET AI ASSISTANT - COMPLETE SETUP GUIDE
+ Project: cricket-live (NestJS backend + Next.js admin)          Written: 9 October 2026
+==========================================================================================
+
+Contents
+  1.  What was built and what is NOT done yet
+  2.  How a question is answered (architecture)
+  3.  Where the code is (file map)
+  4.  Database tables and migrations
+  5.  Configuration (every environment variable)
+  6.  Step-by-step: turning it on (local and production)
+  7.  Free local model with Ollama (optional)
+  8.  Cricsheet history import (the importer CLI)
+  9.  Identity mapping (linking Latiyal ids to Cricsheet)
+  10. API endpoints (app and admin)
+  11. Tools the AI can use
+  12. Limits and safety
+  13. Privacy: what is stored and what is not
+  14. Admin panel pages
+  15. Tests and how to run them
+  16. Troubleshooting
+  17. Known limitations and risks
+  18. Next phases
+  19. Licence and attribution
+
+
+------------------------------------------------------------------------------------------
+1. WHAT WAS BUILT AND WHAT IS NOT DONE YET
+------------------------------------------------------------------------------------------
+
+Built and tested (code only, nothing deployed):
+
+  Phase 0  Verification of the Cricsheet CSV dataset (23,080 files, 11,667,961 deliveries,
+           0 files rejected by the parser in a full dry run).
+  Phase 1  Cricsheet history: streaming CSV parser, hist_* tables, import CLI with resume,
+           rollback, change detection and safety guards, summary (aggregate) tables.
+  Phase 3  Live AI assistant: POST /api/v1/ai/ask in English and Hindi, a free "mock"
+           provider, an OpenAI-compatible adapter (Ollama, vLLM, hosted providers),
+           read-only tools, limits, a daily token budget, privacy-safe usage counters and
+           the admin "AI assistant" page.
+  Phase 2  Identity mapping: proposals by name matching, admin review screen
+           ("Identity mapping"), manual mapping, CONFIRMED-only lookups.
+  Phase 4  Historical statistics tools for the AI: player records, head-to-head, venue
+           records and team phase stats from the archive, always labelled as
+           "Cricsheet archive, not official career totals".
+
+NOT done (each needs your decision or approval):
+
+  - The 3 new migrations are NOT applied to any database.
+  - The Cricsheet archive is NOT imported anywhere (only dry runs, no database).
+  - The AI is OFF (AI_ENABLED=false) and no real AI model is configured or called.
+  - AI_HISTORY_ENABLED is false (turn it on only after migration + import).
+  - Nothing was committed, pushed, deployed, or restarted. PM2 and Nginx were not touched.
+  - The privacy policy page still contains the placeholder "[Your App Name]", has no
+    Contact section, and section 4 still names GoalServe, EntitySport and Sportmonks
+    instead of Latiyal Infotech. Sections 14 (AI Assistant) and 15 (Historical Cricket
+    Data / Cricsheet attribution) were added.
+
+
+------------------------------------------------------------------------------------------
+2. HOW A QUESTION IS ANSWERED (ARCHITECTURE)
+------------------------------------------------------------------------------------------
+
+  Mobile app
+     |  POST /api/v1/ai/ask { question, language, matchId?, deviceId }
+     v
+  AiController -> AiService
+     1. AI_ENABLED?                          no  -> 503 AI_DISABLED
+     2. Provider configured and ready?       no  -> 503 AI_NOT_CONFIGURED
+     3. Limits (Redis, keyed hashes):  per IP / per device per minute / per device per day
+                                             hit -> 429 AI_QUOTA_EXCEEDED
+     4. Daily token budget (real providers)  hit -> 503 AI_BUDGET_EXHAUSTED
+     5. Concurrency cap per API instance     hit -> 503 AI_BUSY
+     6. AiGateway: model <-> tools loop
+          - at most 4 model calls per question (the last call gets no tools)
+          - at most 4 tool calls per round, 8 s per tool, 6,000 characters per tool result
+          - whole question limited by AI_REQUEST_TIMEOUT_MS -> 503 AI_TIMEOUT
+          - provider failure                                -> 502 AI_PROVIDER_ERROR
+     7. Answer (max 2,000 characters) + sources + disclaimer
+     8. Counters only: Redis -> flushed every 5 minutes into MySQL ai_usage_daily
+
+  Tools only READ data through existing services (live scores from Redis, match details,
+  history summary tables through fixed Prisma queries). The model never sees SQL, URLs,
+  the Latiyal token or the API key, and cannot run code.
+
+  Providers:
+    mock               free, deterministic: chooses tools by keywords and answers with
+                       English/Hindi templates. Marked "mocked": true in the response.
+    openai-compatible  any server with POST {LLM_BASE_URL}/chat/completions and tool
+                       calling (Ollama, vLLM, LM Studio, hosted APIs).
+
+
+------------------------------------------------------------------------------------------
+3. WHERE THE CODE IS (FILE MAP)
+------------------------------------------------------------------------------------------
+
+backend/src/ai/
+  ai.module.ts                 wiring; creates the provider (mock / openai-compatible / none)
+  ai.controller.ts             GET /ai/status, POST /ai/ask
+  admin-ai.controller.ts       GET /admin/ai/overview (aggregates only)
+  ai.service.ts                checks, limits, budget, concurrency, timeout, logging
+  ai-gateway.ts                system prompt + bounded model/tool loop
+  ai-usage.service.ts          Redis counters, flush to ai_usage_daily, history
+  ai.constants.ts              error codes, disclaimers (en/hi)
+  dto/ask.dto.ts               request/response validation
+  llm/llm.types.ts             provider interface, token estimate
+  llm/mock-llm.provider.ts     free demo provider (en/hi templates)
+  llm/openai-compatible.provider.ts   HTTP adapter + base URL validation
+  tools/ai-tool.registry.ts    tool execution, timeouts, size limits
+  tools/live-tools.ts          live match tools
+  tools/calculator-tools.ts    required run rate calculator
+  tools/history-tools.ts       Cricsheet archive tools (Phase 4)
+
+backend/src/history/
+  import/*.ts                  CSV tokenizer, parser, file reader, import service,
+                               Prisma store, aggregates builder, safe error messages
+  import/__fixtures__/         6 real Cricsheet files for tests (with attribution README)
+  history-query.service.ts     read-only queries over hist_agg_* tables
+backend/scripts/history-import.ts   the import CLI (npm run history:import)
+
+backend/src/identity/
+  identity-matching.ts         name matching rules (players, teams, venues)
+  identity.service.ts          proposals, review, manual mapping, CONFIRMED lookups
+  admin-identity.controller.ts admin endpoints
+  dto/identity.dto.ts          validation
+
+admin/src/app/(panel)/ai/page.tsx         admin "AI assistant" page
+admin/src/app/(panel)/identity/page.tsx   admin "Identity mapping" page
+admin/src/app/privacy-policy/page.tsx     sections 14 and 15 added
+
+Docs: docs/API_CONTRACT.md (AI section), docs/DEPLOYMENT.md (section 19), this file.
+
+
+------------------------------------------------------------------------------------------
+4. DATABASE TABLES AND MIGRATIONS
+------------------------------------------------------------------------------------------
+
+All three migrations are ADDITIVE (CREATE TABLE only). No existing table is changed,
+dropped or truncated.
+
+  20261012120000_hist_cricsheet_history
+     hist_import_runs, hist_import_files       import bookkeeping (per run, per file)
+     hist_people, hist_person_names            Cricsheet registry people + name variants
+     hist_teams, hist_venues                   teams (name + team type), venues
+     hist_matches, hist_match_players          match facts and players
+     hist_innings, hist_deliveries, hist_wickets   ball-by-ball data
+     hist_agg_player_batting, hist_agg_player_bowling,
+     hist_agg_venue, hist_agg_player_venue,
+     hist_agg_head_to_head, hist_agg_team_phase  summary tables used by the AI
+     hist_agg_builds                           summary rebuild log
+  20261012130000_ai_usage_daily
+     ai_usage_daily                            counters per UTC day + provider + model
+  20261012140000_identity_maps
+     identity_player_map, identity_team_map, identity_venue_map
+
+Apply in production (after a backup, in a quiet period):
+     cd /opt/cricket-live/app/backend
+     npx prisma migrate status
+     npx prisma migrate deploy
+  Never use "prisma migrate dev", "migrate reset" or "db push" in production.
+
+WARNING: the local backend/.env on the development machine points at the PRODUCTION
+MySQL server. Do not run migrate or the importer from that machine against it.
+
+
+------------------------------------------------------------------------------------------
+5. CONFIGURATION (backend/.env)
+------------------------------------------------------------------------------------------
+
+All are optional; defaults shown. Changing them needs an API reload
+(pm2 reload live-score-api). The worker is not affected.
+
+  AI_ENABLED=false                    master switch for /ai/ask
+  LLM_PROVIDER=mock                   mock | openai-compatible
+  LLM_BASE_URL=                       e.g. http://127.0.0.1:11434/v1 (Ollama) or
+                                      https://api.provider.com/v1. Must be https, or http
+                                      only to localhost/127.0.0.1/[::1]; no user:password,
+                                      no ?query, no #fragment.
+  LLM_API_KEY=                        not needed for localhost; never commit it
+  LLM_MODEL=                          model name, max 64 chars
+  LLM_TIMEOUT_MS=20000                one model call (1,000-120,000)
+  LLM_MAX_OUTPUT_TOKENS=600           per model call (64-4,096)
+  LLM_COST_PER_1K_INPUT_TOKENS=0      only for the cost estimate on the admin page
+  LLM_COST_PER_1K_OUTPUT_TOKENS=0     (0 means "unknown", not "free")
+  AI_DAILY_TOKEN_BUDGET=0             tokens per UTC day across all instances. Any
+                                      non-mock provider is refused while this is 0.
+  AI_MAX_CONCURRENT=4                 questions in progress per API instance
+  AI_REQUESTS_PER_DEVICE_PER_MINUTE=5
+  AI_REQUESTS_PER_DEVICE_PER_DAY=50
+  AI_REQUESTS_PER_IP_PER_MINUTE=20
+  AI_REQUEST_TIMEOUT_MS=25000         whole question incl. tool rounds (2,000-300,000).
+                                      Keep it BELOW the nginx proxy_read_timeout (30 s
+                                      in deploy/nginx/live-score-proxy.conf).
+  AI_HISTORY_ENABLED=false            Cricsheet archive tools; enable after migration,
+                                      import and (ideally) identity review
+  HISTORY_DATABASE_URL=               optional separate DB for the importer
+                                      (falls back to DATABASE_URL)
+  HISTORY_TEST_DATABASE_URL=          local MySQL *_test database for importer
+                                      integration tests (never production)
+  HISTORY_CSV_DIR=                    optional default for --dir
+
+
+------------------------------------------------------------------------------------------
+6. STEP-BY-STEP: TURNING IT ON
+------------------------------------------------------------------------------------------
+
+Local development (safe order):
+  1. Use a LOCAL MySQL database, not the production one (see the warning in section 4).
+  2. cd backend && npx prisma migrate deploy        (against the local DB only)
+  3. npm run history:import -- --dir "C:\Users\gaikw\Downloads\all_csv" --limit 50 --database <local db>
+  4. Set AI_ENABLED=true, LLM_PROVIDER=mock and start the API (npm run start:dev).
+  5. Ask: curl -X POST http://localhost:3000/api/v1/ai/ask -H "Content-Type: application/json"
+          -d "{\"question\":\"What is the score?\",\"deviceId\":\"dev-device-0001\"}"
+  6. Open the admin panel: "AI assistant" (counters) and "Identity mapping".
+
+Production (each step is a deliberate decision; stop after any step):
+  1. Backup MySQL (mysqldump) and check free disk space.
+  2. npx prisma migrate deploy  (applies the 3 additive migrations).
+  3. Deploy the new build (npm ci, npx prisma generate, npm run build, admin build).
+  4. Turn on the demo assistant first: AI_ENABLED=true, LLM_PROVIDER=mock.
+     pm2 reload live-score-api. Check GET /api/v1/ai/status -> "available": true.
+  5. Import the archive (section 8), outside match hours.
+  6. Admin > Identity mapping: Propose teams, venues, players; review and confirm.
+  7. AI_HISTORY_ENABLED=true, reload the API.
+  8. Before any real model: update the privacy policy (placeholder, contact, providers),
+     choose Ollama (section 7) or a hosted provider, set AI_DAILY_TOKEN_BUDGET > 0.
+  9. Mobile app: hide the AI entry while /ai/status says "available": false, show the
+     "disclaimer" under every answer, and show "Historical data: Cricsheet
+     (cricsheet.org), ODC-By 1.0" when a source starts with "Cricsheet archive:".
+
+Optional nginx change for slow models (repo template deploy/nginx/api.example.com.conf,
+apply on the server yourself; it is not applied automatically):
+     location /api/v1/ai/ {
+         proxy_pass http://live_score_api;
+         include /etc/nginx/snippets/live-score-proxy.conf;
+         proxy_read_timeout 160s;
+         proxy_send_timeout 160s;
+     }
+  Then AI_REQUEST_TIMEOUT_MS can go up to ~150000.
+
+
+------------------------------------------------------------------------------------------
+7. FREE LOCAL MODEL WITH OLLAMA (OPTIONAL, BUDGET 0)
+------------------------------------------------------------------------------------------
+
+Ollama exposes an OpenAI-compatible API at http://127.0.0.1:11434/v1, so no code change
+and no API key is needed.
+
+  Install (Ubuntu):  curl -fsSL https://ollama.com/install.sh | sh
+  Pull a model with tool calling, e.g.:  ollama pull qwen2.5:7b-instruct
+                                 or:     ollama pull llama3.1:8b
+  Settings:
+     AI_ENABLED=true
+     LLM_PROVIDER=openai-compatible
+     LLM_BASE_URL=http://127.0.0.1:11434/v1
+     LLM_MODEL=qwen2.5:7b-instruct
+     AI_DAILY_TOKEN_BUDGET=2000000        (required > 0 even for local models)
+     LLM_TIMEOUT_MS=60000
+     AI_REQUEST_TIMEOUT_MS=150000         (only with the nginx change in section 6)
+     AI_MAX_CONCURRENT=1 or 2             (CPU inference is slow)
+
+  Sizing: a 7-8B model (4-bit) needs about 6-8 GB RAM. On CPU only, one answer with tool
+  rounds can take 10-60 seconds; a GPU makes it a few seconds. Keep it on the same server
+  (localhost) or a private host reached over https.
+
+  Hosted provider instead: LLM_BASE_URL=https://..., LLM_API_KEY=..., LLM_MODEL=...,
+  set LLM_COST_PER_1K_* and a budget. Never enable it before the privacy policy update.
+
+
+------------------------------------------------------------------------------------------
+8. CRICSHEET HISTORY IMPORT (npm run history:import)
+------------------------------------------------------------------------------------------
+
+Source: Cricsheet classic CSV files (cricsheet.org), e.g. C:\Users\gaikw\Downloads\all_csv
+
+  npm run history:import -- --help
+  npm run history:import -- --dir <folder> --dry-run                    parse only, no DB
+  npm run history:import -- --dir <folder> --limit 50 --database <db>   small trial
+  npm run history:import -- --dir <folder> --files 1000851.csv,1023647.csv --database <db>
+  npm run history:import -- --dir <folder> --database <db> --confirm-full-import
+  npm run history:import -- --resume --dir <folder> --database <db>
+  npm run history:import -- --update-changed --dir <folder> --database <db>
+  npm run history:import -- --aggregates-only --database <db>
+  npm run history:import -- --rollback-run <id> --database <db>
+
+  Other flags: --no-aggregates, --concurrency <n> (default 2),
+  --max-files-per-second <n>, --batch-size <n> (default 5000), --report <file.json>
+
+Safety guards (the CLI refuses to write unless all apply):
+  --database <name>          must equal the database name in the URL
+  --allow-remote-database    required if the host is not localhost
+  --allow-production         required when NODE_ENV=production
+  --confirm-full-import      required without --limit / --files
+  The CLI prints only host:port/database, never the password. Ctrl+C stops after the files
+  in progress; continue later with --resume.
+
+Behaviour:
+  - One transaction per match. Re-running skips unchanged files (same SHA-256 and parser
+    version). Changed files are reported and only replaced with --update-changed.
+  - Files with errors are QUARANTINED (listed with reasons), the run continues.
+  - Summary tables are rebuilt at the end (super overs excluded).
+  - --rollback-run deletes the matches a run wrote; it cannot restore an older version
+    replaced by --update-changed.
+  - Full archive: about 23,000 files and 11.7 million deliveries; plan several GB of MySQL
+    space; a dry run took about 3 minutes, a real import will take much longer.
+
+
+------------------------------------------------------------------------------------------
+9. IDENTITY MAPPING
+------------------------------------------------------------------------------------------
+
+Why: Latiyal (live) and Cricsheet (history) use different ids and spellings
+("Rohit Sharma" vs "RG Sharma").
+
+How proposals are made (nothing is ever auto-confirmed):
+  Players  exact name = 90; same surname + compatible initials = 60;
+           +10 if the person played for the national team named in the player's country;
+           ties lower confidence by 20; more than 3 equal candidates = skipped (ambiguous).
+  Teams    exact name match; "India Women" / "India W" = women's team (gender female);
+           one match = 90, several = 50 each.
+  Venues   same ground name (", City" suffix removed) and same or missing city;
+           90 with matching city, 75 otherwise; never across different cities.
+
+Rules on CONFIRM (409 CONFLICT otherwise):
+  - a Latiyal player <-> exactly one Cricsheet person, and the reverse;
+  - a Cricsheet team (per gender) or venue belongs to one live team / venue
+    (one live team may cover several Cricsheet names, e.g. renamed franchises).
+Re-running "Propose" adds new rows and refreshes PROPOSED rows only; CONFIRMED and
+REJECTED rows are never changed. "Reopen" sets a row back to PROPOSED.
+
+The AI uses CONFIRMED rows first. Without them: players are found by name in the archive
+(several matches -> the AI asks which one), teams by exact name, venues by name + city.
+
+
+------------------------------------------------------------------------------------------
+10. API ENDPOINTS
+------------------------------------------------------------------------------------------
+
+Public (base https://<api-host>/api/v1, response envelope { success, data }):
+
+  GET  /ai/status
+       -> { available, languages: ["en","hi"], maxQuestionLength: 500 }
+  POST /ai/ask
+       body { question (2-500), language ("en"|"hi", default en),
+              matchId? (digits), deviceId (8-128, same as /devices/register) }
+       -> { answer, language, sources[], mocked, disclaimer, generatedAt }
+
+  Errors (error.code):
+       400 VALIDATION_ERROR
+       429 AI_QUOTA_EXCEEDED
+       503 AI_DISABLED | AI_NOT_CONFIGURED | AI_BUDGET_EXHAUSTED | AI_BUSY | AI_TIMEOUT
+       502 AI_PROVIDER_ERROR
+
+Admin (JWT required):
+  GET   /admin/ai/overview?days=30     status, limits, today, daily history (counters)
+  GET   /admin/identity/summary        counts per status + live/history entity counts
+  GET   /admin/identity/{players|teams|venues}?status=&q=&page=&limit=
+  POST  /admin/identity/{kind}/propose            run name matching (never confirms)
+  PATCH /admin/identity/{kind}/{id}  { status: CONFIRMED | REJECTED | PROPOSED }
+  GET   /admin/identity/{kind}/history-search?q=  find Cricsheet ids by name
+  POST  /admin/identity/players { latiyalPlayerId, histPersonId }
+  POST  /admin/identity/teams   { latiyalTeamId, histTeamId, gender: male|female }
+  POST  /admin/identity/venues  { liveVenueName, liveVenueCity?, histVenueId }
+
+Swagger: /api/docs (tags "AI assistant", "Admin AI", "Admin identity mapping").
+
+
+------------------------------------------------------------------------------------------
+11. TOOLS THE AI CAN USE (all read-only, arguments validated before use)
+------------------------------------------------------------------------------------------
+
+Always available:
+  get_live_matches          matches in play now
+  get_match                 score, status, batsmen, bowler, target, required rate
+  get_scorecard             full scorecard
+  get_recent_commentary     latest balls (limit 1-30, default 12); may not include
+                            every delivery
+  calculate_required_rate   arithmetic only (e.g. 100 runs in 6 overs = 16.67 per over)
+
+Only with AI_HISTORY_ENABLED=true (Cricsheet archive):
+  get_player_history        batting/bowling by format and team type, averages, strike
+                            rate, economy, best; candidates list if the name is ambiguous
+  get_head_to_head          results between two teams (by matchId or names), per format
+  get_venue_history         matches, average first-innings score, bat-first vs chasing
+                            wins, highest and lowest totals (all spellings combined)
+  get_team_phase_stats      T20/ODI run rate, wickets and dot balls per phase
+
+Formats: T20 = T20 + IT20, ODI = ODI + ODM, Test = Test + MDM (domestic included; each
+row says which). Every history result carries the coverage note.
+
+
+------------------------------------------------------------------------------------------
+12. LIMITS AND SAFETY
+------------------------------------------------------------------------------------------
+
+  - Off by default; a real provider is refused without URL, model, key (non-local) and a
+    token budget > 0. Unknown cost is never treated as free.
+  - Provider URL comes only from configuration; https or localhost http only; redirects
+    are refused; the provider's error body is never returned or logged.
+  - Per device 5/min and 50/day, per IP 20/min (Redis, shared by all instances), plus
+    the global per-IP REST rate limit.
+  - Concurrency cap per API instance; daily token budget across instances (approximate
+    when many questions finish at the same moment).
+  - Max 4 model calls, 4 tools per round, 8 s per tool, 6,000 chars per tool result,
+    2,000 chars per answer, AI_REQUEST_TIMEOUT_MS per question.
+  - Tool results are treated as data; the prompt tells the model to ignore instructions
+    inside them. Cricket-only, no betting advice, no certain predictions.
+  - No SQL is built from model or user text; tools call fixed Prisma queries/services.
+  - Latiyal polling is unchanged; the AI reads cached live data only.
+
+
+------------------------------------------------------------------------------------------
+13. PRIVACY: WHAT IS STORED AND WHAT IS NOT
+------------------------------------------------------------------------------------------
+
+  NOT stored anywhere: question text, answer text, conversations, prompts, tool
+  transcripts, device ids, IP addresses, FCM tokens.
+
+  Redis (short-lived): limit counters keyed by an HMAC of the device id / IP
+     (keys cricket:v1:ai:quota:..., expire after 2 minutes or 2 days),
+     daily token total (ai:tokens:<day>), usage counters (ai:usage:..., 8 days).
+  MySQL: ai_usage_daily = per day/provider/model counts: requests, answered, refusals,
+     errors, timeouts, tokens, tool calls, English/Hindi, total latency, estimated cost.
+  Logs: one "[ai-ask]" line per question with outcome, provider, language, tool names,
+     token counts and latency only. Tests fail if a question, device id, IP or key shows
+     up in logs, Redis or the database.
+  There is deliberately no admin conversation viewer.
+
+  When a hosted provider is used, the question and the relevant cricket data are sent to
+  it (never the device id or IP). The privacy policy section 14 says this.
+
+
+------------------------------------------------------------------------------------------
+14. ADMIN PANEL PAGES
+------------------------------------------------------------------------------------------
+
+  AI assistant      status (switched off / not configured / available), provider and
+                    model, demo-mode notice, today's questions/refusals/errors, daily
+                    token budget bar, limits, daily usage table (UTC days, cost estimate).
+  Identity mapping  tabs Players / Teams / Venues, status filter, name search, Propose
+                    button, Confirm / Reject / Reopen per row, manual mapping form with a
+                    Cricsheet name search.
+
+
+------------------------------------------------------------------------------------------
+15. TESTS AND HOW TO RUN THEM
+------------------------------------------------------------------------------------------
+
+  cd backend
+  npx vitest run --pool=forks        full suite: 405 passed, 3 skipped (9 Oct 2026)
+  npx vitest run --pool=forks src/ai src/identity src/history
+  npx tsc --noEmit -p tsconfig.json  type check (clean)
+  npx eslint src scripts             lint (clean)
+  npm run build                      (passes)
+  npm run audit:secrets              no secrets outside .env (passes)
+  cd ../admin && npm run build       (passes; needs NEXT_PUBLIC_API_URL)
+
+  On Windows, "--pool=threads" occasionally crashes Node at worker shutdown
+  (exit code -1073740791) with no test failure; "--pool=forks" is reliable.
+
+  The 3 skipped tests are the MySQL importer integration tests. To run them, create a
+  LOCAL database whose name ends in _test, apply the migrations to it and set
+     HISTORY_TEST_DATABASE_URL=mysql://user:pass@127.0.0.1:3306/cricket_live_history_test
+  They check idempotent re-import, aggregates against an independent calculation,
+  rollback, and that live tables are untouched. They refuse non-local hosts.
+
+  What the tests cover: parser on real Cricsheet files (Perth Test totals, multi-fielder
+  catches, two dismissals on one ball, retirements, super overs, penalty runs, quarantine
+  rules), importer resume/skip/replace/quarantine, AI disabled/validation/en+hi answers,
+  device and IP limits, budget refusal, unsafe URLs, scripted tool loop, provider failure
+  with no secrets leaked, admin overview and idempotent usage flush, identity proposals,
+  review conflicts, manual mapping, history tools (name resolution, ambiguity,
+  head-to-head orientation, confirmed-only mapping, venue spellings, phase rates).
+
+
+------------------------------------------------------------------------------------------
+16. TROUBLESHOOTING
+------------------------------------------------------------------------------------------
+
+  /ai/status available=false   AI_ENABLED is false, or the provider is not ready. The
+                               admin AI page shows the exact reason.
+  AI_NOT_CONFIGURED            non-mock provider without valid https/localhost URL, model,
+                               key, or with AI_DAILY_TOKEN_BUDGET=0.
+  AI_BUDGET_EXHAUSTED          daily token budget used up (resets at 00:00 UTC).
+  AI_BUSY                      too many questions in progress, or Redis is down.
+  AI_TIMEOUT / nginx 504       model too slow: raise LLM_TIMEOUT_MS and
+                               AI_REQUEST_TIMEOUT_MS together with the nginx timeout
+                               (section 6), lower AI_MAX_CONCURRENT, or use a smaller model.
+  AI_PROVIDER_ERROR            provider returned an error (bad key, model name, server
+                               down). Check the provider; the API logs only the status.
+  History answers "not in the  migration/import missing, AI_HISTORY_ENABLED=false, or the
+  archive / not linked"        team/venue is not mapped and its name differs; map it in
+                               Identity mapping.
+  Wrong player picked          reject the mapping in Identity mapping and add the right one.
+  Import refuses to write      add the guard flags printed in the message (section 8).
+
+
+------------------------------------------------------------------------------------------
+17. KNOWN LIMITATIONS AND RISKS
+------------------------------------------------------------------------------------------
+
+  - The local development .env points at the production MySQL server.
+  - No local MySQL/Docker was available, so the importer has never written to a real
+    database; the MySQL integration tests are written but were skipped.
+  - Latiyal payloads for matchProbHistory, playerInfo and matchInfo were not verified, so
+    there are no win-probability or Latiyal player-profile tools yet.
+  - Commentary is not proven to contain every delivery; the tool says so.
+  - The concurrency cap is per API instance; the token budget can be slightly exceeded
+    when several questions finish together.
+  - Indexes on hist_deliveries (batter/bowler + match) are not benchmarked on full data.
+  - Cricsheet coverage is incomplete (not every match ever played); answers say
+    "Cricsheet archive" and never "official career totals".
+  - The mock provider understands simple keyword questions only.
+
+
+------------------------------------------------------------------------------------------
+18. NEXT PHASES (NOT STARTED)
+------------------------------------------------------------------------------------------
+
+  P5  Predictions: win probability / projected score from history + live state, with
+      calibration and clear "estimate" wording (after verifying matchProbHistory).
+  P6  Automatic history updates (new Cricsheet files on a schedule with --resume and
+      --update-changed), monitoring of import runs, hardening and load tests.
+
+
+------------------------------------------------------------------------------------------
+19. LICENCE AND ATTRIBUTION
+------------------------------------------------------------------------------------------
+
+  Cricsheet data is made available under the Open Data Commons Attribution License
+  (ODC-By 1.0). Required attribution wherever historical figures are shown:
+     "Historical data: Cricsheet (cricsheet.org), ODC-By 1.0"
+  Already in: privacy policy section 15, API contract (AI section), test fixtures README,
+  every history tool result ("coverage") and the system prompt.
+
+  Live data: Latiyal Infotech ("Cricket Live Line" API). The Latiyal token stays in
+  backend/.env only and is never sent to the AI model or the app.
+
+==========================================================================================

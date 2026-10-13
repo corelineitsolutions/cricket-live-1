@@ -30,7 +30,8 @@ function matchesField(actual: unknown, condition: unknown): boolean {
         if (!(raw as unknown[]).map(comparable).includes(a)) return false;
         break;
       case 'contains':
-        if (typeof actual !== 'string' || !actual.includes(raw as string)) return false;
+        // MySQL utf8mb4_unicode_ci comparisons ignore case.
+        if (typeof actual !== 'string' || !actual.toLowerCase().includes(String(raw).toLowerCase())) return false;
         break;
       case 'startsWith':
         if (typeof actual !== 'string' || !actual.startsWith(raw as string)) return false;
@@ -56,8 +57,22 @@ function matchesField(actual: unknown, condition: unknown): boolean {
   return true;
 }
 
+/** Prisma compound unique inputs such as `{ day_provider_model: { day, provider, model } }`. */
+function isCompoundKey(key: string, condition: unknown): boolean {
+  return (
+    key.includes('_') &&
+    condition !== null &&
+    typeof condition === 'object' &&
+    !(condition instanceof Date) &&
+    !Array.isArray(condition)
+  );
+}
+
 export function matchesWhere(row: Row, where: Where = {}): boolean {
   return Object.entries(where).every(([key, condition]) => {
+    if (isCompoundKey(key, condition) && !(key in row)) {
+      return matchesWhere(row, condition as Where);
+    }
     if (key === 'AND') {
       return (condition as Where[]).every((part) => matchesWhere(row, part));
     }
@@ -123,6 +138,10 @@ function table(rows: Row[]) {
     findMany: vi.fn(async (args: FindArgs = {}) => findAll(args)),
     count: vi.fn(async ({ where }: { where?: Where } = {}) => rows.filter((row) => matchesWhere(row, where)).length),
     create: vi.fn(async ({ data }: { data: Row }) => create(data)),
+    createMany: vi.fn(async ({ data }: { data: Row[] }) => {
+      data.forEach(create);
+      return { count: data.length };
+    }),
     update: vi.fn(async ({ where, data }: { where: Where; data: Row }) => {
       const row = rows.find((candidate) => matchesWhere(candidate, where));
       if (!row) throw notFound();
@@ -155,8 +174,37 @@ export class FakeDb {
     ad: [] as Row[],
     admin: [] as Row[],
     fcmDevice: [] as Row[],
+    aiUsageDaily: [] as Row[],
+    identityPlayerMap: [] as Row[],
+    identityTeamMap: [] as Row[],
+    identityVenueMap: [] as Row[],
+    histPerson: [] as Row[],
+    histPersonName: [] as Row[],
+    histTeam: [] as Row[],
+    histVenue: [] as Row[],
+    histAggPlayerBatting: [] as Row[],
+    histAggPlayerBowling: [] as Row[],
+    histAggHeadToHead: [] as Row[],
+    histAggVenue: [] as Row[],
+    histAggTeamPhase: [] as Row[],
   };
 
+  readonly aiUsageDaily = table(this.rows.aiUsageDaily);
+  readonly identityPlayerMap = table(this.rows.identityPlayerMap);
+  readonly identityTeamMap = table(this.rows.identityTeamMap);
+  readonly identityVenueMap = table(this.rows.identityVenueMap);
+  readonly histPerson = table(this.rows.histPerson);
+  readonly histPersonName = table(this.rows.histPersonName);
+  readonly histTeam = table(this.rows.histTeam);
+  readonly histVenue = table(this.rows.histVenue);
+  readonly histAggPlayerBatting = table(this.rows.histAggPlayerBatting);
+  readonly histAggPlayerBowling = table(this.rows.histAggPlayerBowling);
+  readonly histAggHeadToHead = table(this.rows.histAggHeadToHead);
+  readonly histAggVenue = table(this.rows.histAggVenue);
+  readonly histAggTeamPhase = table(this.rows.histAggTeamPhase);
+  /** Rows returned by the next raw (fixed-SQL) queries. */
+  rawRows: Row[] = [];
+  readonly $queryRaw = vi.fn(async () => this.rawRows);
   readonly match = table(this.rows.match);
   readonly team = table(this.rows.team);
   readonly player = table(this.rows.player);
