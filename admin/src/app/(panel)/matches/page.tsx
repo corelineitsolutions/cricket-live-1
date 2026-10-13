@@ -79,6 +79,23 @@ export default function MatchesPage() {
       render: (match) => (match.stale ? <StatusBadge tone="warning">Stale</StatusBadge> : <StatusBadge tone="success">Fresh</StatusBadge>),
     },
     { key: 'subscribers', header: 'Viewers', className: 'tabular-nums text-right', render: (match) => match.subscribers },
+    {
+      key: 'ask',
+      header: 'AI',
+      className: 'text-right',
+      render: (match) => (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={(event) => {
+            event.stopPropagation();
+            router.push(`/matches/${match.matchId}#ai`);
+          }}
+        >
+          Ask
+        </Button>
+      ),
+    },
   ];
 
   return (

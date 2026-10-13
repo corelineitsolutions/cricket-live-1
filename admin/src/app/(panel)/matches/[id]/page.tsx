@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { MatchAiAssistant } from '@/components/ai/match-ai-assistant';
 import { PageHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -140,6 +141,8 @@ export default function MatchDetailPage() {
         </div>
 
         <div className="space-y-6">
+          {match && <MatchAiAssistant match={match} />}
+
           <Panel title="Overview">
             <DescriptionList
               items={[
