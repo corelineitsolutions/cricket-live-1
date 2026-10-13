@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
+import { FeedsModule } from '../feeds/feeds.module';
 import { HistoryModule } from '../history/history.module';
 import { IdentityModule } from '../identity/identity.module';
 import { MatchesModule } from '../matches/matches.module';
@@ -13,7 +14,7 @@ import { MockLlmProvider } from './llm/mock-llm.provider';
 import { LlmFetch, OpenAiCompatibleProvider, validateLlmBaseUrl } from './llm/openai-compatible.provider';
 
 @Module({
-  imports: [MatchesModule, IdentityModule, HistoryModule],
+  imports: [MatchesModule, IdentityModule, HistoryModule, FeedsModule],
   controllers: [AiController, AdminAiController],
   providers: [
     AiService,

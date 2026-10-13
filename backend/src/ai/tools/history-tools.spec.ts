@@ -3,7 +3,7 @@ import { IdentityService } from '../../identity/identity.service';
 import type { MatchDto } from '../../matches/dto/match.dto';
 import type { MatchesService } from '../../matches/matches.service';
 import { FakeDb } from '../../testing/fake-db';
-import { guessEvent, guessFormat, guessPlayerName } from '../llm/mock-llm.provider';
+import { guessEvent, guessFormat, guessGender, guessPlayerName, guessYear } from '../llm/mock-llm.provider';
 import { AiToolRegistry } from './ai-tool.registry';
 import { createHistoryTools, formatOf } from './history-tools';
 
@@ -135,6 +135,9 @@ describe('AI history tools', () => {
     expect(guessPlayerName('career stats please')).toBeNull();
     expect(guessEvent("icc men's world cup")).toBe('World Cup');
     expect(guessFormat("icc men's world cup")).toBe('ODI');
+    expect(guessFormat('t20 world cup')).toBe('T20');
+    expect(guessYear('who win icc odi world cup 2019')).toBe(2019);
+    expect(guessGender("icc men's world cup")).toBe('male');
   });
 
   it('counts hundreds and wickets for an event filter without inventing SQL from the question', async () => {
@@ -146,13 +149,40 @@ describe('AI history tools', () => {
       { eventName: 'ICC Cricket World Cup', matchType: 'ODI', gender: 'male', matches: 15, innings: 15, legalBalls: 840, runsConceded: 620, wickets: 27 },
     ];
     db.$queryRaw.mockImplementation(async () => (db.$queryRaw.mock.calls.length <= 1 ? battingRows : bowlingRows));
-    const res = await run('get_player_history', { name: 'Virat Kohli', event: 'World Cup', format: 'ODI' });
+    const res = await run('get_player_history', { name: 'Virat Kohli', event: 'World Cup', format: 'ODI', gender: 'male' });
     expect(res.ok).toBe(true);
     expect(res.data.hundredsInEvent).toBe(7);
     expect(res.data.wicketsInEvent).toBe(27);
     expect(res.data.battingByEvent).toHaveLength(2);
     expect(res.data.bowlingByEvent).toHaveLength(1);
+    expect(res.data.gender).toBe('male');
     expect(res.label).toContain('World Cup');
     expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns the World Cup final winner from the archive without inventing it', async () => {
+    db.rows.histMatch.push({
+      id: 1,
+      eventName: 'ICC Cricket World Cup',
+      season: '2019',
+      startDate: new Date('2019-07-14T00:00:00.000Z'),
+      matchType: 'ODI',
+      gender: 'male',
+      matchNumber: 'Final',
+      outcome: 'WIN',
+      winByRuns: null,
+      winByWickets: null,
+      eliminatorTeam: 'England',
+      method: null,
+      team1: { name: 'England' },
+      team2: { name: 'New Zealand' },
+      winner: { name: 'England' },
+    });
+    const res = await run('get_event_results', { event: 'World Cup', year: 2019, format: 'ODI', gender: 'male' });
+    expect(res.ok).toBe(true);
+    expect(res.data.tournamentWinner).toBe('England');
+    expect(res.data.final).toMatchObject({ matchNumber: 'Final', teams: ['England', 'New Zealand'] });
+    expect(res.data.coverage).toMatch(/Cricsheet/);
+    expect(res.label).toContain('2019');
   });
 });

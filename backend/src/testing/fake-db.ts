@@ -182,6 +182,7 @@ export class FakeDb {
     histPersonName: [] as Row[],
     histTeam: [] as Row[],
     histVenue: [] as Row[],
+    histMatch: [] as Row[],
     histAggPlayerBatting: [] as Row[],
     histAggPlayerBowling: [] as Row[],
     histAggHeadToHead: [] as Row[],
@@ -197,6 +198,7 @@ export class FakeDb {
   readonly histPersonName = table(this.rows.histPersonName);
   readonly histTeam = table(this.rows.histTeam);
   readonly histVenue = table(this.rows.histVenue);
+  readonly histMatch = table(this.rows.histMatch);
   readonly histAggPlayerBatting = table(this.rows.histAggPlayerBatting);
   readonly histAggPlayerBowling = table(this.rows.histAggPlayerBowling);
   readonly histAggHeadToHead = table(this.rows.histAggHeadToHead);

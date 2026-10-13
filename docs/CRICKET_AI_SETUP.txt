@@ -44,6 +44,8 @@ Built and tested (code only, nothing deployed):
   Phase 4  Historical statistics tools for the AI: player records, head-to-head, venue
            records and team phase stats from the archive, always labelled as
            "Cricsheet archive, not official career totals".
+  Phase 5-lite  Predictions: get_win_probability (Latiyal) + project_score; get_event_results
+           for tournament winners; format/gender on player-by-event filters.
 
 NOT done (each needs your decision or approval):
 
@@ -270,6 +272,9 @@ and no API key is needed.
   Hosted provider instead: LLM_BASE_URL=https://..., LLM_API_KEY=..., LLM_MODEL=...,
   set LLM_COST_PER_1K_* and a budget. Never enable it before the privacy policy update.
 
+  After reload, GET /api/v1/ai/status should be available and Ask responses must show
+  mocked:false (admin Match AI panel). If mocked stays true, LLM_PROVIDER is still mock.
+
 
 ------------------------------------------------------------------------------------------
 8. CRICSHEET HISTORY IMPORT (npm run history:import)
@@ -380,10 +385,17 @@ Always available:
   get_recent_commentary     latest balls (limit 1-30, default 12); may not include
                             every delivery
   calculate_required_rate   arithmetic only (e.g. 100 runs in 6 overs = 16.67 per over)
+  get_win_probability       Latiyal matchProbHistory latest point (estimate only;
+                            unavailable when the payload is empty or unrecognised)
+  project_score             projected innings total from current RR × overs left
+                            (limited overs; arithmetic estimate, not a guarantee)
 
 Only with AI_HISTORY_ENABLED=true (Cricsheet archive):
   get_player_history        batting/bowling by format and team type, averages, strike
-                            rate, economy, best; candidates list if the name is ambiguous
+                            rate, economy, best; optional event + format + gender filter
+                            (battingByEvent / bowlingByEvent); candidates if ambiguous
+  get_event_results         tournament/event matches and winner (Final preferred) by
+                            event fragment, year, format, gender — archive only
   get_head_to_head          results between two teams (by matchId or names), per format
   get_venue_history         matches, average first-innings score, bat-first vs chasing
                             wins, highest and lowest totals (all spellings combined)
@@ -506,25 +518,39 @@ row says which). Every history result carries the coverage note.
   - The local development .env points at the production MySQL server.
   - No local MySQL/Docker was available, so the importer has never written to a real
     database; the MySQL integration tests are written but were skipped.
-  - Latiyal payloads for matchProbHistory, playerInfo and matchInfo were not verified, so
-    there are no win-probability or Latiyal player-profile tools yet.
+  - matchProbHistory payloads vary; get_win_probability parses common shapes and returns
+    unavailable when the feed is empty or unrecognised. playerInfo / matchInfo still have
+    no dedicated AI tools.
   - Commentary is not proven to contain every delivery; the tool says so.
   - The concurrency cap is per API instance; the token budget can be slightly exceeded
     when several questions finish together.
   - Indexes on hist_deliveries (batter/bowler + match) are not benchmarked on full data.
   - Cricsheet coverage is incomplete (not every match ever played); answers say
-    "Cricsheet archive" and never "official career totals".
+    "Cricsheet archive" and never "official career totals". Event names differ across
+    editions (e.g. "World Cup" vs "ICC Cricket World Cup"); filters use LIKE + format.
   - The mock provider understands simple keyword questions only.
 
 
 ------------------------------------------------------------------------------------------
-18. NEXT PHASES (NOT STARTED)
+18. NEXT PHASES
 ------------------------------------------------------------------------------------------
 
-  P5  Predictions: win probability / projected score from history + live state, with
-      calibration and clear "estimate" wording (after verifying matchProbHistory).
+  DONE (P5-lite): get_win_probability (Latiyal matchProbHistory) + project_score
+      (run-rate arithmetic), with estimate wording in tools and the system prompt.
+      Real LLM: set LLM_PROVIDER=openai-compatible (Ollama or hosted) + budget; see §7.
+      Also: get_event_results for tournament winners; format/gender on player-by-event.
+
+  P5-full (not started): own calibrated win%/projected-score models on Cricsheet + live
+      ball state; promote only if accuracy does not regress; Latiyal win % as cross-check.
   P6  Automatic history updates (new Cricsheet files on a schedule with --resume and
       --update-changed), monitoring of import runs, hardening and load tests.
+
+  Smoke after enabling a real LLM (admin Ask / POST /ai/ask):
+    1. Live: "Who is the top scorer on the scorecard?" → mocked:false, scorecard source
+    2. History: Rohit/Kohli WC hundreds, Bumrah WC wickets (archive disclaimer)
+    3. Tournament: "Who won ICC ODI World Cup 2019?" → get_event_results, not live match
+    4. Predict: "What is the win chance?" / "Projected score?" on a live match
+    5. Refuse a non-cricket question
 
 
 ------------------------------------------------------------------------------------------

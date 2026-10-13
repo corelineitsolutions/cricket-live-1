@@ -21,6 +21,10 @@ const VENUE_WORDS = /venue|ground|stadium|pitch|मैदान|पिच|स्
 const PLAYER_HISTORY_WORDS =
   /career|record|stats|statistics|average|strike rate|centur(?:y|ies)|hundreds?|\b100s?\b|\b50s?\b|fifties|wickets?|bowling|economy|how many|करियर|रिकॉर्ड|आंकड़े|औसत|शतक|विकेट|गेंदबाज/i;
 const EVENT_WORDS = /world\s*cup|asia\s*cup|champions\s*trophy|ashes|ipl|t20\s*world\s*cup/i;
+const EVENT_WINNER_WORDS =
+  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|जीता|विजेता/i;
+const WIN_PROB_WORDS = /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा/i;
+const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
 const TEAMS_VS = /([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})\s+(?:vs\.?|v|versus|बनाम)\s+([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})/;
 const NAME_PARTICLES = new Set(['de', 'van', 'du', 'der', 'la', 'le', 'da']);
 const NOT_A_NAME = new Set([
@@ -30,6 +34,8 @@ const NOT_A_NAME = new Set([
   'men', 'mens', "men's", 'women', 'womens', "women's", 'world', 'cup', 'asia', 'champions', 'trophy', 'ashes',
   'century', 'centuries', 'hundred', 'hundreds', 'fifty', 'fifties', 'runs', 'wicket', 'wickets', 'average', 'strike',
   'rate', 'match', 'matches', 'tournament', 'event', 'please', 'about', 'player', 'batting', 'bowling', 'economy',
+  'win', 'won', 'winner', 'winning', 'lifted', 'champion', 'final', 'chance', 'probability', 'projected', 'project',
+  'will', 'vs', 'versus',
 ]);
 
 const titleCase = (word: string) => {
@@ -74,8 +80,21 @@ export function guessEvent(question: string): string | null {
 
 export function guessFormat(question: string): 'T20' | 'ODI' | 'Test' | null {
   if (/\btests?\b|ashes/i.test(question)) return 'Test';
-  if (/\bt20\b|ipl|t20i/i.test(question)) return 'T20';
+  if (/\bt20\s*world\s*cup|world\s*t20|t20i|\bt20\b|ipl/i.test(question)) return 'T20';
   if (/\bodi\b|one[\s-]?day|world\s*cup|asia\s*cup|champions\s*trophy/i.test(question)) return 'ODI';
+  return null;
+}
+
+export function guessYear(question: string): number | null {
+  const match = /\b(19|20)\d{2}\b/.exec(question);
+  if (!match) return null;
+  const year = Number(match[0]);
+  return year >= 1877 && year <= 2100 ? year : null;
+}
+
+export function guessGender(question: string): 'male' | 'female' | null {
+  if (/women'?s|female|\bwomen\b/i.test(question)) return 'female';
+  if (/men'?s|\bmale\b|\bmen\b/i.test(question)) return 'male';
   return null;
 }
 
@@ -83,6 +102,10 @@ function wantsPlayerHistory(question: string): boolean {
   const name = guessPlayerName(question);
   if (!name) return false;
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
+}
+
+function wantsEventResults(question: string): boolean {
+  return EVENT_WINNER_WORDS.test(question) && !!guessEvent(question);
 }
 
 function wantsBowlingStats(question: string): boolean {
@@ -126,6 +149,19 @@ function parse(messages: LlmMessage[]): Parsed {
 function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
   const call = (name: string, args: Record<string, unknown>): LlmToolCall[] =>
     available.has(name) ? [{ id: 'mock_1', name, arguments: JSON.stringify(args) }] : [];
+  if (wantsEventResults(p.question)) {
+    const event = guessEvent(p.question);
+    if (event) {
+      const args: Record<string, unknown> = { event };
+      const year = guessYear(p.question);
+      const format = guessFormat(p.question);
+      const gender = guessGender(p.question) ?? (/icc|men/i.test(p.question) ? 'male' : null);
+      if (year) args.year = year;
+      if (format) args.format = format;
+      if (gender) args.gender = gender;
+      return call('get_event_results', args);
+    }
+  }
   if (HEAD_TO_HEAD_WORDS.test(p.question)) {
     const teams = TEAMS_VS.exec(p.question);
     const clean = (team: string) => team.replace(/\s+(?:T20I?|ODI|Tests?|Head|H2H)$/i, '').trim();
@@ -139,8 +175,10 @@ function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
       const args: Record<string, unknown> = { name };
       const format = guessFormat(p.question);
       const event = guessEvent(p.question);
+      const gender = guessGender(p.question) ?? (event && /icc|men/i.test(p.question) ? 'male' : null);
       if (format) args.format = format;
       if (event) args.event = event;
+      if (gender) args.gender = gender;
       return call('get_player_history', args);
     }
   }
@@ -159,8 +197,14 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
   }
   const history = planHistory(p, available);
   if (history.length > 0) return history;
-  // Do not fall back to the live match when the user clearly asked about a player's archive record.
-  if (wantsPlayerHistory(p.question)) return [];
+  // Do not fall back to the live match for archive player / tournament questions.
+  if (wantsPlayerHistory(p.question) || wantsEventResults(p.question)) return [];
+  if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question)) {
+    return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  if (p.matchId && available.has('project_score') && PROJECT_SCORE_WORDS.test(p.question)) {
+    return [{ id: 'mock_1', name: 'project_score', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
   if (p.matchId) {
     const calls: LlmToolCall[] = [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
     if (SCORECARD_WORDS.test(p.question)) {
@@ -197,7 +241,13 @@ function describeMatch(m: Record<string, unknown>, lang: Lang): string {
   return parts.join(' ').replace(/\.\./g, '.');
 }
 
-const HISTORY_TOOLS = new Set(['get_player_history', 'get_head_to_head', 'get_venue_history', 'get_team_phase_stats']);
+const HISTORY_TOOLS = new Set([
+  'get_player_history',
+  'get_event_results',
+  'get_head_to_head',
+  'get_venue_history',
+  'get_team_phase_stats',
+]);
 const ARCHIVE_NOTE = {
   en: 'Source: Cricsheet archive (cricsheet.org) - not official career totals.',
   hi: 'स्रोत: Cricsheet संग्रह (cricsheet.org) - ये आधिकारिक करियर आंकड़े नहीं हैं।',
@@ -320,6 +370,44 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
           : `${str(data.team)} ${str(r.phase)}: run rate ${str(r.runRate)}, ${str(r.wicketsPerInnings)} wickets per innings.`,
       );
     }
+  } else if (name === 'get_event_results') {
+    if (!data.tournamentWinner && !data.final) {
+      lines.push(
+        hi
+          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए संग्रह में परिणाम नहीं मिले।`
+          : `No archive results for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''}.`,
+      );
+    } else {
+      const final = data.final as Record<string, unknown> | undefined;
+      const winner = str(data.tournamentWinner);
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह के अनुसार ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} का विजेता: ${winner || 'अज्ञात'}.`
+          : `In the Cricsheet archive, ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} winner: ${winner || 'unknown'}.`,
+      );
+      if (final) {
+        const margin =
+          final.winByRuns != null
+            ? hi
+              ? `${str(final.winByRuns)} रनों से`
+              : `by ${str(final.winByRuns)} runs`
+            : final.winByWickets != null
+              ? hi
+                ? `${str(final.winByWickets)} विकेट से`
+                : `by ${str(final.winByWickets)} wickets`
+              : final.eliminator
+                ? hi
+                  ? `एलिमिनेटर: ${str(final.eliminator)}`
+                  : `eliminator ${str(final.eliminator)}`
+                : '';
+        lines.push(
+          hi
+            ? `${str(final.matchNumber) || 'हाइलाइट'}: ${(final.teams as string[] | undefined)?.join(' बनाम ') ?? ''} (${str(final.date)})${margin ? `, ${margin}` : ''}.`
+            : `${str(final.matchNumber) || 'Highlight'}: ${(final.teams as string[] | undefined)?.join(' vs ') ?? ''} (${str(final.date)})${margin ? `, ${margin}` : ''}.`,
+        );
+      }
+      if (data.note) lines.push(str(data.note));
+    }
   }
   return lines;
 }
@@ -339,6 +427,37 @@ function compose(p: Parsed): string {
           ? `${str(data.ballsRemaining)} गेंदों (${str(data.oversRemaining)} ओवर) में ${str(data.runsNeeded)} रन के लिए ${str(data.requiredRunRate)} रन प्रति ओवर (${str(data.runsPerBall)} प्रति गेंद) चाहिए। यह केवल गणना है, जीत की संभावना नहीं।`
           : `${str(data.runsNeeded)} runs from ${str(data.ballsRemaining)} balls (${str(data.oversRemaining)} overs) needs ${str(data.requiredRunRate)} runs per over (${str(data.runsPerBall)} per ball). This is arithmetic only, not a win probability.`,
       );
+    } else if (name === 'get_win_probability') {
+      const teams = (data.teams as Array<Record<string, unknown>> | undefined) ?? [];
+      if (!data.available || teams.length === 0) {
+        lines.push(
+          lang === 'hi'
+            ? `इस मैच के लिए जीत की संभावना उपलब्ध नहीं है। ${str(data.note)}`.trim()
+            : `Win probability is not available for this match. ${str(data.note)}`.trim(),
+        );
+      } else {
+        const parts = teams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
+        lines.push(
+          lang === 'hi'
+            ? `अनुमानित जीत संभावना: ${parts.join(', ')}. यह एक अनुमान है, पक्का परिणाम नहीं।`
+            : `Estimated win chance: ${parts.join(', ')}. This is an estimate, not a certain result.`,
+        );
+        if (data.note) lines.push(str(data.note));
+      }
+    } else if (name === 'project_score') {
+      if (!data.available) {
+        lines.push(
+          lang === 'hi'
+            ? `अनुमानित स्कोर नहीं निकाल सके। ${str(data.note)}`.trim()
+            : `Could not project a score. ${str(data.note)}`.trim(),
+        );
+      } else {
+        lines.push(
+          lang === 'hi'
+            ? `${str(data.team)} का अनुमानित स्कोर लगभग ${str(data.projectedScore)} (वर्तमान ${str(data.currentScore)}, रन रेट ${str(data.runRate)}, शेष ${str(data.oversRemaining)} ओवर). यह केवल अनुमान है।`
+            : `${str(data.team)} projected score about ${str(data.projectedScore)} (now ${str(data.currentScore)} at RR ${str(data.runRate)}, ${str(data.oversRemaining)} overs left). Estimate only.`,
+        );
+      }
     } else if (name === 'get_live_matches') {
       const matches = (data.matches as Array<Record<string, unknown>> | undefined) ?? [];
       if (matches.length === 0) lines.push(lang === 'hi' ? 'अभी कोई मैच लाइव नहीं है।' : 'No matches are live right now.');
@@ -373,11 +492,11 @@ function compose(p: Parsed): string {
   }
   if (usedHistory) lines.push(ARCHIVE_NOTE[lang]);
   if (lines.length === 0) {
-    if (wantsPlayerHistory(p.question)) {
+    if (wantsPlayerHistory(p.question) || wantsEventResults(p.question)) {
       lines.push(
         lang === 'hi'
-          ? 'ऐतिहासिक खिलाड़ी आंकड़ों के लिए AI_HISTORY_ENABLED=true चाहिए और Cricsheet डेटा आयात होना चाहिए।'
-          : 'Player archive stats need AI_HISTORY_ENABLED=true and imported Cricsheet history in the API database.',
+          ? 'ऐतिहासिक आंकड़ों के लिए AI_HISTORY_ENABLED=true चाहिए और Cricsheet डेटा आयात होना चाहिए।'
+          : 'Archive answers need AI_HISTORY_ENABLED=true and imported Cricsheet history in the API database.',
       );
     } else {
       lines.push(lang === 'hi' ? 'मुझे इसका उत्तर देने के लिए डेटा नहीं मिला।' : 'I could not find data to answer that.');

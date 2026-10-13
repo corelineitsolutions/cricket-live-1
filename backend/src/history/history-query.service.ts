@@ -118,12 +118,34 @@ export class HistoryQueryService {
     };
   }
 
+  /** Optional filters for event-scoped player and tournament queries. */
+  private eventMatchSql(format: HistoryFormat | null, gender: 'male' | 'female' | null, tightenWorldCup: boolean) {
+    const types = format ? FORMAT_MATCH_TYPES[format] : null;
+    const formatSql = types ? Prisma.sql`AND m.match_type IN (${Prisma.join(types)})` : Prisma.sql``;
+    const genderSql = gender ? Prisma.sql`AND m.gender = ${gender}` : Prisma.sql``;
+    // Drop U19 / qualifier / Women's spill when asking about a men's World Cup fragment.
+    const tightenSql = tightenWorldCup
+      ? Prisma.sql`AND m.event_name NOT LIKE ${'%Under-19%'}
+                   AND m.event_name NOT LIKE ${'%U19%'}
+                   AND m.event_name NOT LIKE ${'%Qualifier%'}
+                   AND m.event_name NOT LIKE ${'%Women%'}`
+      : Prisma.sql``;
+    return { formatSql, genderSql, tightenSql };
+  }
+
   /**
    * Batting totals for one player limited to matches whose Cricsheet event_name contains
    * `eventContains` (e.g. "World Cup"). Fixed SQL with bound parameters only.
    */
-  async playerBattingByEvent(personId: string, eventContains: string) {
+  async playerBattingByEvent(
+    personId: string,
+    eventContains: string,
+    format: HistoryFormat | null = null,
+    gender: 'male' | 'female' | null = null,
+  ) {
     const pattern = `%${eventContains}%`;
+    const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
+    const { formatSql, genderSql, tightenSql } = this.eventMatchSql(format, gender, tighten);
     const rows = await this.prisma.$queryRaw<
       Array<{
         eventName: string;
@@ -153,6 +175,7 @@ export class HistoryQueryService {
       JOIN hist_innings i ON i.match_id = s.match_id AND i.innings_no = s.innings_no AND i.is_super_over = 0
       JOIN hist_matches m ON m.id = s.match_id
       WHERE m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+        ${formatSql} ${genderSql} ${tightenSql}
       GROUP BY m.event_name, m.match_type, m.gender
       ORDER BY hundreds DESC, runs DESC
       LIMIT 20`);
@@ -173,8 +196,15 @@ export class HistoryQueryService {
    * Bowling totals for one player limited to matches whose Cricsheet event_name contains
    * `eventContains`. Fixed SQL with bound parameters only.
    */
-  async playerBowlingByEvent(personId: string, eventContains: string) {
+  async playerBowlingByEvent(
+    personId: string,
+    eventContains: string,
+    format: HistoryFormat | null = null,
+    gender: 'male' | 'female' | null = null,
+  ) {
     const pattern = `%${eventContains}%`;
+    const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
+    const { formatSql, genderSql, tightenSql } = this.eventMatchSql(format, gender, tighten);
     const rows = await this.prisma.$queryRaw<
       Array<{
         eventName: string;
@@ -209,6 +239,7 @@ export class HistoryQueryService {
       JOIN hist_innings i ON i.match_id = s.match_id AND i.innings_no = s.innings_no AND i.is_super_over = 0
       JOIN hist_matches m ON m.id = s.match_id
       WHERE m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+        ${formatSql} ${genderSql} ${tightenSql}
       GROUP BY m.event_name, m.match_type, m.gender
       ORDER BY wickets DESC, runsConceded ASC
       LIMIT 20`);
@@ -229,6 +260,89 @@ export class HistoryQueryService {
         economy: ratio(runsConceded, legalBalls, 6),
       };
     });
+  }
+
+  /**
+   * Matches whose event_name contains `eventContains`, optionally limited by year / format / gender.
+   * Highlights a Final when match_number says so; otherwise the latest dated match in the filter.
+   */
+  async eventResults(
+    eventContains: string,
+    opts: { year?: number | null; format?: HistoryFormat | null; gender?: 'male' | 'female' | null } = {},
+  ) {
+    const year = opts.year ?? null;
+    const format = opts.format ?? null;
+    const gender = opts.gender ?? null;
+    const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
+    const where: Prisma.HistMatchWhereInput = {
+      eventName: { contains: eventContains },
+      ...(format ? { matchType: { in: FORMAT_MATCH_TYPES[format] } } : {}),
+      ...(gender ? { gender } : {}),
+      ...(tighten
+        ? {
+            AND: [
+              { NOT: { eventName: { contains: 'Under-19' } } },
+              { NOT: { eventName: { contains: 'U19' } } },
+              { NOT: { eventName: { contains: 'Qualifier' } } },
+              { NOT: { eventName: { contains: 'Women' } } },
+            ],
+          }
+        : {}),
+      ...(year
+        ? {
+            OR: [
+              { season: { contains: String(year) } },
+              {
+                startDate: {
+                  gte: new Date(Date.UTC(year, 0, 1)),
+                  lt: new Date(Date.UTC(year + 1, 0, 1)),
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const rows = await this.prisma.histMatch.findMany({
+      where,
+      include: { team1: { select: { name: true } }, team2: { select: { name: true } }, winner: { select: { name: true } } },
+      orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
+      take: 40,
+    });
+    const mapped = rows.map((m) => ({
+      event: m.eventName,
+      season: m.season,
+      date: day(m.startDate),
+      matchType: m.matchType,
+      gender: m.gender,
+      matchNumber: m.matchNumber,
+      teams: [m.team1.name, m.team2.name],
+      outcome: m.outcome,
+      winner: m.winner?.name ?? null,
+      winByRuns: m.winByRuns,
+      winByWickets: m.winByWickets,
+      eliminator: m.eliminatorTeam,
+      method: m.method,
+    }));
+    const final =
+      mapped.find((m) => m.matchNumber !== null && /final/i.test(m.matchNumber) && !/semi|quarter/i.test(m.matchNumber)) ??
+      null;
+    const highlight = final ?? mapped[0] ?? null;
+    return {
+      event: eventContains,
+      year,
+      format: format ?? 'all',
+      gender: gender ?? 'any',
+      matchCount: mapped.length,
+      tournamentWinner: highlight?.winner ?? highlight?.eliminator ?? null,
+      final: highlight,
+      matches: mapped.slice(0, 12),
+      note:
+        mapped.length === 0
+          ? `No archive matches whose event name contains "${eventContains}"${year ? ` in ${year}` : ''}.`
+          : final
+            ? 'Tournament winner taken from the Final (Cricsheet archive).'
+            : 'No match labelled Final; showing the latest matching match as the highlight (Cricsheet archive).',
+    };
   }
 
   /** Cricsheet teams with exactly this name (case-insensitive in MySQL). */

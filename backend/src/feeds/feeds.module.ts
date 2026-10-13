@@ -7,5 +7,6 @@ import { FeedsService } from './feeds.service';
   imports: [LatiyalModule],
   controllers: [FeedsController],
   providers: [FeedsService],
+  exports: [FeedsService],
 })
 export class FeedsModule {}

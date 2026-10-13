@@ -3,7 +3,7 @@ import { splitTeamGender } from '../../identity/identity-matching';
 import type { IdentityService } from '../../identity/identity.service';
 import type { MatchDto } from '../../matches/dto/match.dto';
 import type { MatchesService } from '../../matches/matches.service';
-import { AiTool, parseMatchId, ToolArgs } from './ai-tool.types';
+import { AiTool, parseIntInRange, parseMatchId, ToolArgs } from './ai-tool.types';
 
 const PERSON_ID = /^[0-9a-f]{8}$/;
 const MAX_NAME = 80;
@@ -43,13 +43,20 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     return { ids, name, gender: gender ?? (split.gender === 'female' ? 'female' : null) };
   };
 
-  const playerHistory: AiTool<{ name: string | null; personId: string | null; format: HistoryFormat | null; event: string | null }> = {
+  const playerHistory: AiTool<{
+    name: string | null;
+    personId: string | null;
+    format: HistoryFormat | null;
+    event: string | null;
+    gender: 'male' | 'female' | null;
+  }> = {
     definition: {
       name: 'get_player_history',
       description:
         'Historical batting and bowling figures of one player from the Cricsheet archive (not official career totals). ' +
         'Give the player name as it appears in the app; if several players match, the result lists them with personId to choose from. ' +
         'For a tournament (e.g. World Cup centuries or wickets), pass event so totals are limited to matches with that event name. ' +
+        'Pass format (ODI/T20/Test) and gender when the user specifies them. ' +
         'The result includes both battingByEvent and bowlingByEvent when event is set.',
       parameters: {
         type: 'object',
@@ -58,6 +65,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
           personId: { type: 'string', description: 'Cricsheet personId from an earlier candidates list.' },
           format: formatSchema,
           event: { type: 'string', description: 'Optional tournament/event fragment, e.g. "World Cup" or "Asia Cup".' },
+          gender: { type: 'string', enum: ['male', 'female'], description: 'Optional; use male for ICC men\'s events.' },
         },
         additionalProperties: false,
       },
@@ -74,9 +82,11 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       if (raw.event !== undefined && (!event || !/^[A-Za-z0-9][A-Za-z0-9 '&./-]{1,79}$/.test(event))) {
         return 'event must be 2-80 characters (letters, digits, spaces)';
       }
-      return { name, personId, format, event };
+      const gender = parseGender(raw.gender);
+      if (gender === 'invalid') return 'gender must be male or female';
+      return { name, personId, format, event, gender };
     },
-    run: async ({ name, personId, format, event }) => {
+    run: async ({ name, personId, format, event, gender }) => {
       let id = personId;
       if (!id) {
         const people = await history.findPeople(name!);
@@ -93,8 +103,8 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         return { player: displayName, personId: id, format: format ?? 'all', ...stats, coverage: HISTORY_COVERAGE_NOTE };
       }
       const [battingByEvent, bowlingByEvent] = await Promise.all([
-        history.playerBattingByEvent(id, event),
-        history.playerBowlingByEvent(id, event),
+        history.playerBattingByEvent(id, event, format, gender),
+        history.playerBowlingByEvent(id, event, format, gender),
       ]);
       const hundredsInEvent = battingByEvent.reduce((sum, row) => sum + row.hundreds, 0);
       const wicketsInEvent = bowlingByEvent.reduce((sum, row) => sum + row.wickets, 0);
@@ -102,6 +112,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         player: displayName,
         personId: id,
         format: format ?? 'all',
+        gender: gender ?? 'any',
         event,
         hundredsInEvent,
         wicketsInEvent,
@@ -114,11 +125,60 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         note:
           battingByEvent.length === 0 && bowlingByEvent.length === 0
             ? `No matches in the archive whose event name contains "${event}".`
-            : `Event filter matches Cricsheet event_name containing "${event}" (archive only).`,
+            : `Event filter matches Cricsheet event_name containing "${event}" (archive only; not official career totals).`,
         coverage: HISTORY_COVERAGE_NOTE,
       };
     },
     label: ({ name, personId, event }) => `Cricsheet archive: ${name ?? personId}${event ? ` (${event})` : ''}`,
+  };
+
+  const eventResults: AiTool<{
+    event: string;
+    year: number | null;
+    format: HistoryFormat | null;
+    gender: 'male' | 'female' | null;
+  }> = {
+    definition: {
+      name: 'get_event_results',
+      description:
+        'Tournament or event results from the Cricsheet archive: who won a World Cup / Asia Cup / etc., finals and recent matches in that event. ' +
+        'Pass event (e.g. "World Cup"), optional year (e.g. 2019), format (ODI for men\'s ODI World Cup) and gender. ' +
+        'Never invent a tournament winner — use this tool. Archive only, not an official ICC record.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event: { type: 'string', description: 'Event name fragment, e.g. "World Cup" or "Asia Cup".' },
+          year: { type: 'integer', minimum: 1877, maximum: 2100, description: 'Optional calendar year or season year.' },
+          format: formatSchema,
+          gender: { type: 'string', enum: ['male', 'female'] },
+        },
+        required: ['event'],
+        additionalProperties: false,
+      },
+    },
+    parse: (raw: ToolArgs) => {
+      const event = text(raw.event, 80);
+      if (!event || !/^[A-Za-z0-9][A-Za-z0-9 '&./-]{1,79}$/.test(event)) {
+        return 'event must be 2-80 characters (letters, digits, spaces)';
+      }
+      const year =
+        raw.year === undefined || raw.year === null || raw.year === ''
+          ? null
+          : parseIntInRange(raw.year, 1877, 2100);
+      if (raw.year !== undefined && raw.year !== null && raw.year !== '' && year === null) {
+        return 'year must be an integer from 1877 to 2100';
+      }
+      const format = parseFormat(raw.format);
+      if (format === 'invalid') return 'format must be T20, ODI or Test';
+      const gender = parseGender(raw.gender);
+      if (gender === 'invalid') return 'gender must be male or female';
+      return { event, year, format, gender };
+    },
+    run: async ({ event, year, format, gender }) => {
+      const result = await history.eventResults(event, { year, format, gender });
+      return { ...result, coverage: HISTORY_COVERAGE_NOTE };
+    },
+    label: ({ event, year }) => `Cricsheet archive: ${event}${year ? ` ${year}` : ''}`,
   };
 
   const headToHead: AiTool<{ matchId: string | null; team1: string | null; team2: string | null; format: HistoryFormat | null; gender: 'male' | 'female' | null }> = {
@@ -247,7 +307,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     label: ({ team }) => `Cricsheet archive: ${team} by phase`,
   };
 
-  return [playerHistory, headToHead, venueHistory, teamPhases] as AiTool[];
+  return [playerHistory, eventResults, headToHead, venueHistory, teamPhases] as AiTool[];
 }
 
 /** Latiyal match types ("T20", "ODI", "Test", "T20I", ...) to an archive format. */

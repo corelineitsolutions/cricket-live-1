@@ -408,17 +408,21 @@ Off until `AI_ENABLED=true`. Three ways to run it:
 
 | Mode | Settings | Cost |
 | --- | --- | --- |
-| Demo | `LLM_PROVIDER=mock` | none: template answers over live data, no model |
-| Local model (Ollama on the same server) | `LLM_PROVIDER=openai-compatible`, `LLM_BASE_URL=http://127.0.0.1:11434/v1`, `LLM_MODEL=<model>`, `AI_DAILY_TOKEN_BUDGET>0` | server CPU/RAM only |
+| Demo | `LLM_PROVIDER=mock` | none: template answers over live/history/prediction tools, no model |
+| Local model (Ollama on the same server) | `LLM_PROVIDER=openai-compatible`, `LLM_BASE_URL=http://127.0.0.1:11434/v1`, `LLM_MODEL=<model>` (tool-calling, e.g. `qwen2.5:7b-instruct`), `AI_DAILY_TOKEN_BUDGET>0` | server CPU/RAM only |
 | Hosted provider | as above with the provider's `https://…/v1` URL and `LLM_API_KEY` | paid per token; set the `LLM_COST_*` prices and a budget |
 
 - A real provider is refused (`AI_NOT_CONFIGURED`) while the URL is not https (or http to localhost), the
   model or key is missing, or `AI_DAILY_TOKEN_BUDGET` is `0`.
+- With `AI_HISTORY_ENABLED=true`, Ask can answer archive player stats and tournament winners
+  (`get_event_results`). Prediction tools (`get_win_probability`, `project_score`) are always
+  registered and label numbers as estimates.
 - Limits: 5 questions per device per minute, 50 per day, 20 per IP per minute, `AI_MAX_CONCURRENT` per API
   instance, and the shared daily token budget.
 - Questions, answers, device ids and IP addresses are never stored or logged. Only daily counters are kept
   (Redis, flushed to `ai_usage_daily` every 5 minutes) and shown on the admin **AI assistant** page.
 - Changing these settings needs an API restart (`pm2 reload live-score-api`); the worker is not affected.
+  Confirm `mocked: false` on the admin Match AI panel after switching to a real provider.
 
 ### Cricsheet history import
 

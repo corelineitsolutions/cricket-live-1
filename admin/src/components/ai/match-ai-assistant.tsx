@@ -80,10 +80,13 @@ function suggestionsFor(match: Match): string[] {
   const ground = match.venue?.name ? 'this ground' : 'the venue';
   return [
     `How many runs per over does ${batName} need?`,
+    `What is the win chance for ${a} vs ${b}?`,
+    `What is the projected score for ${batName}?`,
     `How is the current batter performing?`,
     `Show ${ground}'s record from the Cricsheet archive`,
     `What is the head-to-head between ${a} and ${b}?`,
     `Who is the top scorer on the scorecard?`,
+    `Who won the ICC ODI World Cup 2019?`,
   ];
 }
 

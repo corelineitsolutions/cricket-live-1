@@ -4,6 +4,7 @@ import { RedisKey } from '../common/constants/redis-keys';
 import { apiError } from '../common/utils/http-errors';
 import { logEvent } from '../common/utils/structured-log';
 import { AppConfigService } from '../config/app-config.service';
+import { FeedsService } from '../feeds/feeds.service';
 import { HistoryQueryService } from '../history/history-query.service';
 import { IdentityService } from '../identity/identity.service';
 import { MatchDetailService } from '../matches/match-detail.service';
@@ -19,6 +20,7 @@ import { AiToolRegistry } from './tools/ai-tool.registry';
 import { requiredRateTool } from './tools/calculator-tools';
 import { createHistoryTools } from './tools/history-tools';
 import { createLiveTools } from './tools/live-tools';
+import { createPredictionTools } from './tools/prediction-tools';
 
 export interface AiReadiness {
   ready: boolean;
@@ -56,11 +58,13 @@ export class AiService {
     details: MatchDetailService,
     history: HistoryQueryService,
     identity: IdentityService,
+    feeds: FeedsService,
     @Optional() @Inject(LLM_PROVIDER) private readonly provider: LlmProvider | null,
   ) {
     const tools = new AiToolRegistry([
       ...createLiveTools(matches, details),
       requiredRateTool,
+      ...createPredictionTools(matches, feeds),
       ...(config.aiHistoryEnabled ? createHistoryTools(history, identity, matches) : []),
     ]);
     this.gateway = provider ? new AiGateway(provider, tools) : null;
