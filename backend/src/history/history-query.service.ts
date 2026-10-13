@@ -169,6 +169,68 @@ export class HistoryQueryService {
     }));
   }
 
+  /**
+   * Bowling totals for one player limited to matches whose Cricsheet event_name contains
+   * `eventContains`. Fixed SQL with bound parameters only.
+   */
+  async playerBowlingByEvent(personId: string, eventContains: string) {
+    const pattern = `%${eventContains}%`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        eventName: string;
+        matchType: string;
+        gender: string;
+        matches: number;
+        innings: bigint | number;
+        legalBalls: bigint | number;
+        runsConceded: bigint | number;
+        wickets: bigint | number;
+      }>
+    >(Prisma.sql`
+      SELECT m.event_name AS eventName, m.match_type AS matchType, m.gender AS gender,
+             COUNT(DISTINCT s.match_id) AS matches,
+             COUNT(*) AS innings,
+             COALESCE(SUM(s.legal_balls), 0) AS legalBalls,
+             COALESCE(SUM(s.runs), 0) AS runsConceded,
+             COALESCE(SUM(s.wickets), 0) AS wickets
+      FROM (
+        SELECT d.match_id, d.innings_no,
+               SUM(d.is_legal) AS legal_balls,
+               SUM(d.runs_batter + d.wides + d.noballs) AS runs,
+               COALESCE((
+                 SELECT COUNT(*) FROM hist_wickets w
+                 WHERE w.match_id = d.match_id AND w.innings_no = d.innings_no
+                   AND w.bowler_id = d.bowler_id AND w.credited_to_bowler = 1
+               ), 0) AS wickets
+        FROM hist_deliveries d
+        WHERE d.bowler_id = ${personId}
+        GROUP BY d.match_id, d.innings_no, d.bowler_id
+      ) s
+      JOIN hist_innings i ON i.match_id = s.match_id AND i.innings_no = s.innings_no AND i.is_super_over = 0
+      JOIN hist_matches m ON m.id = s.match_id
+      WHERE m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+      GROUP BY m.event_name, m.match_type, m.gender
+      ORDER BY wickets DESC, runsConceded ASC
+      LIMIT 20`);
+    return rows.map((r) => {
+      const legalBalls = Number(r.legalBalls ?? 0);
+      const runsConceded = Number(r.runsConceded ?? 0);
+      const wickets = Number(r.wickets ?? 0);
+      return {
+        event: r.eventName,
+        matchType: r.matchType,
+        gender: r.gender,
+        matches: Number(r.matches ?? 0),
+        innings: Number(r.innings ?? 0),
+        overs: overs(legalBalls),
+        runsConceded,
+        wickets,
+        average: ratio(runsConceded, wickets),
+        economy: ratio(runsConceded, legalBalls, 6),
+      };
+    });
+  }
+
   /** Cricsheet teams with exactly this name (case-insensitive in MySQL). */
   async teamsByName(name: string): Promise<number[]> {
     const rows = await this.prisma.histTeam.findMany({ where: { name: { equals: name.trim() } }, select: { id: true }, take: 4 });

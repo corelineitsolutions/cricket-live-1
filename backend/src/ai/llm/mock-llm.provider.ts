@@ -19,7 +19,7 @@ const COMMENTARY_WORDS = /last (?:over|ball)|recent|commentary|just happened|क
 const HEAD_TO_HEAD_WORDS = /head[\s-]?to[\s-]?head|h2h|record (?:against|vs)|आमने[\s-]?सामने/i;
 const VENUE_WORDS = /venue|ground|stadium|pitch|मैदान|पिच|स्टेडियम/i;
 const PLAYER_HISTORY_WORDS =
-  /career|record|stats|statistics|average|strike rate|centur(?:y|ies)|hundreds?|\b100s?\b|\b50s?\b|fifties|how many|करियर|रिकॉर्ड|आंकड़े|औसत|शतक/i;
+  /career|record|stats|statistics|average|strike rate|centur(?:y|ies)|hundreds?|\b100s?\b|\b50s?\b|fifties|wickets?|bowling|economy|how many|करियर|रिकॉर्ड|आंकड़े|औसत|शतक|विकेट|गेंदबाज/i;
 const EVENT_WORDS = /world\s*cup|asia\s*cup|champions\s*trophy|ashes|ipl|t20\s*world\s*cup/i;
 const TEAMS_VS = /([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})\s+(?:vs\.?|v|versus|बनाम)\s+([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})/;
 const NAME_PARTICLES = new Set(['de', 'van', 'du', 'der', 'la', 'le', 'da']);
@@ -28,8 +28,8 @@ const NOT_A_NAME = new Set([
   'odi', 't20', 'test', 'ipl', 'me', 'the', 'in', 'of', 'a', 'an', 'to', 'for', 'from', 'with', 'this', 'that',
   'there', 'many', 'much', 'his', 'her', 'their', 'has', 'have', 'had', 'was', 'were', 'are', 'been', 'icc',
   'men', 'mens', "men's", 'women', 'womens', "women's", 'world', 'cup', 'asia', 'champions', 'trophy', 'ashes',
-  'century', 'centuries', 'hundred', 'hundreds', 'fifty', 'fifties', 'runs', 'wickets', 'average', 'strike',
-  'rate', 'match', 'matches', 'tournament', 'event', 'please', 'about', 'player', 'batting', 'bowling',
+  'century', 'centuries', 'hundred', 'hundreds', 'fifty', 'fifties', 'runs', 'wicket', 'wickets', 'average', 'strike',
+  'rate', 'match', 'matches', 'tournament', 'event', 'please', 'about', 'player', 'batting', 'bowling', 'economy',
 ]);
 
 const titleCase = (word: string) => {
@@ -82,7 +82,15 @@ export function guessFormat(question: string): 'T20' | 'ODI' | 'Test' | null {
 function wantsPlayerHistory(question: string): boolean {
   const name = guessPlayerName(question);
   if (!name) return false;
-  return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b/i.test(question);
+  return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
+}
+
+function wantsBowlingStats(question: string): boolean {
+  return /wickets?|bowling|economy|spell|विकेट|गेंदबाज/i.test(question);
+}
+
+function wantsHundredStats(question: string): boolean {
+  return /centur(?:y|ies)|hundreds?|\b100s?\b|शतक/i.test(question);
 }
 
 type Lang = 'en' | 'hi';
@@ -195,7 +203,7 @@ const ARCHIVE_NOTE = {
   hi: 'स्रोत: Cricsheet संग्रह (cricsheet.org) - ये आधिकारिक करियर आंकड़े नहीं हैं।',
 } as const;
 
-function describeHistory(name: string, data: Record<string, unknown>, lang: Lang): string[] {
+function describeHistory(name: string, data: Record<string, unknown>, lang: Lang, question: string): string[] {
   const hi = lang === 'hi';
   const candidates = data.candidates as Array<Record<string, unknown>> | undefined;
   if (candidates?.length) {
@@ -205,18 +213,45 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
   if (data.found === false) return [hi ? 'यह संग्रह में नहीं मिला।' : `Not found in the archive. ${str(data.note)}`.trim()];
   const lines: string[] = [];
   if (name === 'get_player_history') {
-    const byEvent = (data.byEvent as Array<Record<string, unknown>> | undefined) ?? [];
+    const battingByEvent =
+      (data.battingByEvent as Array<Record<string, unknown>> | undefined) ??
+      (data.byEvent as Array<Record<string, unknown>> | undefined) ??
+      [];
+    const bowlingByEvent = (data.bowlingByEvent as Array<Record<string, unknown>> | undefined) ?? [];
     if (data.event) {
-      if (byEvent.length === 0) {
+      const bowlingFocus = wantsBowlingStats(question) && !wantsHundredStats(question);
+      if (bowlingFocus) {
+        if (bowlingByEvent.length === 0) {
+          lines.push(
+            hi
+              ? `${str(data.player)} के लिए "${str(data.event)}" में गेंदबाजी आंकड़े संग्रह में नहीं मिले।`
+              : `${str(data.player)}: no bowling figures in archive matches whose event contains "${str(data.event)}".`,
+          );
+        } else {
+          const wickets = Number(data.wicketsInEvent ?? bowlingByEvent.reduce((s, r) => s + Number(r.wickets ?? 0), 0));
+          lines.push(
+            hi
+              ? `${str(data.player)} के Cricsheet संग्रह में "${str(data.event)}" से मेल खाते मैचों में ${wickets} विकेट हैं।`
+              : `${str(data.player)} has ${wickets} wicket(s) in Cricsheet archive matches whose event name contains "${str(data.event)}".`,
+          );
+          for (const row of bowlingByEvent.slice(0, 4)) {
+            lines.push(
+              hi
+                ? `- ${str(row.event)} (${str(row.matchType)}): ${str(row.wickets)} विकेट, ${str(row.overs)} ओवर, इकॉनमी ${str(row.economy ?? '-')}, औसत ${str(row.average ?? '-')}.`
+                : `- ${str(row.event)} (${str(row.matchType)}): ${str(row.wickets)} wickets, ${str(row.overs)} overs, economy ${str(row.economy ?? '-')}, average ${str(row.average ?? '-')}.`,
+            );
+          }
+        }
+      } else if (battingByEvent.length === 0) {
         lines.push(hi ? `${str(data.player)} के लिए "${str(data.event)}" से मेल खाते मैच संग्रह में नहीं मिले।` : `${str(data.player)}: no archive matches whose event contains "${str(data.event)}".`);
       } else {
-        const hundreds = Number(data.hundredsInEvent ?? byEvent.reduce((s, r) => s + Number(r.hundreds ?? 0), 0));
+        const hundreds = Number(data.hundredsInEvent ?? battingByEvent.reduce((s, r) => s + Number(r.hundreds ?? 0), 0));
         lines.push(
           hi
-            ? `${str(data.player)} के Cricsheet संग्रह में "${str(data.event)}" से मेल खाते मैचों में ${hundreds} शतक हैं।`
-            : `${str(data.player)} has ${hundreds} hundred(s) in Cricsheet archive matches whose event name contains "${str(data.event)}".`,
+            ? `${str(data.player)} के Cricsheet संग्रह में "${str(data.event)}" से मेल खाते मैचों में कुल ${hundreds} शतक हैं।`
+            : `${str(data.player)} has ${hundreds} hundred(s) in total in Cricsheet archive matches whose event name contains "${str(data.event)}".`,
         );
-        for (const row of byEvent.slice(0, 4)) {
+        for (const row of battingByEvent.slice(0, 4)) {
           lines.push(
             hi
               ? `- ${str(row.event)} (${str(row.matchType)}): ${str(row.hundreds)} शतक, ${str(row.runs)} रन, सर्वोच्च ${str(row.highest)} (${str(row.innings)} पारी).`
@@ -226,22 +261,36 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
       }
     } else {
       const batting = (data.batting as Array<Record<string, unknown>> | undefined) ?? [];
+      const bowling = (data.bowling as Array<Record<string, unknown>> | undefined) ?? [];
       const bat =
         batting.find((b) => b.teamType === 'international' && (b.matchType === 'ODI' || b.matchType === 'IT20' || b.matchType === 'Test')) ?? batting[0];
-      const bowl = (data.bowling as Array<Record<string, unknown>> | undefined)?.[0];
-      if (bat) {
-        lines.push(
-          hi
-            ? `${str(data.player)} (${str(bat.matchType)}, ${str(bat.teamType)}): ${str(bat.innings)} पारियों में ${str(bat.runs)} रन, ${str(bat.hundreds)} शतक, औसत ${str(bat.average ?? '-')}, सर्वोच्च ${str(bat.highest)}.`
-            : `${str(data.player)} (${str(bat.matchType)}, ${str(bat.teamType)}): ${str(bat.runs)} runs in ${str(bat.innings)} innings, ${str(bat.hundreds)} hundreds, average ${str(bat.average ?? '-')}, highest ${str(bat.highest)}.`,
-        );
-      }
-      if (bowl && Number(bowl.wickets) > 0) {
-        lines.push(
-          hi
-            ? `गेंदबाजी (${str(bowl.matchType)}): ${str(bowl.wickets)} विकेट, इकॉनमी ${str(bowl.economy)}, सर्वश्रेष्ठ ${str(bowl.best)}.`
-            : `Bowling (${str(bowl.matchType)}): ${str(bowl.wickets)} wickets, economy ${str(bowl.economy)}, best ${str(bowl.best)}.`,
-        );
+      const bowl =
+        bowling.find((b) => b.teamType === 'international' && (b.matchType === 'ODI' || b.matchType === 'IT20' || b.matchType === 'Test')) ?? bowling[0];
+      if (wantsBowlingStats(question) && !wantsHundredStats(question)) {
+        if (bowl && Number(bowl.wickets) > 0) {
+          lines.push(
+            hi
+              ? `${str(data.player)} गेंदबाजी (${str(bowl.matchType)}, ${str(bowl.teamType)}): ${str(bowl.wickets)} विकेट, इकॉनमी ${str(bowl.economy)}, सर्वश्रेष्ठ ${str(bowl.best)}.`
+              : `${str(data.player)} bowling (${str(bowl.matchType)}, ${str(bowl.teamType)}): ${str(bowl.wickets)} wickets, economy ${str(bowl.economy)}, best ${str(bowl.best)}.`,
+          );
+        } else {
+          lines.push(hi ? `${str(data.player)} के गेंदबाजी आंकड़े संग्रह में नहीं मिले।` : `No bowling figures found in the archive for ${str(data.player)}.`);
+        }
+      } else {
+        if (bat) {
+          lines.push(
+            hi
+              ? `${str(data.player)} (${str(bat.matchType)}, ${str(bat.teamType)}): ${str(bat.innings)} पारियों में ${str(bat.runs)} रन, ${str(bat.hundreds)} शतक, औसत ${str(bat.average ?? '-')}, सर्वोच्च ${str(bat.highest)}.`
+              : `${str(data.player)} (${str(bat.matchType)}, ${str(bat.teamType)}): ${str(bat.runs)} runs in ${str(bat.innings)} innings, ${str(bat.hundreds)} hundreds, average ${str(bat.average ?? '-')}, highest ${str(bat.highest)}.`,
+          );
+        }
+        if (bowl && Number(bowl.wickets) > 0) {
+          lines.push(
+            hi
+              ? `गेंदबाजी (${str(bowl.matchType)}): ${str(bowl.wickets)} विकेट, इकॉनमी ${str(bowl.economy)}, सर्वश्रेष्ठ ${str(bowl.best)}.`
+              : `Bowling (${str(bowl.matchType)}): ${str(bowl.wickets)} wickets, economy ${str(bowl.economy)}, best ${str(bowl.best)}.`,
+          );
+        }
       }
     }
   } else if (name === 'get_head_to_head') {
@@ -319,7 +368,7 @@ function compose(p: Parsed): string {
       }
     } else if (HISTORY_TOOLS.has(name)) {
       usedHistory = true;
-      lines.push(...describeHistory(name, data, lang));
+      lines.push(...describeHistory(name, data, lang, p.question));
     }
   }
   if (usedHistory) lines.push(ARCHIVE_NOTE[lang]);

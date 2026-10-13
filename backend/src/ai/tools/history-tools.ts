@@ -49,7 +49,8 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       description:
         'Historical batting and bowling figures of one player from the Cricsheet archive (not official career totals). ' +
         'Give the player name as it appears in the app; if several players match, the result lists them with personId to choose from. ' +
-        'For a tournament (e.g. World Cup centuries), pass event so totals are limited to matches with that event name.',
+        'For a tournament (e.g. World Cup centuries or wickets), pass event so totals are limited to matches with that event name. ' +
+        'The result includes both battingByEvent and bowlingByEvent when event is set.',
       parameters: {
         type: 'object',
         properties: {
@@ -91,19 +92,27 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       if (!event) {
         return { player: displayName, personId: id, format: format ?? 'all', ...stats, coverage: HISTORY_COVERAGE_NOTE };
       }
-      const byEvent = await history.playerBattingByEvent(id, event);
-      const hundreds = byEvent.reduce((sum, row) => sum + row.hundreds, 0);
+      const [battingByEvent, bowlingByEvent] = await Promise.all([
+        history.playerBattingByEvent(id, event),
+        history.playerBowlingByEvent(id, event),
+      ]);
+      const hundredsInEvent = battingByEvent.reduce((sum, row) => sum + row.hundreds, 0);
+      const wicketsInEvent = bowlingByEvent.reduce((sum, row) => sum + row.wickets, 0);
       return {
         player: displayName,
         personId: id,
         format: format ?? 'all',
         event,
-        hundredsInEvent: hundreds,
-        byEvent,
+        hundredsInEvent,
+        wicketsInEvent,
+        battingByEvent,
+        bowlingByEvent,
+        // Keep old key for older mock builds; prefer battingByEvent.
+        byEvent: battingByEvent,
         batting: stats.batting,
         bowling: stats.bowling,
         note:
-          byEvent.length === 0
+          battingByEvent.length === 0 && bowlingByEvent.length === 0
             ? `No matches in the archive whose event name contains "${event}".`
             : `Event filter matches Cricsheet event_name containing "${event}" (archive only).`,
         coverage: HISTORY_COVERAGE_NOTE,

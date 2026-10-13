@@ -137,16 +137,22 @@ describe('AI history tools', () => {
     expect(guessFormat("icc men's world cup")).toBe('ODI');
   });
 
-  it('counts hundreds for an event filter without inventing SQL from the question', async () => {
-    db.rawRows = [
+  it('counts hundreds and wickets for an event filter without inventing SQL from the question', async () => {
+    const battingRows = [
       { eventName: 'ICC World Cup', matchType: 'ODI', gender: 'male', matches: 9, innings: 9, runs: 648, hundreds: 5, fifties: 1, highest: 140 },
       { eventName: 'ICC Cricket World Cup', matchType: 'ODI', gender: 'male', matches: 11, innings: 11, runs: 597, hundreds: 2, fifties: 3, highest: 131 },
     ];
+    const bowlingRows = [
+      { eventName: 'ICC Cricket World Cup', matchType: 'ODI', gender: 'male', matches: 15, innings: 15, legalBalls: 840, runsConceded: 620, wickets: 27 },
+    ];
+    db.$queryRaw.mockImplementation(async () => (db.$queryRaw.mock.calls.length <= 1 ? battingRows : bowlingRows));
     const res = await run('get_player_history', { name: 'Virat Kohli', event: 'World Cup', format: 'ODI' });
     expect(res.ok).toBe(true);
     expect(res.data.hundredsInEvent).toBe(7);
-    expect(res.data.byEvent).toHaveLength(2);
+    expect(res.data.wicketsInEvent).toBe(27);
+    expect(res.data.battingByEvent).toHaveLength(2);
+    expect(res.data.bowlingByEvent).toHaveLength(1);
     expect(res.label).toContain('World Cup');
-    expect(db.$queryRaw).toHaveBeenCalled();
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
   });
 });
