@@ -30,19 +30,38 @@ interface ChatTurn {
   error?: string;
 }
 
+/** Stable install id for AI quotas. Never throws (HTTP admin has no crypto.randomUUID). */
+function newDeviceSuffix(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* non-secure context or old browser */
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function adminDeviceId(): string {
-  if (typeof window === 'undefined') return 'admin-ai-ssr0001';
-  const fresh = () => `admin-ai-${crypto.randomUUID()}`;
+  const fallback = `admin-ai-${newDeviceSuffix()}`.slice(0, 128);
+  if (typeof window === 'undefined') return fallback;
   try {
     let id = window.localStorage.getItem(DEVICE_KEY);
-    if (!id || id.length < 8) {
-      id = fresh();
+    if (!id || id.length < 8 || !/^[A-Za-z0-9_.:-]+$/.test(id)) {
+      id = fallback;
       window.localStorage.setItem(DEVICE_KEY, id);
     }
     return id.slice(0, 128);
   } catch {
-    return fresh();
+    return fallback;
   }
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.describe();
+  if (error instanceof Error && error.name === 'AbortError') return 'Request cancelled.';
+  if (error instanceof Error && error.message) return error.message;
+  return 'Unexpected error';
 }
 
 function battingTeam(match: Match) {
@@ -107,30 +126,35 @@ export function MatchAiAssistant({ match }: { match: Match }) {
     return () => controller.abort();
   }, []);
 
-  const ask = useCallback(
-    async (raw: string) => {
-      const text = raw.trim().slice(0, QUESTION_MAX);
-      if (text.length < 2 || busy) return;
-      const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setBusy(true);
-      setQuestion('');
-      setTurns((prev) => [...prev, { id: turnId, question: text }]);
-      try {
-        const { data } = await apiRequest<AiAnswer>('/ai/ask', {
-          method: 'POST',
-          auth: false,
-          body: { question: text, language, matchId: String(match.matchId), deviceId: adminDeviceId() },
-        });
-        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, answer: data } : t)));
-      } catch (error) {
-        const message = error instanceof ApiError ? error.describe() : 'Unexpected error';
-        setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, error: message } : t)));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, language, match.matchId],
-  );
+  const ask = useCallback(async (raw: string) => {
+    const text = raw.trim().slice(0, QUESTION_MAX);
+    if (text.length < 2) return;
+
+    let deviceId: string;
+    try {
+      deviceId = adminDeviceId();
+    } catch (error) {
+      setTurns((prev) => [...prev, { id: `err-${Date.now()}`, question: text, error: errorMessage(error) }]);
+      return;
+    }
+
+    const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setBusy(true);
+    setQuestion('');
+    setTurns((prev) => [...prev, { id: turnId, question: text }]);
+    try {
+      const { data } = await apiRequest<AiAnswer>('/ai/ask', {
+        method: 'POST',
+        auth: false,
+        body: { question: text, language, matchId: String(match.matchId), deviceId },
+      });
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, answer: data } : t)));
+    } catch (error) {
+      setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, error: errorMessage(error) } : t)));
+    } finally {
+      setBusy(false);
+    }
+  }, [language, match.matchId]);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
