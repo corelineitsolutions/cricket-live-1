@@ -194,8 +194,11 @@ All are optional; defaults shown. Changing them needs an API reload
                                       in deploy/nginx/live-score-proxy.conf).
   AI_HISTORY_ENABLED=false            Cricsheet archive tools; enable after migration,
                                       import and (ideally) identity review
-  HISTORY_DATABASE_URL=               optional separate DB for the importer
-                                      (falls back to DATABASE_URL)
+  HISTORY_DATABASE_URL=               optional separate MySQL for hist_* tables.
+                                      Used by the importer AND by AI history tools /
+                                      identity hist lookups. Empty = DATABASE_URL.
+                                      If you imported into cricket_history_test, set
+                                      this to that same URL in the API .env.
   HISTORY_TEST_DATABASE_URL=          local MySQL *_test database for importer
                                       integration tests (never production)
   HISTORY_CSV_DIR=                    optional default for --dir

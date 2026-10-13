@@ -145,7 +145,7 @@ cp admin/.env.example admin/.env.production
 | `METRICS_TOKEN` | ≥ 32 chars (`openssl rand -hex 32`) to enable `GET /metrics`; empty disables it |
 | `SWAGGER_ENABLED` | `true` while the Flutter developer needs `/api/docs`; `false` or IP-restricted afterwards |
 | `AI_ENABLED` / `LLM_*` / `AI_*` | AI assistant, off by default; see [Cricket AI assistant](#19-cricket-ai-assistant-and-cricsheet-history) |
-| `HISTORY_DATABASE_URL` | optional target for the Cricsheet history import; falls back to `DATABASE_URL` |
+| `HISTORY_DATABASE_URL` | optional separate MySQL for `hist_*` (import + AI history tools); empty = use `DATABASE_URL` |
 
 Startup validation rejects missing or weak production values (e.g. short `JWT_SECRET`).
 

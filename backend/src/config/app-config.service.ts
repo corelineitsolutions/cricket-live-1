@@ -17,6 +17,15 @@ export class AppConfigService {
     return this.config.get<number>('PORT') ?? 3000;
   }
 
+  get databaseUrl(): string {
+    return this.config.getOrThrow<string>('DATABASE_URL');
+  }
+
+  /** Separate Cricsheet history DB when set; otherwise history tools use DATABASE_URL. */
+  get historyDatabaseUrl(): string {
+    return this.config.get<string>('HISTORY_DATABASE_URL') ?? '';
+  }
+
   get redisHost(): string {
     return this.config.get<string>('REDIS_HOST') ?? '127.0.0.1';
   }
@@ -184,7 +193,7 @@ export class AppConfigService {
     return Number(this.config.getOrThrow('AI_REQUEST_TIMEOUT_MS'));
   }
 
-  /** Cricsheet history tools for the AI. Enable only after the hist_* migration and an import. */
+  /** Cricsheet history tools for the AI. Enable after hist_* import (HISTORY_DATABASE_URL or DATABASE_URL). */
   get aiHistoryEnabled(): boolean {
     const value = this.config.get<boolean | string>('AI_HISTORY_ENABLED') ?? false;
     return value === true || value === 'true';

@@ -5,6 +5,7 @@ import { apiError, notFound } from '../common/utils/http-errors';
 import { buildPagination } from '../common/utils/pagination';
 import { logEvent } from '../common/utils/structured-log';
 import { PrismaService } from '../database/prisma.service';
+import { HistoryPrismaService } from '../history/history-prisma.service';
 import { venueKey } from '../history/import/prisma-history.store';
 import { CreatePlayerMapDto, CreateTeamMapDto, CreateVenueMapDto, IdentityKind, ListIdentityQueryDto } from './dto/identity.dto';
 import { HistPersonNames, normalizeText, proposePlayers, proposeTeams, proposeVenues } from './identity-matching';
@@ -30,8 +31,15 @@ const conflict = (message: string) => apiError(HttpStatus.CONFLICT, message, Err
 export class IdentityService {
   private readonly logger = new Logger(IdentityService.name);
   private running = false;
+  /** hist_* and identity_* (may be HISTORY_DATABASE_URL). */
+  private readonly history: HistoryPrismaService['client'];
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    historyPrisma: HistoryPrismaService,
+  ) {
+    this.history = historyPrisma.client;
+  }
 
   // ---------------------------------------------------------------- summary
 
@@ -45,9 +53,9 @@ export class IdentityService {
       count('players'),
       count('teams'),
       count('venues'),
-      this.prisma.histPerson.count(),
-      this.prisma.histTeam.count(),
-      this.prisma.histVenue.count(),
+      this.history.histPerson.count(),
+      this.history.histTeam.count(),
+      this.history.histVenue.count(),
       this.prisma.player.count(),
       this.prisma.team.count(),
     ]);
@@ -77,9 +85,9 @@ export class IdentityService {
   private async proposePlayers(): Promise<ProposalRunResult> {
     const [players, people, names, confirmed, international] = await Promise.all([
       this.prisma.player.findMany({ select: { sportmonksId: true, name: true, country: true } }),
-      this.prisma.histPerson.findMany({ select: { id: true, name: true } }),
-      this.prisma.histPersonName.findMany({ select: { personId: true, name: true } }),
-      this.prisma.identityPlayerMap.findMany({ where: { status: 'CONFIRMED' }, select: { latiyalPlayerId: true, histPersonId: true } }),
+      this.history.histPerson.findMany({ select: { id: true, name: true } }),
+      this.history.histPersonName.findMany({ select: { personId: true, name: true } }),
+      this.history.identityPlayerMap.findMany({ where: { status: 'CONFIRMED' }, select: { latiyalPlayerId: true, histPersonId: true } }),
       this.internationalTeamsByPerson(),
     ]);
     const byPerson = new Map<string, HistPersonNames>();
@@ -95,7 +103,7 @@ export class IdentityService {
       candidates,
       international,
     );
-    const existing = await this.prisma.identityPlayerMap.findMany({
+    const existing = await this.history.identityPlayerMap.findMany({
       select: { id: true, latiyalPlayerId: true, histPersonId: true, status: true, method: true, confidence: true },
     });
     const write = await this.writeProposals(
@@ -104,8 +112,8 @@ export class IdentityService {
         data: { latiyalPlayerId: p.latiyal, histPersonId: p.hist, method: p.method, confidence: p.confidence, evidence: p.evidence },
       })),
       existing.map((r) => ({ ...r, key: `${r.latiyalPlayerId}|${r.histPersonId}` })),
-      (data) => this.prisma.identityPlayerMap.createMany({ data, skipDuplicates: true }),
-      (id, data) => this.prisma.identityPlayerMap.update({ where: { id }, data }),
+      (data) => this.history.identityPlayerMap.createMany({ data, skipDuplicates: true }),
+      (id, data) => this.history.identityPlayerMap.update({ where: { id }, data }),
     );
     return { kind: 'players', proposals: proposals.length, ...write, unmatched, ambiguous };
   }
@@ -113,8 +121,8 @@ export class IdentityService {
   private async proposeTeams(): Promise<ProposalRunResult> {
     const [teams, histTeams, existing] = await Promise.all([
       this.prisma.team.findMany({ select: { sportmonksId: true, name: true } }),
-      this.prisma.histTeam.findMany({ select: { id: true, name: true, teamType: true } }),
-      this.prisma.identityTeamMap.findMany({
+      this.history.histTeam.findMany({ select: { id: true, name: true, teamType: true } }),
+      this.history.identityTeamMap.findMany({
         select: { id: true, latiyalTeamId: true, histTeamId: true, gender: true, status: true, method: true, confidence: true },
       }),
     ]);
@@ -128,8 +136,8 @@ export class IdentityService {
         data: { latiyalTeamId: p.latiyal, histTeamId: p.hist, gender: p.gender, method: p.method, confidence: p.confidence, evidence: p.evidence },
       })),
       existing.map((r) => ({ ...r, key: `${r.latiyalTeamId}|${r.histTeamId}|${r.gender}` })),
-      (data) => this.prisma.identityTeamMap.createMany({ data, skipDuplicates: true }),
-      (id, data) => this.prisma.identityTeamMap.update({ where: { id }, data }),
+      (data) => this.history.identityTeamMap.createMany({ data, skipDuplicates: true }),
+      (id, data) => this.history.identityTeamMap.update({ where: { id }, data }),
     );
     return { kind: 'teams', proposals: proposals.length, ...write, unmatched, ambiguous: 0 };
   }
@@ -141,8 +149,8 @@ export class IdentityService {
         select: { venueName: true, venueCity: true },
         distinct: ['venueName', 'venueCity'],
       }),
-      this.prisma.histVenue.findMany({ select: { id: true, name: true, city: true } }),
-      this.prisma.identityVenueMap.findMany({
+      this.history.histVenue.findMany({ select: { id: true, name: true, city: true } }),
+      this.history.identityVenueMap.findMany({
         select: { id: true, liveVenueKey: true, histVenueId: true, status: true, method: true, confidence: true },
       }),
     ]);
@@ -170,8 +178,8 @@ export class IdentityService {
         };
       }),
       existing.map((r) => ({ ...r, key: `${r.liveVenueKey}|${r.histVenueId}` })),
-      (data) => this.prisma.identityVenueMap.createMany({ data, skipDuplicates: true }),
-      (id, data) => this.prisma.identityVenueMap.update({ where: { id }, data }),
+      (data) => this.history.identityVenueMap.createMany({ data, skipDuplicates: true }),
+      (id, data) => this.history.identityVenueMap.update({ where: { id }, data }),
     );
     return { kind: 'venues', proposals: proposals.length, ...write, unmatched, ambiguous: 0 };
   }
@@ -210,7 +218,7 @@ export class IdentityService {
 
   /** Fixed query (no user input): Cricsheet people and the international sides they played for. */
   private async internationalTeamsByPerson(): Promise<Map<string, Set<string>>> {
-    const rows = await this.prisma.$queryRaw<Array<{ personId: string; name: string }>>(Prisma.sql`
+    const rows = await this.history.$queryRaw<Array<{ personId: string; name: string }>>(Prisma.sql`
       SELECT DISTINCT mp.person_id AS personId, t.name AS name
       FROM hist_match_players mp
       JOIN hist_teams t ON t.id = mp.team_id
@@ -249,13 +257,13 @@ export class IdentityService {
     if (kind === 'players') {
       const [live, hist] = await Promise.all([
         this.prisma.player.findMany({ where: { name: { contains: q } }, select: { sportmonksId: true }, take: SEARCH_ID_LIMIT }),
-        this.prisma.histPerson.findMany({ where: { name: { contains: q } }, select: { id: true }, take: SEARCH_ID_LIMIT }),
+        this.history.histPerson.findMany({ where: { name: { contains: q } }, select: { id: true }, take: SEARCH_ID_LIMIT }),
       ]);
       return { OR: [{ latiyalPlayerId: { in: live.map((p) => p.sportmonksId) } }, { histPersonId: { in: hist.map((p) => p.id) } }] };
     }
     const [live, hist] = await Promise.all([
       this.prisma.team.findMany({ where: { name: { contains: q } }, select: { sportmonksId: true }, take: SEARCH_ID_LIMIT }),
-      this.prisma.histTeam.findMany({ where: { name: { contains: q } }, select: { id: true }, take: SEARCH_ID_LIMIT }),
+      this.history.histTeam.findMany({ where: { name: { contains: q } }, select: { id: true }, take: SEARCH_ID_LIMIT }),
     ]);
     return { OR: [{ latiyalTeamId: { in: live.map((t) => t.sportmonksId) } }, { histTeamId: { in: hist.map((t) => t.id) } }] };
   }
@@ -274,8 +282,8 @@ export class IdentityService {
       const personIds = rows.map((r) => r.histPersonId as string);
       const [players, people, names] = await Promise.all([
         this.prisma.player.findMany({ where: { sportmonksId: { in: latiyalIds } }, select: { sportmonksId: true, name: true, country: true } }),
-        this.prisma.histPerson.findMany({ where: { id: { in: personIds } }, select: { id: true, name: true } }),
-        this.prisma.histPersonName.findMany({ where: { personId: { in: personIds } }, select: { personId: true, name: true } }),
+        this.history.histPerson.findMany({ where: { id: { in: personIds } }, select: { id: true, name: true } }),
+        this.history.histPersonName.findMany({ where: { personId: { in: personIds } }, select: { personId: true, name: true } }),
       ]);
       const player = new Map(players.map((p) => [p.sportmonksId, p]));
       const person = new Map(people.map((p) => [p.id, p]));
@@ -296,7 +304,7 @@ export class IdentityService {
     if (kind === 'teams') {
       const [teams, histTeams] = await Promise.all([
         this.prisma.team.findMany({ where: { sportmonksId: { in: rows.map((r) => r.latiyalTeamId as number) } }, select: { sportmonksId: true, name: true } }),
-        this.prisma.histTeam.findMany({ where: { id: { in: rows.map((r) => r.histTeamId as number) } }, select: { id: true, name: true, teamType: true } }),
+        this.history.histTeam.findMany({ where: { id: { in: rows.map((r) => r.histTeamId as number) } }, select: { id: true, name: true, teamType: true } }),
       ]);
       const team = new Map(teams.map((t) => [t.sportmonksId, t]));
       const hist = new Map(histTeams.map((t) => [t.id, t]));
@@ -306,7 +314,7 @@ export class IdentityService {
         hist: { id: row.histTeamId as number, name: hist.get(row.histTeamId as number)?.name ?? null, detail: hist.get(row.histTeamId as number)?.teamType ?? null },
       }));
     }
-    const venues = await this.prisma.histVenue.findMany({
+    const venues = await this.history.histVenue.findMany({
       where: { id: { in: rows.map((r) => r.histVenueId as number) } },
       select: { id: true, name: true, city: true },
     });
@@ -336,13 +344,13 @@ export class IdentityService {
   async createPlayer(dto: CreatePlayerMapDto, adminId: string) {
     const [player, person] = await Promise.all([
       this.prisma.player.findUnique({ where: { sportmonksId: dto.latiyalPlayerId } }),
-      this.prisma.histPerson.findUnique({ where: { id: dto.histPersonId } }),
+      this.history.histPerson.findUnique({ where: { id: dto.histPersonId } }),
     ]);
     if (!player) throw notFound('Live player not found');
     if (!person) throw notFound('Cricsheet person not found');
     const row = { latiyalPlayerId: dto.latiyalPlayerId, histPersonId: dto.histPersonId };
     await this.assertNoConflict('players', row);
-    const saved = await this.prisma.identityPlayerMap.upsert({
+    const saved = await this.history.identityPlayerMap.upsert({
       where: { latiyalPlayerId_histPersonId: row },
       create: { ...row, ...this.manual(adminId) },
       update: this.manual(adminId),
@@ -353,13 +361,13 @@ export class IdentityService {
   async createTeam(dto: CreateTeamMapDto, adminId: string) {
     const [team, hist] = await Promise.all([
       this.prisma.team.findUnique({ where: { sportmonksId: dto.latiyalTeamId } }),
-      this.prisma.histTeam.findUnique({ where: { id: dto.histTeamId } }),
+      this.history.histTeam.findUnique({ where: { id: dto.histTeamId } }),
     ]);
     if (!team) throw notFound('Live team not found');
     if (!hist) throw notFound('Cricsheet team not found');
     const row = { latiyalTeamId: dto.latiyalTeamId, histTeamId: dto.histTeamId, gender: dto.gender };
     await this.assertNoConflict('teams', row);
-    const saved = await this.prisma.identityTeamMap.upsert({
+    const saved = await this.history.identityTeamMap.upsert({
       where: { latiyalTeamId_histTeamId_gender: row },
       create: { ...row, ...this.manual(adminId) },
       update: this.manual(adminId),
@@ -368,12 +376,12 @@ export class IdentityService {
   }
 
   async createVenue(dto: CreateVenueMapDto, adminId: string) {
-    const hist = await this.prisma.histVenue.findUnique({ where: { id: dto.histVenueId } });
+    const hist = await this.history.histVenue.findUnique({ where: { id: dto.histVenueId } });
     if (!hist) throw notFound('Cricsheet venue not found');
     const city = dto.liveVenueCity || null;
     const row = { liveVenueKey: venueKey(dto.liveVenueName, city), histVenueId: dto.histVenueId };
     await this.assertNoConflict('venues', row);
-    const saved = await this.prisma.identityVenueMap.upsert({
+    const saved = await this.history.identityVenueMap.upsert({
       where: { liveVenueKey_histVenueId: row },
       create: { ...row, liveVenueName: dto.liveVenueName, liveVenueCity: city, ...this.manual(adminId) },
       update: this.manual(adminId),
@@ -396,7 +404,7 @@ export class IdentityService {
   private async assertNoConflict(kind: IdentityKind, row: Record<string, unknown>) {
     const notSelf = row.id ? { id: { not: row.id } } : {};
     if (kind === 'players') {
-      const other = await this.prisma.identityPlayerMap.findFirst({
+      const other = await this.history.identityPlayerMap.findFirst({
         where: {
           status: 'CONFIRMED',
           ...notSelf,
@@ -408,7 +416,7 @@ export class IdentityService {
       });
       if (other) throw conflict('This player or Cricsheet person is already confirmed to someone else. Reject that mapping first.');
     } else if (kind === 'teams') {
-      const other = await this.prisma.identityTeamMap.findFirst({
+      const other = await this.history.identityTeamMap.findFirst({
         where: {
           status: 'CONFIRMED',
           ...notSelf,
@@ -419,7 +427,7 @@ export class IdentityService {
       });
       if (other) throw conflict('This Cricsheet team is already confirmed to another live team. Reject that mapping first.');
     } else {
-      const other = await this.prisma.identityVenueMap.findFirst({
+      const other = await this.history.identityVenueMap.findFirst({
         where: { status: 'CONFIRMED', ...notSelf, histVenueId: row.histVenueId as number, liveVenueKey: { not: row.liveVenueKey as string } },
       });
       if (other) throw conflict('This Cricsheet venue is already confirmed to another live venue. Reject that mapping first.');
@@ -430,12 +438,12 @@ export class IdentityService {
 
   async searchHistory(kind: IdentityKind, q: string) {
     if (kind === 'players') {
-      const names = await this.prisma.histPersonName.findMany({
+      const names = await this.history.histPersonName.findMany({
         where: { name: { contains: q } },
         select: { personId: true },
         take: SEARCH_ID_LIMIT,
       });
-      const people = await this.prisma.histPerson.findMany({
+      const people = await this.history.histPerson.findMany({
         where: { OR: [{ name: { contains: q } }, { id: { in: [...new Set(names.map((n) => n.personId))] } }] },
         select: { id: true, name: true },
         orderBy: { name: 'asc' },
@@ -444,7 +452,7 @@ export class IdentityService {
       return people.map((p) => ({ id: p.id, name: p.name, detail: null }));
     }
     if (kind === 'teams') {
-      const teams = await this.prisma.histTeam.findMany({
+      const teams = await this.history.histTeam.findMany({
         where: { name: { contains: q } },
         select: { id: true, name: true, teamType: true },
         orderBy: { name: 'asc' },
@@ -452,7 +460,7 @@ export class IdentityService {
       });
       return teams.map((t) => ({ id: t.id, name: t.name, detail: t.teamType }));
     }
-    const venues = await this.prisma.histVenue.findMany({
+    const venues = await this.history.histVenue.findMany({
       where: { name: { contains: q } },
       select: { id: true, name: true, city: true },
       orderBy: { name: 'asc' },
@@ -464,12 +472,12 @@ export class IdentityService {
   // ---------------------------------------------------------------- lookups for the AI tools (CONFIRMED only)
 
   async confirmedPersonFor(latiyalPlayerId: number): Promise<string | null> {
-    const row = await this.prisma.identityPlayerMap.findFirst({ where: { latiyalPlayerId, status: 'CONFIRMED' }, select: { histPersonId: true } });
+    const row = await this.history.identityPlayerMap.findFirst({ where: { latiyalPlayerId, status: 'CONFIRMED' }, select: { histPersonId: true } });
     return row?.histPersonId ?? null;
   }
 
   async confirmedTeamsFor(latiyalTeamId: number): Promise<{ histTeamIds: number[]; gender: string } | null> {
-    const rows = await this.prisma.identityTeamMap.findMany({
+    const rows = await this.history.identityTeamMap.findMany({
       where: { latiyalTeamId, status: 'CONFIRMED' },
       select: { histTeamId: true, gender: true },
     });
@@ -478,7 +486,7 @@ export class IdentityService {
 
   /** `name` and `city` as stored on the live match (matches.venue_name / venue_city). */
   async confirmedVenuesFor(name: string, city: string | null): Promise<number[]> {
-    const rows = await this.prisma.identityVenueMap.findMany({
+    const rows = await this.history.identityVenueMap.findMany({
       where: { liveVenueKey: venueKey(name.trim(), city?.trim() || null), status: 'CONFIRMED' },
       select: { histVenueId: true },
     });
@@ -487,9 +495,9 @@ export class IdentityService {
 
   private delegate(kind: IdentityKind) {
     const delegates = {
-      players: this.prisma.identityPlayerMap,
-      teams: this.prisma.identityTeamMap,
-      venues: this.prisma.identityVenueMap,
+      players: this.history.identityPlayerMap,
+      teams: this.history.identityTeamMap,
+      venues: this.history.identityVenueMap,
     };
     return delegates[kind] as unknown as {
       count(args: { where?: Record<string, unknown> }): Promise<number>;

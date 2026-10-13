@@ -3,7 +3,7 @@ import { IdentityService } from '../../identity/identity.service';
 import type { MatchDto } from '../../matches/dto/match.dto';
 import type { MatchesService } from '../../matches/matches.service';
 import { FakeDb } from '../../testing/fake-db';
-import { guessPlayerName } from '../llm/mock-llm.provider';
+import { guessEvent, guessFormat, guessPlayerName } from '../llm/mock-llm.provider';
 import { AiToolRegistry } from './ai-tool.registry';
 import { createHistoryTools, formatOf } from './history-tools';
 
@@ -61,7 +61,8 @@ describe('AI history tools', () => {
     db = new FakeDb();
     seed(db);
     const matches = { getMatch: vi.fn(async () => liveMatch) } as unknown as MatchesService;
-    registry = new AiToolRegistry(createHistoryTools(new HistoryQueryService(db.asPrisma()), new IdentityService(db.asPrisma()), matches));
+    const historyPrisma = { client: db.asPrisma() } as unknown as import('../../history/history-prisma.service').HistoryPrismaService;
+    registry = new AiToolRegistry(createHistoryTools(new HistoryQueryService(historyPrisma), new IdentityService(db.asPrisma(), historyPrisma), matches));
   });
 
   it('finds a player by app name and reports archive figures with derived rates', async () => {
@@ -130,6 +131,22 @@ describe('AI history tools', () => {
     expect([formatOf('T20I'), formatOf('ODI'), formatOf('Test'), formatOf('The Hundred')]).toEqual(['T20', 'ODI', 'Test', null]);
     expect(guessPlayerName('What is Virat Kohli career record in ODI?')).toBe('Virat Kohli');
     expect(guessPlayerName('Tell me Quinton de Kock stats')).toBe('Quinton de Kock');
+    expect(guessPlayerName("there is how many 100 of rohit sharma in icc men's world cup")).toBe('Rohit Sharma');
     expect(guessPlayerName('career stats please')).toBeNull();
+    expect(guessEvent("icc men's world cup")).toBe('World Cup');
+    expect(guessFormat("icc men's world cup")).toBe('ODI');
+  });
+
+  it('counts hundreds for an event filter without inventing SQL from the question', async () => {
+    db.rawRows = [
+      { eventName: 'ICC World Cup', matchType: 'ODI', gender: 'male', matches: 9, innings: 9, runs: 648, hundreds: 5, fifties: 1, highest: 140 },
+      { eventName: 'ICC Cricket World Cup', matchType: 'ODI', gender: 'male', matches: 11, innings: 11, runs: 597, hundreds: 2, fifties: 3, highest: 131 },
+    ];
+    const res = await run('get_player_history', { name: 'Virat Kohli', event: 'World Cup', format: 'ODI' });
+    expect(res.ok).toBe(true);
+    expect(res.data.hundredsInEvent).toBe(7);
+    expect(res.data.byEvent).toHaveLength(2);
+    expect(res.label).toContain('World Cup');
+    expect(db.$queryRaw).toHaveBeenCalled();
   });
 });

@@ -43,18 +43,20 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     return { ids, name, gender: gender ?? (split.gender === 'female' ? 'female' : null) };
   };
 
-  const playerHistory: AiTool<{ name: string | null; personId: string | null; format: HistoryFormat | null }> = {
+  const playerHistory: AiTool<{ name: string | null; personId: string | null; format: HistoryFormat | null; event: string | null }> = {
     definition: {
       name: 'get_player_history',
       description:
         'Historical batting and bowling figures of one player from the Cricsheet archive (not official career totals). ' +
-        'Give the player name as it appears in the app; if several players match, the result lists them with personId to choose from.',
+        'Give the player name as it appears in the app; if several players match, the result lists them with personId to choose from. ' +
+        'For a tournament (e.g. World Cup centuries), pass event so totals are limited to matches with that event name.',
       parameters: {
         type: 'object',
         properties: {
           name: { type: 'string', description: 'Player name, e.g. "Virat Kohli".' },
           personId: { type: 'string', description: 'Cricsheet personId from an earlier candidates list.' },
           format: formatSchema,
+          event: { type: 'string', description: 'Optional tournament/event fragment, e.g. "World Cup" or "Asia Cup".' },
         },
         additionalProperties: false,
       },
@@ -67,9 +69,13 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       if (raw.personId !== undefined && !personId) return 'personId must be an 8-character id';
       if (raw.name !== undefined && !name) return `name must be 2-${MAX_NAME} characters`;
       if (!name && !personId) return 'name or personId is required';
-      return { name, personId, format };
+      const event = raw.event === undefined ? null : text(raw.event, 80);
+      if (raw.event !== undefined && (!event || !/^[A-Za-z0-9][A-Za-z0-9 '&./-]{1,79}$/.test(event))) {
+        return 'event must be 2-80 characters (letters, digits, spaces)';
+      }
+      return { name, personId, format, event };
     },
-    run: async ({ name, personId, format }) => {
+    run: async ({ name, personId, format, event }) => {
       let id = personId;
       if (!id) {
         const people = await history.findPeople(name!);
@@ -81,9 +87,29 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       }
       const displayName = await history.personName(id);
       if (!displayName) return unavailable('This player');
-      return { player: displayName, personId: id, format: format ?? 'all', ...(await history.playerStats(id, format)), coverage: HISTORY_COVERAGE_NOTE };
+      const stats = await history.playerStats(id, format);
+      if (!event) {
+        return { player: displayName, personId: id, format: format ?? 'all', ...stats, coverage: HISTORY_COVERAGE_NOTE };
+      }
+      const byEvent = await history.playerBattingByEvent(id, event);
+      const hundreds = byEvent.reduce((sum, row) => sum + row.hundreds, 0);
+      return {
+        player: displayName,
+        personId: id,
+        format: format ?? 'all',
+        event,
+        hundredsInEvent: hundreds,
+        byEvent,
+        batting: stats.batting,
+        bowling: stats.bowling,
+        note:
+          byEvent.length === 0
+            ? `No matches in the archive whose event name contains "${event}".`
+            : `Event filter matches Cricsheet event_name containing "${event}" (archive only).`,
+        coverage: HISTORY_COVERAGE_NOTE,
+      };
     },
-    label: ({ name, personId }) => `Cricsheet archive: ${name ?? personId}`,
+    label: ({ name, personId, event }) => `Cricsheet archive: ${name ?? personId}${event ? ` (${event})` : ''}`,
   };
 
   const headToHead: AiTool<{ matchId: string | null; team1: string | null; team2: string | null; format: HistoryFormat | null; gender: 'male' | 'female' | null }> = {

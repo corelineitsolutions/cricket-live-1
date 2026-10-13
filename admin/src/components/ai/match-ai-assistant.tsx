@@ -31,16 +31,17 @@ interface ChatTurn {
 }
 
 function adminDeviceId(): string {
-  if (typeof window === 'undefined') return 'admin-ai-ssr';
+  if (typeof window === 'undefined') return 'admin-ai-ssr0001';
+  const fresh = () => `admin-ai-${crypto.randomUUID()}`;
   try {
     let id = window.localStorage.getItem(DEVICE_KEY);
     if (!id || id.length < 8) {
-      id = `admin-ai-${crypto.randomUUID()}`;
+      id = fresh();
       window.localStorage.setItem(DEVICE_KEY, id);
     }
     return id.slice(0, 128);
   } catch {
-    return 'admin-ai-fallback-device';
+    return fresh();
   }
 }
 

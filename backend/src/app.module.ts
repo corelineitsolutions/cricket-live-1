@@ -17,6 +17,7 @@ import { FcmModule } from './fcm/fcm.module';
 import { FeedsModule } from './feeds/feeds.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { HealthModule } from './health/health.module';
+import { HistoryModule } from './history/history.module';
 import { IdentityModule } from './identity/identity.module';
 import { LeaguesModule } from './leagues/leagues.module';
 import { LiveScoreModule } from './live-score/live-score.module';
@@ -40,6 +41,7 @@ import { WebsocketModule } from './websocket/websocket.module';
     }),
     AppCacheModule,
     DatabaseModule,
+    HistoryModule,
     FirebaseModule,
     QueuesModule,
     LatiyalModule,

@@ -17,6 +17,7 @@ import { HttpThrottlerGuard } from '../common/guards/http-throttler.guard';
 import { throttlerOptions } from '../common/guards/throttler.config';
 import { AppConfigService } from '../config/app-config.service';
 import { PrismaService } from '../database/prisma.service';
+import { HistoryPrismaService } from '../history/history-prisma.service';
 import { FcmModule } from '../fcm/fcm.module';
 import { FeedsModule } from '../feeds/feeds.module';
 import { FirebaseService } from '../firebase/firebase.service';
@@ -71,6 +72,8 @@ export function apiTestConfig(overrides: ApiTestConfig = {}): AppConfigService {
     aiRequestsPerIpPerMinute: 1_000,
     aiRequestTimeoutMs: 10_000,
     aiHistoryEnabled: false,
+    databaseUrl: 'mysql://test:test@127.0.0.1:3306/cricket_live_test',
+    historyDatabaseUrl: '',
     ...overrides,
   } as AppConfigService;
 }
@@ -86,8 +89,12 @@ function testInfra(config: AppConfigService, redis: FakeRedis, db: FakeDb): Dyna
       { provide: AppConfigService, useValue: config },
       { provide: RedisService, useValue: redis.asService() },
       { provide: PrismaService, useValue: db.asPrisma() },
+      {
+        provide: HistoryPrismaService,
+        useValue: { client: db.asPrisma(), isSeparate: false, onModuleInit: async () => undefined, onModuleDestroy: async () => undefined, ping: async () => 'up' as const },
+      },
     ],
-    exports: [AppConfigService, RedisService, PrismaService],
+    exports: [AppConfigService, RedisService, PrismaService, HistoryPrismaService],
   };
 }
 

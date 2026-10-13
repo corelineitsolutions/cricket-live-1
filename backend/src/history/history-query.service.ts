@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
+import { Prisma } from '@prisma/client';
 import { compareNames, nameParts, venueParts } from '../identity/identity-matching';
+import { HistoryPrismaService } from './history-prisma.service';
 
 /** Shown with every historical figure so it is never mistaken for an official career record. */
 export const HISTORY_COVERAGE_NOTE =
@@ -37,7 +38,11 @@ export interface HistTeamSide {
  */
 @Injectable()
 export class HistoryQueryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(historyPrisma: HistoryPrismaService) {
+    this.prisma = historyPrisma.client;
+  }
+
+  private readonly prisma: HistoryPrismaService['client'];
 
   private matchTypes(format: HistoryFormat | null) {
     return format ? { in: FORMAT_MATCH_TYPES[format] } : undefined;
@@ -111,6 +116,57 @@ export class HistoryQueryService {
           fiveWickets: b.fiveWickets,
         })),
     };
+  }
+
+  /**
+   * Batting totals for one player limited to matches whose Cricsheet event_name contains
+   * `eventContains` (e.g. "World Cup"). Fixed SQL with bound parameters only.
+   */
+  async playerBattingByEvent(personId: string, eventContains: string) {
+    const pattern = `%${eventContains}%`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        eventName: string;
+        matchType: string;
+        gender: string;
+        matches: number;
+        innings: bigint | number;
+        runs: bigint | number;
+        hundreds: bigint | number;
+        fifties: bigint | number;
+        highest: number | null;
+      }>
+    >(Prisma.sql`
+      SELECT m.event_name AS eventName, m.match_type AS matchType, m.gender AS gender,
+             COUNT(DISTINCT s.match_id) AS matches,
+             COUNT(*) AS innings,
+             COALESCE(SUM(s.runs), 0) AS runs,
+             COALESCE(SUM(s.runs >= 100), 0) AS hundreds,
+             COALESCE(SUM(s.runs >= 50 AND s.runs < 100), 0) AS fifties,
+             MAX(s.runs) AS highest
+      FROM (
+        SELECT d.match_id, d.innings_no, SUM(d.runs_batter) AS runs
+        FROM hist_deliveries d
+        WHERE d.batter_id = ${personId}
+        GROUP BY d.match_id, d.innings_no
+      ) s
+      JOIN hist_innings i ON i.match_id = s.match_id AND i.innings_no = s.innings_no AND i.is_super_over = 0
+      JOIN hist_matches m ON m.id = s.match_id
+      WHERE m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+      GROUP BY m.event_name, m.match_type, m.gender
+      ORDER BY hundreds DESC, runs DESC
+      LIMIT 20`);
+    return rows.map((r) => ({
+      event: r.eventName,
+      matchType: r.matchType,
+      gender: r.gender,
+      matches: Number(r.matches),
+      innings: Number(r.innings),
+      runs: Number(r.runs),
+      hundreds: Number(r.hundreds),
+      fifties: Number(r.fifties),
+      highest: r.highest ?? 0,
+    }));
   }
 
   /** Cricsheet teams with exactly this name (case-insensitive in MySQL). */

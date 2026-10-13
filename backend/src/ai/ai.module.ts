@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { HistoryQueryService } from '../history/history-query.service';
+import { HistoryModule } from '../history/history.module';
 import { IdentityModule } from '../identity/identity.module';
 import { MatchesModule } from '../matches/matches.module';
 import { AdminAiController } from './admin-ai.controller';
@@ -13,11 +13,10 @@ import { MockLlmProvider } from './llm/mock-llm.provider';
 import { LlmFetch, OpenAiCompatibleProvider, validateLlmBaseUrl } from './llm/openai-compatible.provider';
 
 @Module({
-  imports: [MatchesModule, IdentityModule],
+  imports: [MatchesModule, IdentityModule, HistoryModule],
   controllers: [AiController, AdminAiController],
   providers: [
     AiService,
-    HistoryQueryService,
     AiUsageService,
     { provide: LLM_FETCH, useValue: ((input, init) => fetch(input, init)) satisfies LlmFetch },
     {
