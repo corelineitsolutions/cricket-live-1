@@ -385,10 +385,13 @@ Always available:
   get_recent_commentary     latest balls (limit 1-30, default 12); may not include
                             every delivery
   calculate_required_rate   arithmetic only (e.g. 100 runs in 6 overs = 16.67 per over)
-  get_win_probability       Latiyal matchProbHistory latest point (estimate only;
-                            unavailable when the payload is empty or unrecognised)
+  get_win_probability       Latiyal matchProbHistory latest point, else liveMatch
+                            prediction fields when present (estimate only)
   project_score             projected innings total from current RR × overs left
                             (limited overs; arithmetic estimate, not a guarantee)
+  project_next_overs        runs in next N overs: blends live RR, recent overs,
+                            batter@venue / bowler economy / batter-vs-bowler when
+                            identity maps exist; Latiyal win%/prediction as context
 
 Only with AI_HISTORY_ENABLED=true (Cricsheet archive):
   get_player_history        batting/bowling by format and team type, averages, strike
@@ -535,10 +538,11 @@ row says which). Every history result carries the coverage note.
 18. NEXT PHASES
 ------------------------------------------------------------------------------------------
 
-  DONE (P5-lite): get_win_probability (Latiyal matchProbHistory) + project_score
-      (run-rate arithmetic), with estimate wording in tools and the system prompt.
+  DONE (P5-lite): get_win_probability (Latiyal matchProbHistory / liveMatch prediction)
+      + project_score (run-rate arithmetic) + project_next_overs (blended live RR +
+      recent overs + Cricsheet venue/matchup when mapped; Latiyal win% as context).
       Real LLM: set LLM_PROVIDER=openai-compatible (Ollama or hosted) + budget; see §7.
-      Also: get_event_results for tournament winners; format/gender on player-by-event.
+      Also: get_event_results / get_event_leaders for tournament winners and Orange/Purple Cap.
 
   P5-full (not started): own calibrated win%/projected-score models on Cricsheet + live
       ball state; promote only if accuracy does not regress; Latiyal win % as cross-check.

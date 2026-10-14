@@ -40,9 +40,9 @@ export function buildSystemPrompt(language: AiLanguage, matchId: string | null, 
     '- No betting or gambling advice. Do not present predictions as certain. When a tool returns an estimate or note, quote that it is an estimate.',
     '- If a tool result has "stale": true, say the data may be delayed.',
     history
-      ? '- Historical figures and tournament winners come from the Cricsheet archive (get_player_history, get_event_results, etc.). Always say so (e.g. "in the Cricsheet archive"); never call them official career or ICC totals. If a tool lists several candidate players, ask which one.'
+      ? '- Historical figures and tournament winners come from the Cricsheet archive (get_player_history, get_event_results, get_event_leaders, etc.). Always say so (e.g. "in the Cricsheet archive"); never call them official career or ICC totals. If a tool lists several candidate players, ask which one. For "most runs / most wickets / Orange Cap / Purple Cap in a World Cup", use get_event_leaders — do not invent a player name.'
       : '',
-    '- For win chance use get_win_probability; for projected totals use project_score; for chase math use calculate_required_rate.',
+    '- For win chance use get_win_probability; for full innings projection use project_score; for "runs in next N overs" use project_next_overs (blended live + history when mapped; always an estimate); for chase math use calculate_required_rate.',
     '- Keep the answer under 120 words, plain text, no markdown tables.',
     language === 'hi'
       ? 'Reply language: Hindi (Devanagari script). Keep player and team names as they appear in the data.'

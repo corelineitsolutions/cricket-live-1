@@ -1,12 +1,19 @@
 import type { FeedsService } from '../../feeds/feeds.service';
+import type { HistoryQueryService } from '../../history/history-query.service';
+import type { IdentityService } from '../../identity/identity.service';
 import type { MatchDto } from '../../matches/dto/match.dto';
 import type { MatchesService } from '../../matches/matches.service';
 import { AiToolRegistry } from './ai-tool.registry';
 import {
+  blendNextOversEstimate,
   createPredictionTools,
   oversLimitFor,
+  parseLiveMatchPrediction,
   parseMatchProbHistory,
   projectInningsScore,
+  projectNextOvers,
+  recentOversRunRate,
+  strikeRateToRunRate,
 } from './prediction-tools';
 
 const match = {
@@ -53,6 +60,49 @@ describe('prediction helpers', () => {
       wickets: 2,
     });
     expect(proj).toMatchObject({ available: true, projectedScore: 160, oversRemaining: '5.0' });
+    expect(projectNextOvers({ team: 'India', score: 40, overs: 5, runRate: 8, oversAhead: 6 })).toMatchObject({
+      available: true,
+      estimatedRunsMid: 48,
+      rangeText: '41-55',
+      blendedRunRate: 8,
+    });
+    expect(strikeRateToRunRate(150)).toBe(9);
+    expect(recentOversRunRate([{ runs: 12 }, { runs: 8 }, { runs: 10 }], 3)).toBe(10);
+    const blended = blendNextOversEstimate({
+      team: 'India',
+      score: 20,
+      overs: 2,
+      oversAhead: 6,
+      signals: [
+        { source: 'live_rr', rate: 10, weight: 1 },
+        { source: 'batter_venue', rate: 8, weight: 0.7 },
+        { source: 'bowler_venue', rate: 7, weight: 0.5 },
+      ],
+    });
+    expect(blended.available).toBe(true);
+    if (blended.available) {
+      expect(blended.blendedRunRate).toBeCloseTo((10 * 1 + 8 * 0.7 + 7 * 0.5) / 2.2, 1);
+      // ≥2 history signals → ±10% band (tighter than live-only ±15%)
+      expect(blended.estimatedRunsHigh - blended.estimatedRunsLow).toBeLessThanOrEqual(
+        Math.round(blended.estimatedRunsMid * 0.21) + 1,
+      );
+    }
+  });
+
+  it('parses liveMatch prediction fields when present', () => {
+    const parsed = parseLiveMatchPrediction(
+      { fav_team: 'Delhi Royals', team_a_per: 42, team_b_per: 58, projected_score: 175 },
+      match,
+    );
+    expect(parsed).toMatchObject({
+      available: true,
+      favouriteTeam: 'Delhi Royals',
+      projectedScore: 175,
+      teams: [
+        { team: 'Delhi Royals', probabilityPercent: 42 },
+        { team: 'Mumbai Strikers', probabilityPercent: 58 },
+      ],
+    });
   });
 
   it('parses common matchProbHistory shapes and refuses empty payloads', () => {
@@ -130,5 +180,70 @@ describe('prediction tools', () => {
     const registry = new AiToolRegistry(createPredictionTools(matches, feeds));
     const win = await registry.execute('get_win_probability', JSON.stringify({ matchId: '61521' }));
     expect(win.data).toMatchObject({ available: false });
+  });
+
+  it('blends history signals into project_next_overs when identity maps exist', async () => {
+    const liveMatch = {
+      ...match,
+      venue: { name: 'Wankhede Stadium', city: 'Mumbai' },
+      batsmen: [{ sportmonksId: 9002, name: 'Rohit Sharma', runs: 12, balls: 8, fours: 2, sixes: 0, strikeRate: 150, imageUrl: null }],
+      bowler: { sportmonksId: 7002, name: 'Jasprit Bumrah', overs: 1, maidens: 0, runs: 6, wickets: 0, economy: 6, imageUrl: null },
+      score: 20,
+      overs: 2,
+      runRate: 10,
+    } as unknown as MatchDto;
+    const feeds = {
+      get: vi.fn(async (endpoint: string) => {
+        if (endpoint === 'matchOverHistory') {
+          return { data: [{ runs: 8 }, { runs: 12 }], stale: false, message: null, updatedAt: '', endpoint, params: {} };
+        }
+        if (endpoint === 'matchProbHistory') {
+          return {
+            data: [
+              { team: 'Delhi Royals', percent: 55 },
+              { team: 'Mumbai Strikers', percent: 45 },
+            ],
+            stale: false,
+            message: null,
+            updatedAt: '',
+            endpoint,
+            params: {},
+          };
+        }
+        if (endpoint === 'liveMatch') {
+          return { data: { fav_team: 'Delhi Royals', team_a_per: 55, team_b_per: 45 }, stale: false, message: null, updatedAt: '', endpoint, params: {} };
+        }
+        throw new Error(`unexpected ${endpoint}`);
+      }),
+    } as unknown as FeedsService;
+    const identity = {
+      confirmedVenuesFor: vi.fn(async () => [11]),
+      confirmedPersonFor: vi.fn(async (id: number) => (id === 9002 ? 'aaaaaaaa' : id === 7002 ? 'bbbbbbbb' : null)),
+    } as unknown as IdentityService;
+    const history = {
+      playerVenueRates: vi.fn(async (personId: string) =>
+        personId === 'aaaaaaaa'
+          ? { battingRunRate: 8.5, bowlingEconomy: null, battingInnings: 5, bowlingInnings: 0 }
+          : { battingRunRate: null, bowlingEconomy: 6.5, battingInnings: 0, bowlingInnings: 4 },
+      ),
+      batterVsBowlerRate: vi.fn(async () => ({ balls: 30, runs: 36, runRate: 7.2 })),
+    } as unknown as HistoryQueryService;
+    const matches = { getMatch: vi.fn(async () => liveMatch) } as unknown as MatchesService;
+    const registry = new AiToolRegistry(createPredictionTools(matches, feeds, { history, identity }));
+    const result = await registry.execute('project_next_overs', JSON.stringify({ matchId: '61521', overs: 6 }));
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      available: boolean;
+      signals: Array<{ source: string }>;
+      blendedRunRate: number;
+      context: { batterMapped: boolean; latiyalWinProbability: unknown[] };
+    };
+    expect(data.available).toBe(true);
+    expect(data.signals.map((s) => s.source)).toEqual(
+      expect.arrayContaining(['live_rr', 'recent_overs', 'batter_venue', 'bowler_venue', 'batter_vs_bowler']),
+    );
+    expect(data.context.batterMapped).toBe(true);
+    expect(data.context.latiyalWinProbability).toHaveLength(2);
+    expect(data.blendedRunRate).not.toBe(10);
   });
 });

@@ -64,7 +64,7 @@ export class AiService {
     const tools = new AiToolRegistry([
       ...createLiveTools(matches, details),
       requiredRateTool,
-      ...createPredictionTools(matches, feeds),
+      ...createPredictionTools(matches, feeds, config.aiHistoryEnabled ? { history, identity } : {}),
       ...(config.aiHistoryEnabled ? createHistoryTools(history, identity, matches) : []),
     ]);
     this.gateway = provider ? new AiGateway(provider, tools) : null;

@@ -188,4 +188,22 @@ describe('AI history tools', () => {
     expect(res.data.coverage).toMatch(/Cricsheet/);
     expect(res.label).toContain('2019');
   });
+
+  it('returns tournament batting leaders without requiring a player name', async () => {
+    db.$queryRaw.mockResolvedValueOnce([
+      { personId: 'aaaaaaaa', name: 'RG Sharma', matches: 9, innings: 9, runs: 648, hundreds: 5, highest: 140 },
+      { personId: 'cccccccc', name: 'V Kohli', matches: 9, innings: 9, runs: 443, hundreds: 1, highest: 82 },
+    ]);
+    const res = await run('get_event_leaders', {
+      event: 'World Cup',
+      year: 2019,
+      format: 'ODI',
+      gender: 'male',
+      kind: 'batting',
+    });
+    expect(res.ok).toBe(true);
+    expect(res.data.top).toMatchObject({ player: 'RG Sharma', runs: 648, rank: 1 });
+    expect(res.data.leaders).toHaveLength(2);
+    expect(res.label).toContain('batting leaders');
+  });
 });

@@ -181,6 +181,57 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     label: ({ event, year }) => `Cricsheet archive: ${event}${year ? ` ${year}` : ''}`,
   };
 
+  const eventLeaders: AiTool<{
+    event: string;
+    year: number | null;
+    format: HistoryFormat | null;
+    gender: 'male' | 'female' | null;
+    kind: 'batting' | 'bowling';
+  }> = {
+    definition: {
+      name: 'get_event_leaders',
+      description:
+        'Tournament leaderboard from the Cricsheet archive: who scored the most runs or took the most wickets in an event ' +
+        '(e.g. ODI World Cup 2019). Use kind=batting for most runs / top scorer; kind=bowling for most wickets. ' +
+        'Do not guess a player name — call this tool. Archive only, not official ICC totals.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event: { type: 'string', description: 'Event name fragment, e.g. "World Cup".' },
+          year: { type: 'integer', minimum: 1877, maximum: 2100 },
+          format: formatSchema,
+          gender: { type: 'string', enum: ['male', 'female'] },
+          kind: { type: 'string', enum: ['batting', 'bowling'], description: 'batting = most runs; bowling = most wickets.' },
+        },
+        required: ['event', 'kind'],
+        additionalProperties: false,
+      },
+    },
+    parse: (raw: ToolArgs) => {
+      const event = text(raw.event, 80);
+      if (!event || !/^[A-Za-z0-9][A-Za-z0-9 '&./-]{1,79}$/.test(event)) {
+        return 'event must be 2-80 characters (letters, digits, spaces)';
+      }
+      const year =
+        raw.year === undefined || raw.year === null || raw.year === '' ? null : parseIntInRange(raw.year, 1877, 2100);
+      if (raw.year !== undefined && raw.year !== null && raw.year !== '' && year === null) {
+        return 'year must be an integer from 1877 to 2100';
+      }
+      const format = parseFormat(raw.format);
+      if (format === 'invalid') return 'format must be T20, ODI or Test';
+      const gender = parseGender(raw.gender);
+      if (gender === 'invalid') return 'gender must be male or female';
+      const kind = raw.kind === 'bowling' || raw.kind === 'batting' ? raw.kind : null;
+      if (!kind) return 'kind must be batting or bowling';
+      return { event, year, format, gender, kind };
+    },
+    run: async ({ event, year, format, gender, kind }) => {
+      const result = await history.eventLeaders(event, { year, format, gender, kind, limit: 10 });
+      return { ...result, coverage: HISTORY_COVERAGE_NOTE };
+    },
+    label: ({ event, year, kind }) => `Cricsheet archive: ${kind} leaders ${event}${year ? ` ${year}` : ''}`,
+  };
+
   const headToHead: AiTool<{ matchId: string | null; team1: string | null; team2: string | null; format: HistoryFormat | null; gender: 'male' | 'female' | null }> = {
     definition: {
       name: 'get_head_to_head',
@@ -307,7 +358,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     label: ({ team }) => `Cricsheet archive: ${team} by phase`,
   };
 
-  return [playerHistory, eventResults, headToHead, venueHistory, teamPhases] as AiTool[];
+  return [playerHistory, eventResults, eventLeaders, headToHead, venueHistory, teamPhases] as AiTool[];
 }
 
 /** Latiyal match types ("T20", "ODI", "Test", "T20I", ...) to an archive format. */
