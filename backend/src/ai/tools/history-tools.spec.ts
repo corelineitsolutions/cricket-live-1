@@ -134,10 +134,13 @@ describe('AI history tools', () => {
     expect(guessPlayerName("there is how many 100 of rohit sharma in icc men's world cup")).toBe('Rohit Sharma');
     expect(guessPlayerName('career stats please')).toBeNull();
     expect(guessEvent("icc men's world cup")).toBe('World Cup');
+    expect(guessEvent('who win WC 2019')).toBe('World Cup');
     expect(guessFormat("icc men's world cup")).toBe('ODI');
+    expect(guessFormat('who win WC 2019')).toBe('ODI');
     expect(guessFormat('t20 world cup')).toBe('T20');
     expect(guessYear('who win icc odi world cup 2019')).toBe(2019);
     expect(guessGender("icc men's world cup")).toBe('male');
+    expect(guessPlayerName('How many runs per over does WA need?')).toBeNull();
   });
 
   it('counts hundreds and wickets for an event filter without inventing SQL from the question', async () => {

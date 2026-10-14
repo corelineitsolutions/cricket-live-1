@@ -133,16 +133,26 @@ export function parseMatchProbHistory(data: unknown, match: MatchDto): {
   });
 
   if (data === null || data === undefined) {
-    return empty('null', 'Latiyal matchProbHistory returned no data for this match.');
+    return empty('null', 'Latiyal has no win-probability data for this match yet.');
+  }
+
+  if (Array.isArray(data) && data.length === 0) {
+    return empty('empty_array', 'Latiyal has no win-probability points for this match (feed returned empty).');
   }
 
   const root = asRecord(data);
-  const nested = root ? (root.data ?? root.history ?? root.probabilities ?? root.prob ?? root.result) : null;
+  const nested = root
+    ? (root.data ?? root.history ?? root.probabilities ?? root.prob ?? root.result ?? root.list ?? root.items)
+    : null;
   let list: unknown[] | null = Array.isArray(data) ? data : Array.isArray(nested) ? nested : null;
 
   if (!list && root) {
-    const t1 = num(root.team1_prob ?? root.team1Prob ?? root.local_prob ?? root.home_prob);
-    const t2 = num(root.team2_prob ?? root.team2Prob ?? root.visitor_prob ?? root.away_prob);
+    const t1 = num(
+      root.team1_prob ?? root.team1Prob ?? root.local_prob ?? root.home_prob ?? root.team1 ?? root.teama_win ?? root.teamA,
+    );
+    const t2 = num(
+      root.team2_prob ?? root.team2Prob ?? root.visitor_prob ?? root.away_prob ?? root.team2 ?? root.teamb_win ?? root.teamB,
+    );
     if (t1 !== null && t2 !== null) {
       const p1 = t1 > 1 ? t1 : t1 * 100;
       const p2 = t2 > 1 ? t2 : t2 * 100;
@@ -156,6 +166,16 @@ export function parseMatchProbHistory(data: unknown, match: MatchDto): {
         rawShape: 'object_pair',
       };
     }
+    // Flatten one level of nested objects that look like { teamA: { win: 55 }, ... }.
+    for (const value of Object.values(root)) {
+      const rec = asRecord(value);
+      if (!rec) continue;
+      const nestedT1 = num(rec.team1_prob ?? rec.win ?? rec.probability ?? rec.percent);
+      if (nestedT1 !== null && pickTeamLabel(rec, match)) {
+        list = Object.values(root);
+        break;
+      }
+    }
   }
 
   // History series: take the latest point that has team probs.
@@ -164,11 +184,28 @@ export function parseMatchProbHistory(data: unknown, match: MatchDto): {
     const lastRec = asRecord(last);
     if (lastRec && (Array.isArray(lastRec.teams) || Array.isArray(lastRec.probabilities))) {
       list = (lastRec.teams ?? lastRec.probabilities) as unknown[];
+    } else if (lastRec) {
+      // Many feeds store a time series of { t1: n, t2: n } — use the last point.
+      const t1 = num(lastRec.team1_prob ?? lastRec.team1 ?? lastRec.teama ?? lastRec.a ?? lastRec.prob1);
+      const t2 = num(lastRec.team2_prob ?? lastRec.team2 ?? lastRec.teamb ?? lastRec.b ?? lastRec.prob2);
+      if (t1 !== null && t2 !== null) {
+        const p1 = t1 > 1 ? t1 : t1 * 100;
+        const p2 = t2 > 1 ? t2 : t2 * 100;
+        return {
+          available: true,
+          teams: [
+            { team: match.localTeam.name ?? 'Team 1', probabilityPercent: Math.round(p1 * 10) / 10 },
+            { team: match.visitorTeam.name ?? 'Team 2', probabilityPercent: Math.round(p2 * 10) / 10 },
+          ],
+          note: ESTIMATE_NOTE + ' Source: Latiyal matchProbHistory (latest point).',
+          rawShape: 'series_pair',
+        };
+      }
     }
   }
 
   if (!list || list.length === 0) {
-    return empty(typeof data, 'Could not parse win probabilities from matchProbHistory for this match.');
+    return empty(typeof data, 'Latiyal has no usable win-probability figures for this match.');
   }
 
   const teams: Array<{ team: string; probabilityPercent: number }> = [];
@@ -181,7 +218,7 @@ export function parseMatchProbHistory(data: unknown, match: MatchDto): {
   }
 
   if (teams.length === 0) {
-    return empty('array', 'matchProbHistory had rows but no team/probability fields we recognise.');
+    return empty('array', 'Latiyal win-probability rows were present but no team/percentage fields matched.');
   }
 
   return {

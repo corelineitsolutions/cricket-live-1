@@ -15,12 +15,15 @@ function rateQuestion(question: string): { runs: number; amount: string; unit: s
   return b ? { runs: Number(b[3]), amount: b[1], unit: b[2] } : null;
 }
 const SCORECARD_WORDS = /scorecard|batting|bowling|top scorer|highest|wickets? taken|स्कोरकार्ड|बल्लेबाज|गेंदबाज/i;
+const BATTER_WORDS = /current batter|batter(?:s)? performing|batsman|how is .+ batting|on strike|creases?|कैसे\s*खेल|बल्लेबाज/i;
 const COMMENTARY_WORDS = /last (?:over|ball)|recent|commentary|just happened|कमेंट्री|पिछल|आखिरी/i;
 const HEAD_TO_HEAD_WORDS = /head[\s-]?to[\s-]?head|h2h|record (?:against|vs)|आमने[\s-]?सामने/i;
 const VENUE_WORDS = /venue|ground|stadium|pitch|मैदान|पिच|स्टेडियम/i;
+const REQUIRED_RATE_LIVE =
+  /runs?\s*per\s*over|required\s*(?:run\s*)?rate|\brrr\b|need(?:s)?\s+(?:to\s+)?(?:score|get|make)|how\s+many\s+runs.+\bneed|कितने\s*रन\s*प्रति\s*ओवर/i;
 const PLAYER_HISTORY_WORDS =
   /career|record|stats|statistics|average|strike rate|centur(?:y|ies)|hundreds?|\b100s?\b|\b50s?\b|fifties|wickets?|bowling|economy|how many|करियर|रिकॉर्ड|आंकड़े|औसत|शतक|विकेट|गेंदबाज/i;
-const EVENT_WORDS = /world\s*cup|asia\s*cup|champions\s*trophy|ashes|ipl|t20\s*world\s*cup/i;
+const EVENT_WORDS = /world\s*cup|\bwc\b|asia\s*cup|champions\s*trophy|ashes|ipl|t20\s*world\s*cup/i;
 const EVENT_WINNER_WORDS =
   /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|जीता|विजेता/i;
 const WIN_PROB_WORDS = /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा/i;
@@ -31,11 +34,12 @@ const NOT_A_NAME = new Set([
   'what', 'how', 'tell', 'show', 'give', 'is', 'does', 'who', 'which', 'career', 'record', 'stats', 'statistics',
   'odi', 't20', 'test', 'ipl', 'me', 'the', 'in', 'of', 'a', 'an', 'to', 'for', 'from', 'with', 'this', 'that',
   'there', 'many', 'much', 'his', 'her', 'their', 'has', 'have', 'had', 'was', 'were', 'are', 'been', 'icc',
-  'men', 'mens', "men's", 'women', 'womens', "women's", 'world', 'cup', 'asia', 'champions', 'trophy', 'ashes',
+  'men', 'mens', "men's", 'women', 'womens', "women's", 'world', 'cup', 'wc', 'asia', 'champions', 'trophy', 'ashes',
   'century', 'centuries', 'hundred', 'hundreds', 'fifty', 'fifties', 'runs', 'wicket', 'wickets', 'average', 'strike',
   'rate', 'match', 'matches', 'tournament', 'event', 'please', 'about', 'player', 'batting', 'bowling', 'economy',
   'win', 'won', 'winner', 'winning', 'lifted', 'champion', 'final', 'chance', 'probability', 'projected', 'project',
-  'will', 'vs', 'versus',
+  'will', 'vs', 'versus', 'per', 'over', 'overs', 'need', 'needs', 'needed', 'score', 'scoring', 'make', 'get',
+  'current', 'batter', 'batters', 'batsman', 'batsmen', 'performing', 'performance', 'wa', 'ql', 'team',
 ]);
 
 const titleCase = (word: string) => {
@@ -70,7 +74,7 @@ export function guessPlayerName(question: string): string | null {
 
 export function guessEvent(question: string): string | null {
   if (/t20\s*world\s*cup|world\s*t20/i.test(question)) return 'World Cup';
-  if (/world\s*cup/i.test(question)) return 'World Cup';
+  if (/world\s*cup|\bwc\b/i.test(question)) return 'World Cup';
   if (/asia\s*cup/i.test(question)) return 'Asia Cup';
   if (/champions\s*trophy/i.test(question)) return 'Champions Trophy';
   if (/\bashes\b/i.test(question)) return 'The Ashes';
@@ -81,7 +85,8 @@ export function guessEvent(question: string): string | null {
 export function guessFormat(question: string): 'T20' | 'ODI' | 'Test' | null {
   if (/\btests?\b|ashes/i.test(question)) return 'Test';
   if (/\bt20\s*world\s*cup|world\s*t20|t20i|\bt20\b|ipl/i.test(question)) return 'T20';
-  if (/\bodi\b|one[\s-]?day|world\s*cup|asia\s*cup|champions\s*trophy/i.test(question)) return 'ODI';
+  // Bare "WC" / "world cup" without T20 → treat as ODI World Cup in demo routing.
+  if (/\bodi\b|one[\s-]?day|world\s*cup|\bwc\b|asia\s*cup|champions\s*trophy/i.test(question)) return 'ODI';
   return null;
 }
 
@@ -98,7 +103,12 @@ export function guessGender(question: string): 'male' | 'female' | null {
   return null;
 }
 
+function wantsLiveRequiredRate(question: string): boolean {
+  return REQUIRED_RATE_LIVE.test(question);
+}
+
 function wantsPlayerHistory(question: string): boolean {
+  if (wantsLiveRequiredRate(question)) return false;
   const name = guessPlayerName(question);
   if (!name) return false;
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
@@ -195,6 +205,10 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
       : { runsNeeded: rate.runs, oversRemaining: rate.amount };
     return [{ id: 'mock_1', name: 'calculate_required_rate', arguments: JSON.stringify(args) }];
   }
+  // Live chase RR ("how many runs per over does WA need?") before history name guessing.
+  if (p.matchId && wantsLiveRequiredRate(p.question)) {
+    return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
   const history = planHistory(p, available);
   if (history.length > 0) return history;
   // Do not fall back to the live match for archive player / tournament questions.
@@ -207,7 +221,7 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
   }
   if (p.matchId) {
     const calls: LlmToolCall[] = [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
-    if (SCORECARD_WORDS.test(p.question)) {
+    if (SCORECARD_WORDS.test(p.question) || BATTER_WORDS.test(p.question)) {
       calls.push({ id: 'mock_2', name: 'get_scorecard', arguments: JSON.stringify({ matchId: p.matchId }) });
     }
     if (COMMENTARY_WORDS.test(p.question)) {
@@ -220,13 +234,39 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
-function describeMatch(m: Record<string, unknown>, lang: Lang): string {
+function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' | 'rate' | 'batters' = 'summary'): string {
   const teams = (m.teams as unknown[] | undefined)?.map(str).filter(Boolean) ?? [];
   const vs = teams.join(lang === 'hi' ? ' बनाम ' : ' vs ');
   const innings = (m.innings as Array<Record<string, unknown>> | undefined) ?? [];
   const scores = innings.map((i) => `${str(i.team)} ${str(i.score)} (${str(i.overs)})`).join(', ');
   const current = m.current as Record<string, unknown> | null;
-  const parts = [`${vs}${m.statusDetail ? ` - ${str(m.statusDetail)}` : ''}.`];
+  const batsmen = (m.batsmen as Array<Record<string, unknown>> | undefined) ?? [];
+  const parts: string[] = [];
+  if (focus === 'rate' && current?.runsRequired != null && current?.requiredRunRate != null) {
+    parts.push(
+      lang === 'hi'
+        ? `${str(current.battingTeam)} को ${str(current.ballsRemaining)} गेंदों में ${str(current.runsRequired)} रन चाहिए — आवश्यक रन रेट ${str(current.requiredRunRate)} प्रति ओवर.`
+        : `${str(current.battingTeam)} need ${str(current.runsRequired)} runs from ${str(current.ballsRemaining)} balls — required rate ${str(current.requiredRunRate)} runs per over.`,
+    );
+    return parts.join(' ');
+  }
+  if (focus === 'batters') {
+    if (batsmen.length === 0) {
+      parts.push(lang === 'hi' ? 'अभी क्रिज़ पर बल्लेबाजों का विवरण उपलब्ध नहीं है।' : 'No current batters are listed for this match right now.');
+    } else {
+      parts.push(lang === 'hi' ? 'क्रिज़ पर:' : 'At the crease:');
+      for (const b of batsmen.slice(0, 2)) {
+        parts.push(
+          lang === 'hi'
+            ? `${str(b.name)} ${str(b.runs)} (${str(b.balls)} गेंद, ${str(b.fours)} चौके, ${str(b.sixes)} छक्के).`
+            : `${str(b.name)} ${str(b.runs)} (${str(b.balls)} balls, ${str(b.fours)} fours, ${str(b.sixes)} sixes).`,
+        );
+      }
+    }
+    if (scores) parts.push(lang === 'hi' ? `स्कोर: ${scores}.` : `Score: ${scores}.`);
+    return parts.join(' ');
+  }
+  parts.push(`${vs}${m.statusDetail ? ` - ${str(m.statusDetail)}` : ''}.`);
   if (scores) parts.push(lang === 'hi' ? `स्कोर: ${scores}.` : `Score: ${scores}.`);
   if (current?.runsRequired !== null && current?.runsRequired !== undefined && current.ballsRemaining) {
     parts.push(
@@ -466,17 +506,35 @@ function compose(p: Parsed): string {
         for (const m of matches.slice(0, 5)) lines.push(`- ${describeMatch(m, lang)}`);
       }
     } else if (name === 'get_match') {
-      lines.push(describeMatch(data, lang));
+      const focus = wantsLiveRequiredRate(p.question) ? 'rate' : BATTER_WORDS.test(p.question) ? 'batters' : 'summary';
+      lines.push(describeMatch(data, lang, focus));
     } else if (name === 'get_scorecard') {
-      for (const inn of (data.innings as Array<Record<string, unknown>> | undefined) ?? []) {
-        const batting = ((inn.batting as Array<Record<string, unknown>>) ?? []).slice().sort((a, b) => Number(b.runs) - Number(a.runs));
-        const top = batting[0];
-        if (top) {
-          lines.push(
-            lang === 'hi'
-              ? `${str(inn.team)} (${str(inn.score)}): सर्वाधिक रन ${str(top.name)} ${str(top.runs)} (${str(top.balls)} गेंद).`
-              : `${str(inn.team)} (${str(inn.score)}): top scorer ${str(top.name)} ${str(top.runs)} (${str(top.balls)} balls).`,
-          );
+      if (BATTER_WORDS.test(p.question)) {
+        // Prefer not-out batters from the latest innings for "current batter" questions.
+        const innings = (data.innings as Array<Record<string, unknown>> | undefined) ?? [];
+        const last = innings[innings.length - 1];
+        const batting = ((last?.batting as Array<Record<string, unknown>>) ?? []).filter((b) => !b.out);
+        if (batting.length > 0) {
+          lines.push(lang === 'hi' ? `${str(last.team)} के मौजूदा बल्लेबाज:` : `Current ${str(last.team)} batters:`);
+          for (const b of batting.slice(0, 2)) {
+            lines.push(
+              lang === 'hi'
+                ? `- ${str(b.name)}: ${str(b.runs)} (${str(b.balls)} गेंद).`
+                : `- ${str(b.name)}: ${str(b.runs)} (${str(b.balls)} balls).`,
+            );
+          }
+        }
+      } else {
+        for (const inn of (data.innings as Array<Record<string, unknown>> | undefined) ?? []) {
+          const batting = ((inn.batting as Array<Record<string, unknown>>) ?? []).slice().sort((a, b) => Number(b.runs) - Number(a.runs));
+          const top = batting[0];
+          if (top) {
+            lines.push(
+              lang === 'hi'
+                ? `${str(inn.team)} (${str(inn.score)}): सर्वाधिक रन ${str(top.name)} ${str(top.runs)} (${str(top.balls)} गेंद).`
+                : `${str(inn.team)} (${str(inn.score)}): top scorer ${str(top.name)} ${str(top.runs)} (${str(top.balls)} balls).`,
+            );
+          }
         }
       }
     } else if (name === 'get_recent_commentary') {

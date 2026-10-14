@@ -323,10 +323,17 @@ export class HistoryQueryService {
       eliminator: m.eliminatorTeam,
       method: m.method,
     }));
-    const final =
+    const labelledFinal =
       mapped.find((m) => m.matchNumber !== null && /final/i.test(m.matchNumber) && !/semi|quarter/i.test(m.matchNumber)) ??
       null;
+    // Super-over / tie finals often carry eliminator on the last match even when match_number is blank.
+    const eliminatorFinal =
+      mapped.find((m) => !!m.eliminator && (m.outcome === 'TIE' || m.outcome === 'WIN' || !m.winner)) ??
+      mapped.find((m) => !!m.eliminator) ??
+      null;
+    const final = labelledFinal ?? eliminatorFinal ?? null;
     const highlight = final ?? mapped[0] ?? null;
+    const usedLabelledFinal = !!labelledFinal && highlight === labelledFinal;
     return {
       event: eventContains,
       year,
@@ -339,9 +346,11 @@ export class HistoryQueryService {
       note:
         mapped.length === 0
           ? `No archive matches whose event name contains "${eventContains}"${year ? ` in ${year}` : ''}.`
-          : final
+          : usedLabelledFinal
             ? 'Tournament winner taken from the Final (Cricsheet archive).'
-            : 'No match labelled Final; showing the latest matching match as the highlight (Cricsheet archive).',
+            : highlight?.eliminator
+              ? 'Tournament winner taken from the match eliminator / last matching match (Cricsheet archive).'
+              : 'Showing the latest matching match as the highlight (Cricsheet archive).',
     };
   }
 

@@ -57,12 +57,25 @@ describe('prediction helpers', () => {
 
   it('parses common matchProbHistory shapes and refuses empty payloads', () => {
     expect(parseMatchProbHistory(null, match).available).toBe(false);
+    expect(parseMatchProbHistory([], match)).toMatchObject({
+      available: false,
+      note: expect.stringMatching(/empty/i),
+    });
     const pair = parseMatchProbHistory({ team1_prob: 0.55, team2_prob: 0.45 }, match);
     expect(pair).toMatchObject({
       available: true,
       teams: [
         { team: 'Delhi Royals', probabilityPercent: 55 },
         { team: 'Mumbai Strikers', probabilityPercent: 45 },
+      ],
+    });
+    const series = parseMatchProbHistory([{ team1: 40, team2: 60 }, { team1: 58, team2: 42 }], match);
+    expect(series).toMatchObject({
+      available: true,
+      rawShape: 'series_pair',
+      teams: [
+        { team: 'Delhi Royals', probabilityPercent: 58 },
+        { team: 'Mumbai Strikers', probabilityPercent: 42 },
       ],
     });
     const list = parseMatchProbHistory(
