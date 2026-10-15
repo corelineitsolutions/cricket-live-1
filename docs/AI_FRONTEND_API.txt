@@ -1,0 +1,238 @@
+================================================================================
+  Cricket Live — AI Assistant API (for frontend / mobile)
+================================================================================
+Base URL:  https://<api-host>/api/v1
+Auth:      none (public). Limits use deviceId + IP.
+Content:   application/json
+
+Show the AI entry point only when GET /ai/status says available: true.
+
+
+--------------------------------------------------------------------------------
+1. CHECK STATUS (optional, on app start / before opening Ask)
+--------------------------------------------------------------------------------
+
+GET /api/v1/ai/status
+
+Success 200:
+{
+  "success": true,
+  "data": {
+    "available": true,
+    "languages": ["en", "hi"],
+    "maxQuestionLength": 500
+  }
+}
+
+If available is false → hide the AI chat UI.
+
+
+--------------------------------------------------------------------------------
+2. ASK A QUESTION
+--------------------------------------------------------------------------------
+
+POST /api/v1/ai/ask
+Content-Type: application/json
+
+Body fields:
+  question   string, required, 2–500 characters (trimmed)
+  deviceId   string, required, 8–128 chars
+             Same install id as POST /devices/register
+             Allowed characters: letters, digits, _ . : -
+  language   string, optional, "en" (default) or "hi"
+             Controls the answer language (English or Hindi Devanagari)
+  matchId    string, optional, digits only (e.g. "14193")
+             Pass when the user is on a match screen so "this match",
+             "next 6 overs", "required rate" resolve to that match
+             Omit for general / IPL / player / tournament questions
+
+
+--------------------------------------------------------------------------------
+3. WITH matchId  (user is viewing a live or finished match)
+--------------------------------------------------------------------------------
+
+Use when the user opened Ask from a match detail / live screen.
+
+{
+  "question": "How many runs in the next 6 overs?",
+  "language": "en",
+  "matchId": "14193",
+  "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"
+}
+
+Hindi example:
+{
+  "question": "अगले 6 ओवर में कितने रन?",
+  "language": "hi",
+  "matchId": "14193",
+  "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"
+}
+
+Good with matchId:
+  - current score / batters / bowler
+  - required run rate / chase math
+  - next N overs estimate
+  - projected score
+  - win probability (when Latiyal feed has data)
+  - scorecard / recent balls
+  - "this match" venue or head-to-head
+
+
+--------------------------------------------------------------------------------
+4. WITHOUT matchId  (home, IPL, player, tournament questions)
+--------------------------------------------------------------------------------
+
+Omit matchId (or do not send the field).
+
+{
+  "question": "Who won IPL 2019?",
+  "language": "en",
+  "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"
+}
+
+{
+  "question": "How many runs has Virat Kohli scored in IPL?",
+  "language": "en",
+  "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"
+}
+
+{
+  "question": "IPL 2023 में सबसे ज्यादा विकेट किसने लिए?",
+  "language": "hi",
+  "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"
+}
+
+Good without matchId:
+  - who won IPL {year}
+  - Orange Cap / Purple Cap / most runs / most wickets in an event
+  - player career or event totals (Virat, Rohit, …)
+  - team head-to-head
+  - venue history
+  - what is live right now (lists live matches)
+
+
+--------------------------------------------------------------------------------
+5. SUCCESS RESPONSE
+--------------------------------------------------------------------------------
+
+HTTP 200
+{
+  "success": true,
+  "data": {
+    "answer": "Delhi Royals need 61 runs from 28 balls (required rate 13.07).",
+    "language": "en",
+    "sources": ["Match 61521"],
+    "mocked": false,
+    "disclaimer": "AI answers can be wrong. Check the scorecard for official figures.",
+    "generatedAt": "2026-10-09T12:00:00.000Z"
+  }
+}
+
+UI rules:
+  - Always show data.answer
+  - Always show data.disclaimer under the answer
+  - Show data.sources if you have a "Sources" line
+  - If any source starts with "Cricsheet archive:", also show:
+      "Historical data: Cricsheet (cricsheet.org), ODC-By 1.0"
+  - mocked: true  = demo/template mode (no real LLM)
+  - mocked: false = real model answer
+  - Answers can take several seconds → loading state; do NOT auto-retry
+
+
+--------------------------------------------------------------------------------
+6. ERROR RESPONSES
+--------------------------------------------------------------------------------
+
+Shape:
+{
+  "success": false,
+  "statusCode": 429,
+  "code": "AI_QUOTA_EXCEEDED",
+  "message": "Too many questions. Wait a minute and try again.",
+  "path": "/api/v1/ai/ask",
+  "timestamp": "..."
+}
+
+| HTTP | code                 | App action                              |
+|------|----------------------|-----------------------------------------|
+| 400  | VALIDATION_ERROR     | Fix body (question/deviceId/matchId)   |
+| 429  | AI_QUOTA_EXCEEDED    | Show message (5/min, 50/day per device) |
+| 503  | AI_DISABLED          | Hide AI feature                         |
+| 503  | AI_NOT_CONFIGURED    | Hide AI feature                         |
+| 503  | AI_BUDGET_EXHAUSTED  | "Try again tomorrow"                    |
+| 503  | AI_BUSY              | Retry after a few seconds               |
+| 503  | AI_TIMEOUT           | Let user tap Ask again                  |
+| 502  | AI_PROVIDER_ERROR    | Let user tap Ask again                  |
+
+
+--------------------------------------------------------------------------------
+7. CURL EXAMPLES
+--------------------------------------------------------------------------------
+
+# Status
+curl -sS "https://<api-host>/api/v1/ai/status"
+
+# With match (live match screen)
+curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \
+  -H "Content-Type: application/json" \
+  -d "{\"question\":\"How many runs in the next 3 overs?\",\"language\":\"en\",\"matchId\":\"14193\",\"deviceId\":\"dev-device-0001\"}"
+
+# Without match (IPL / general)
+curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \
+  -H "Content-Type: application/json" \
+  -d "{\"question\":\"Who won IPL 2019?\",\"language\":\"en\",\"deviceId\":\"dev-device-0001\"}"
+
+# Hindi, no match
+curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \
+  -H "Content-Type: application/json" \
+  -d "{\"question\":\"विराट कोहली के कितने रन हैं IPL में?\",\"language\":\"hi\",\"deviceId\":\"dev-device-0001\"}"
+
+
+--------------------------------------------------------------------------------
+8. LANGUAGE
+--------------------------------------------------------------------------------
+
+  language: "en"  → English answer
+  language: "hi"  → Hindi (Devanagari) answer; player/team names stay as in data
+  Default if omitted: "en"
+
+Send the user's UI language. The question text can be English or Hindi either way;
+language controls the reply script.
+
+
+--------------------------------------------------------------------------------
+9. NOTES FOR FRONTEND
+--------------------------------------------------------------------------------
+
+  - deviceId: generate once per install (UUID), reuse for /devices/register and /ai/ask
+  - matchId: string of digits from the match object (matchId field), not an internal DB id
+  - Do not log or store the question/answer on the client beyond the chat UI session
+    (backend also does not store questions)
+  - Prefer one Ask at a time; wait for the response before sending another
+  - For finished seasons (e.g. who won IPL 2019) omit matchId
+  - For "who will win IPL 2026" while the season is unfinished, the AI may say
+    the winner is not known yet — that is expected until the final is in the archive
+
+
+--------------------------------------------------------------------------------
+10. IPL / ARCHIVE QUESTIONS (no matchId)
+--------------------------------------------------------------------------------
+
+Requires server AI_HISTORY_ENABLED=true and Cricsheet IPL data imported.
+
+Examples that should use archive tools (not invent answers):
+  Who won IPL 2019?
+  Who won the Orange Cap in IPL 2024?
+  Purple Cap IPL 2023?
+  How many runs has Virat Kohli scored in IPL?
+  IPL 2023 points table / who topped the table?
+  Most sixes in IPL 2019?
+  Most runs conceded in IPL 2024?
+
+If the season final is not in the archive yet, the answer should say so
+(e.g. "not finished in the archive") — never a hard "I can't help".
+
+
+================================================================================
+End of AI frontend API note
+================================================================================

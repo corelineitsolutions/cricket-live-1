@@ -74,18 +74,37 @@ describe('prediction helpers', () => {
       overs: 2,
       oversAhead: 6,
       signals: [
-        { source: 'live_rr', rate: 10, weight: 1 },
-        { source: 'batter_venue', rate: 8, weight: 0.7 },
-        { source: 'bowler_venue', rate: 7, weight: 0.5 },
+        { source: 'live_rr', rate: 10, weight: 2.2 },
+        { source: 'batter_venue', rate: 8, weight: 0.45 },
+        { source: 'bowler_venue', rate: 7, weight: 0.35 },
       ],
     });
     expect(blended.available).toBe(true);
     if (blended.available) {
-      expect(blended.blendedRunRate).toBeCloseTo((10 * 1 + 8 * 0.7 + 7 * 0.5) / 2.2, 1);
-      // ≥2 history signals → ±10% band (tighter than live-only ±15%)
-      expect(blended.estimatedRunsHigh - blended.estimatedRunsLow).toBeLessThanOrEqual(
-        Math.round(blended.estimatedRunsMid * 0.21) + 1,
-      );
+      // Live anchors; archive only nudges — stay near 10, not pulled to ~7.
+      expect(blended.blendedRunRate).toBeGreaterThan(9);
+      expect(blended.blendedRunRate).toBeLessThan(11);
+      expect(blended.liveRunRate).toBe(10);
+    }
+
+    // History alone must not collapse a T20 powerplay RR (~12.5) toward Test rates (~3).
+    const powerplay = blendNextOversEstimate({
+      team: 'West Indies',
+      score: 52,
+      overs: 4.1,
+      oversAhead: 3,
+      signals: [
+        { source: 'live_rr', rate: 12.5, weight: 2.2 },
+        { source: 'recent_overs', rate: 13, weight: 1.4 },
+        { source: 'batter_venue', rate: 3.2, weight: 0.7 },
+        { source: 'bowler_venue', rate: 2.8, weight: 0.5 },
+        { source: 'batter_vs_bowler', rate: 3.5, weight: 0.8 },
+      ],
+    });
+    expect(powerplay.available).toBe(true);
+    if (powerplay.available) {
+      expect(powerplay.blendedRunRate).toBeGreaterThan(10);
+      expect(powerplay.estimatedRunsMid).toBeGreaterThanOrEqual(30);
     }
   });
 

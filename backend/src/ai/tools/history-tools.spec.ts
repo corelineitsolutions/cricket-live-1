@@ -135,12 +135,61 @@ describe('AI history tools', () => {
     expect(guessPlayerName('career stats please')).toBeNull();
     expect(guessEvent("icc men's world cup")).toBe('World Cup');
     expect(guessEvent('who win WC 2019')).toBe('World Cup');
+    expect(guessEvent('who win IPL 2026')).toBe('Indian Premier League');
+    expect(guessEvent('Orange Cap in IPL 2019')).toBe('Indian Premier League');
     expect(guessFormat("icc men's world cup")).toBe('ODI');
     expect(guessFormat('who win WC 2019')).toBe('ODI');
     expect(guessFormat('t20 world cup')).toBe('T20');
+    expect(guessFormat('who win IPL 2026')).toBe('T20');
     expect(guessYear('who win icc odi world cup 2019')).toBe(2019);
+    expect(guessYear('who win IPL 2026')).toBe(2026);
     expect(guessGender("icc men's world cup")).toBe('male');
     expect(guessPlayerName('How many runs per over does WA need?')).toBeNull();
+  });
+
+  it('returns archive standings for an IPL-style event', async () => {
+    db.rows.histMatch.push(
+      {
+        id: 10,
+        eventName: 'Indian Premier League',
+        season: '2026',
+        startDate: new Date('2026-04-01'),
+        matchType: 'T20',
+        gender: 'male',
+        matchNumber: '1st Match',
+        outcome: 'WIN',
+        winnerId: 1,
+        winByRuns: 20,
+        winByWickets: null,
+        eliminatorTeam: null,
+        method: null,
+        team1: { id: 1, name: 'Mumbai Indians' },
+        team2: { id: 2, name: 'Chennai Super Kings' },
+        winner: { id: 1, name: 'Mumbai Indians' },
+      },
+      {
+        id: 11,
+        eventName: 'Indian Premier League',
+        season: '2026',
+        startDate: new Date('2026-04-02'),
+        matchType: 'T20',
+        gender: 'male',
+        matchNumber: '2nd Match',
+        outcome: 'WIN',
+        winnerId: 1,
+        winByRuns: null,
+        winByWickets: 5,
+        eliminatorTeam: null,
+        method: null,
+        team1: { id: 2, name: 'Chennai Super Kings' },
+        team2: { id: 1, name: 'Mumbai Indians' },
+        winner: { id: 1, name: 'Mumbai Indians' },
+      },
+    );
+    const res = await run('get_event_standings', { event: 'Indian Premier League', year: 2026, format: 'T20' });
+    expect(res.ok).toBe(true);
+    expect(res.data.top).toMatchObject({ team: 'Mumbai Indians', won: 2, points: 4 });
+    expect(res.label).toContain('standings');
   });
 
   it('counts hundreds and wickets for an event filter without inventing SQL from the question', async () => {

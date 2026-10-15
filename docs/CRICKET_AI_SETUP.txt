@@ -397,8 +397,13 @@ Only with AI_HISTORY_ENABLED=true (Cricsheet archive):
   get_player_history        batting/bowling by format and team type, averages, strike
                             rate, economy, best; optional event + format + gender filter
                             (battingByEvent / bowlingByEvent); candidates if ambiguous
+                            For IPL use event "Indian Premier League" (defaults T20)
   get_event_results         tournament/event matches and winner (Final preferred) by
                             event fragment, year, format, gender — archive only
+                            (IPL title / who won IPL {year})
+  get_event_leaders         most runs (Orange Cap), most wickets (Purple Cap),
+                            most runs conceded, most sixes — by event + year
+  get_event_standings       archive points-table style W/L/points (not official NRR)
   get_head_to_head          results between two teams (by matchId or names), per format
   get_venue_history         matches, average first-innings score, bat-first vs chasing
                             wins, highest and lowest totals (all spellings combined)

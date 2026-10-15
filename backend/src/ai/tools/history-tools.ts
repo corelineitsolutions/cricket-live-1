@@ -29,6 +29,13 @@ function parseGender(raw: unknown): 'male' | 'female' | null | 'invalid' {
 
 const unavailable = (what: string) => ({ found: false, note: `${what} is not in the Cricsheet archive or is not linked yet.`, coverage: HISTORY_COVERAGE_NOTE });
 
+/** IPL archive rows are T20; default format when the user did not say ODI/Test. */
+export function defaultEventFormat(event: string, format: HistoryFormat | null): HistoryFormat | null {
+  if (format) return format;
+  if (/indian\s*premier\s*league|\bipl\b/i.test(event)) return 'T20';
+  return null;
+}
+
 export function createHistoryTools(history: HistoryQueryService, identity: IdentityService, matches: MatchesService): AiTool[] {
   /** Confirmed identity mapping first; otherwise an exact Cricsheet team name. */
   const resolveTeam = async (latiyalId: number | null, name: string | null, gender: string | null): Promise<HistTeamSide | null> => {
@@ -98,13 +105,14 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       }
       const displayName = await history.personName(id);
       if (!displayName) return unavailable('This player');
-      const stats = await history.playerStats(id, format);
+      const eventFormat = event ? defaultEventFormat(event, format) : format;
+      const stats = await history.playerStats(id, eventFormat);
       if (!event) {
         return { player: displayName, personId: id, format: format ?? 'all', ...stats, coverage: HISTORY_COVERAGE_NOTE };
       }
       const [battingByEvent, bowlingByEvent] = await Promise.all([
-        history.playerBattingByEvent(id, event, format, gender),
-        history.playerBowlingByEvent(id, event, format, gender),
+        history.playerBattingByEvent(id, event, eventFormat, gender),
+        history.playerBowlingByEvent(id, event, eventFormat, gender),
       ]);
       const hundredsInEvent = battingByEvent.reduce((sum, row) => sum + row.hundreds, 0);
       const wicketsInEvent = bowlingByEvent.reduce((sum, row) => sum + row.wickets, 0);
@@ -141,13 +149,13 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     definition: {
       name: 'get_event_results',
       description:
-        'Tournament or event results from the Cricsheet archive: who won a World Cup / Asia Cup / etc., finals and recent matches in that event. ' +
-        'Pass event (e.g. "World Cup"), optional year (e.g. 2019), format (ODI for men\'s ODI World Cup) and gender. ' +
-        'Never invent a tournament winner — use this tool. Archive only, not an official ICC record.',
+        'Tournament or event results from the Cricsheet archive: who won IPL / World Cup / Asia Cup, finals and recent matches. ' +
+        'For IPL pass event "Indian Premier League", year (e.g. 2019 or 2026), format T20. ' +
+        'Never invent a tournament winner — use this tool. If empty, say the season is not in the archive yet.',
       parameters: {
         type: 'object',
         properties: {
-          event: { type: 'string', description: 'Event name fragment, e.g. "World Cup" or "Asia Cup".' },
+          event: { type: 'string', description: 'Event name fragment, e.g. "Indian Premier League" or "World Cup".' },
           year: { type: 'integer', minimum: 1877, maximum: 2100, description: 'Optional calendar year or season year.' },
           format: formatSchema,
           gender: { type: 'string', enum: ['male', 'female'] },
@@ -175,7 +183,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       return { event, year, format, gender };
     },
     run: async ({ event, year, format, gender }) => {
-      const result = await history.eventResults(event, { year, format, gender });
+      const result = await history.eventResults(event, { year, format: defaultEventFormat(event, format), gender });
       return { ...result, coverage: HISTORY_COVERAGE_NOTE };
     },
     label: ({ event, year }) => `Cricsheet archive: ${event}${year ? ` ${year}` : ''}`,
@@ -186,22 +194,26 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     year: number | null;
     format: HistoryFormat | null;
     gender: 'male' | 'female' | null;
-    kind: 'batting' | 'bowling';
+    kind: 'batting' | 'bowling' | 'runs_conceded' | 'sixes';
   }> = {
     definition: {
       name: 'get_event_leaders',
       description:
-        'Tournament leaderboard from the Cricsheet archive: who scored the most runs or took the most wickets in an event ' +
-        '(e.g. ODI World Cup 2019). Use kind=batting for most runs / top scorer; kind=bowling for most wickets. ' +
-        'Do not guess a player name — call this tool. Archive only, not official ICC totals.',
+        'Tournament leaderboard from the Cricsheet archive (IPL Orange/Purple Cap, World Cup most runs/wickets, most sixes, most runs conceded). ' +
+        'kind=batting (most runs / Orange Cap), bowling (most wickets / Purple Cap), runs_conceded (most runs given), sixes (most sixes). ' +
+        'For IPL use event "Indian Premier League", year, format T20. Do not guess a player name.',
       parameters: {
         type: 'object',
         properties: {
-          event: { type: 'string', description: 'Event name fragment, e.g. "World Cup".' },
+          event: { type: 'string', description: 'Event name fragment, e.g. "Indian Premier League" or "World Cup".' },
           year: { type: 'integer', minimum: 1877, maximum: 2100 },
           format: formatSchema,
           gender: { type: 'string', enum: ['male', 'female'] },
-          kind: { type: 'string', enum: ['batting', 'bowling'], description: 'batting = most runs; bowling = most wickets.' },
+          kind: {
+            type: 'string',
+            enum: ['batting', 'bowling', 'runs_conceded', 'sixes'],
+            description: 'batting=most runs; bowling=most wickets; runs_conceded=most runs given; sixes=most sixes.',
+          },
         },
         required: ['event', 'kind'],
         additionalProperties: false,
@@ -221,15 +233,71 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       if (format === 'invalid') return 'format must be T20, ODI or Test';
       const gender = parseGender(raw.gender);
       if (gender === 'invalid') return 'gender must be male or female';
-      const kind = raw.kind === 'bowling' || raw.kind === 'batting' ? raw.kind : null;
-      if (!kind) return 'kind must be batting or bowling';
+      const kind =
+        raw.kind === 'bowling' || raw.kind === 'batting' || raw.kind === 'runs_conceded' || raw.kind === 'sixes'
+          ? raw.kind
+          : null;
+      if (!kind) return 'kind must be batting, bowling, runs_conceded or sixes';
       return { event, year, format, gender, kind };
     },
     run: async ({ event, year, format, gender, kind }) => {
-      const result = await history.eventLeaders(event, { year, format, gender, kind, limit: 10 });
+      const result = await history.eventLeaders(event, {
+        year,
+        format: defaultEventFormat(event, format),
+        gender,
+        kind,
+        limit: 10,
+      });
       return { ...result, coverage: HISTORY_COVERAGE_NOTE };
     },
     label: ({ event, year, kind }) => `Cricsheet archive: ${kind} leaders ${event}${year ? ` ${year}` : ''}`,
+  };
+
+  const eventStandings: AiTool<{
+    event: string;
+    year: number | null;
+    format: HistoryFormat | null;
+    gender: 'male' | 'female' | null;
+  }> = {
+    definition: {
+      name: 'get_event_standings',
+      description:
+        'League / points-table style standings from the Cricsheet archive for an event (e.g. IPL 2019): team played, won, lost, points. ' +
+        'Use for "points table", "who topped the table", "how many wins did Mumbai Indians have". Not official NRR. ' +
+        'For IPL pass event "Indian Premier League", year, format T20.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event: { type: 'string', description: 'Event name fragment, e.g. "Indian Premier League".' },
+          year: { type: 'integer', minimum: 1877, maximum: 2100 },
+          format: formatSchema,
+          gender: { type: 'string', enum: ['male', 'female'] },
+        },
+        required: ['event'],
+        additionalProperties: false,
+      },
+    },
+    parse: (raw: ToolArgs) => {
+      const event = text(raw.event, 80);
+      if (!event || !/^[A-Za-z0-9][A-Za-z0-9 '&./-]{1,79}$/.test(event)) {
+        return 'event must be 2-80 characters (letters, digits, spaces)';
+      }
+      const year =
+        raw.year === undefined || raw.year === null || raw.year === '' ? null : parseIntInRange(raw.year, 1877, 2100);
+      if (raw.year !== undefined && raw.year !== null && raw.year !== '' && year === null) {
+        return 'year must be an integer from 1877 to 2100';
+      }
+      const format = parseFormat(raw.format);
+      if (format === 'invalid') return 'format must be T20, ODI or Test';
+      const gender = parseGender(raw.gender);
+      if (gender === 'invalid') return 'gender must be male or female';
+      return { event, year, format, gender };
+    },
+    run: async ({ event, year, format, gender }) => {
+      const result = await history.eventStandings(event, { year, format: defaultEventFormat(event, format), gender });
+      return { ...result, coverage: HISTORY_COVERAGE_NOTE };
+    },
+    label: ({ event, year }) => `Cricsheet archive: standings ${event}${year ? ` ${year}` : ''}`,
   };
 
   const headToHead: AiTool<{ matchId: string | null; team1: string | null; team2: string | null; format: HistoryFormat | null; gender: 'male' | 'female' | null }> = {
@@ -358,7 +426,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     label: ({ team }) => `Cricsheet archive: ${team} by phase`,
   };
 
-  return [playerHistory, eventResults, eventLeaders, headToHead, venueHistory, teamPhases] as AiTool[];
+  return [playerHistory, eventResults, eventLeaders, eventStandings, headToHead, venueHistory, teamPhases] as AiTool[];
 }
 
 /** Latiyal match types ("T20", "ODI", "Test", "T20I", ...) to an archive format. */

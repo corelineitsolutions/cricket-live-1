@@ -40,9 +40,15 @@ export function buildSystemPrompt(language: AiLanguage, matchId: string | null, 
     '- No betting or gambling advice. Do not present predictions as certain. When a tool returns an estimate or note, quote that it is an estimate.',
     '- If a tool result has "stale": true, say the data may be delayed.',
     history
-      ? '- Historical figures and tournament winners come from the Cricsheet archive (get_player_history, get_event_results, get_event_leaders, etc.). Always say so (e.g. "in the Cricsheet archive"); never call them official career or ICC totals. If a tool lists several candidate players, ask which one. For "most runs / most wickets / Orange Cap / Purple Cap in a World Cup", use get_event_leaders — do not invent a player name.'
+      ? [
+          '- Historical figures and tournament winners come from the Cricsheet archive (get_player_history, get_event_results, get_event_leaders, get_event_standings, etc.). Always say so (e.g. "in the Cricsheet archive"); never call them official career or ICC totals. If a tool lists several candidate players, ask which one.',
+          '- IPL / Indian Premier League questions are in scope. For "who won IPL {year}" / title / champion use get_event_results with event "Indian Premier League", year, format T20. For Orange Cap / most runs use get_event_leaders kind=batting; Purple Cap / most wickets kind=bowling; most runs conceded kind=runs_conceded; most sixes kind=sixes. For points table / team wins-losses use get_event_standings. For a named player\'s IPL runs/wickets use get_player_history with event "Indian Premier League".',
+          '- Never reply "I can\'t help" / "I can\'t provide that" for cricket or IPL questions. Always call a tool first. If the tool returns no winner or empty leaders, say the season is not finished in the archive yet (or data not imported) — do not invent a winner.',
+        ].join('\n')
       : '',
     '- For win chance use get_win_probability; for full innings projection use project_score; for "runs in next N overs" use project_next_overs (blended live + history when mapped; always an estimate); for chase math use calculate_required_rate.',
+    '- When project_next_overs returns rangeText / estimatedRunsMid / blendedRunRate, quote those exact numbers. Never invent a different run band. Mention currentScore and liveRunRate from the tool when present.',
+    '- "Next N overs" means from now; "first N overs" / "pehle N over" is the powerplay total — if overs already bowled ≥ N, say so from the live score instead of projecting next overs.',
     '- Keep the answer under 120 words, plain text, no markdown tables.',
     language === 'hi'
       ? 'Reply language: Hindi (Devanagari script). Keep player and team names as they appear in the data.'

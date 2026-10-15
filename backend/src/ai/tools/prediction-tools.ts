@@ -91,9 +91,12 @@ export function projectInningsScore(input: {
 
 export type RateSignal = { source: string; rate: number; weight: number };
 
+const LIVE_SOURCES = new Set(['live_rr', 'recent_overs']);
+
 /**
  * Blend weighted run-rate signals into a next-N-overs band.
- * More history signals → slightly tighter band; live-only → ±15%.
+ * Live RR / recent overs are the anchor; archive signals only nudge within ±40% of that
+ * anchor and never dominate the weight (so a T20 powerplay RR ~12 cannot collapse to ~4).
  */
 export function blendNextOversEstimate(input: {
   team: string | null;
@@ -111,23 +114,54 @@ export function blendNextOversEstimate(input: {
       note: 'Need at least one run-rate signal (live RR or history) to estimate the next overs.',
     };
   }
-  const weightSum = input.signals.reduce((s, x) => s + x.weight, 0);
+
+  const liveSignals = input.signals.filter((s) => LIVE_SOURCES.has(s.source) && s.rate > 0);
+  const liveAnchor =
+    liveSignals.length > 0
+      ? liveSignals.reduce((s, x) => s + x.rate * x.weight, 0) / liveSignals.reduce((s, x) => s + x.weight, 0)
+      : null;
+
+  const normalized: RateSignal[] = input.signals
+    .filter((s) => s.rate > 0 && s.weight > 0)
+    .map((s) => {
+      if (!liveAnchor || LIVE_SOURCES.has(s.source)) return s;
+      // Archive / striker signals may only nudge; clamp to 60–140% of live form.
+      const lo = liveAnchor * 0.6;
+      const hi = liveAnchor * 1.4;
+      const rate = Math.min(hi, Math.max(lo, s.rate));
+      return { ...s, rate: Math.round(rate * 100) / 100 };
+    });
+
+  // Keep live share ≥ 65% whenever a live anchor exists.
+  if (liveAnchor !== null) {
+    const liveWeight = normalized.filter((s) => LIVE_SOURCES.has(s.source)).reduce((s, x) => s + x.weight, 0);
+    const otherWeight = normalized.filter((s) => !LIVE_SOURCES.has(s.source)).reduce((s, x) => s + x.weight, 0);
+    if (liveWeight > 0 && otherWeight > 0) {
+      const targetOther = liveWeight * (0.35 / 0.65);
+      const scale = targetOther / otherWeight;
+      for (const s of normalized) {
+        if (!LIVE_SOURCES.has(s.source)) s.weight = Math.round(s.weight * scale * 1000) / 1000;
+      }
+    }
+  }
+
+  const weightSum = normalized.reduce((s, x) => s + x.weight, 0);
   const blendedRate =
     weightSum > 0
-      ? Math.round((input.signals.reduce((s, x) => s + x.rate * x.weight, 0) / weightSum) * 100) / 100
+      ? Math.round((normalized.reduce((s, x) => s + x.rate * x.weight, 0) / weightSum) * 100) / 100
       : null;
   if (blendedRate === null || blendedRate <= 0) {
     return {
       available: false as const,
       team: input.team,
       oversAhead: input.oversAhead,
-      signals: input.signals,
+      signals: normalized,
       note: 'Could not blend run-rate signals.',
     };
   }
   const mid = Math.round(blendedRate * input.oversAhead);
-  const historySignals = input.signals.filter((s) => s.source !== 'live_rr' && s.source !== 'recent_overs').length;
-  const spread = historySignals >= 2 ? 0.1 : historySignals === 1 ? 0.12 : 0.15;
+  const historySignals = normalized.filter((s) => !LIVE_SOURCES.has(s.source)).length;
+  const spread = historySignals >= 2 ? 0.12 : historySignals === 1 ? 0.14 : 0.15;
   const low = Math.max(0, Math.round(mid * (1 - spread)));
   const high = Math.round(mid * (1 + spread));
   return {
@@ -136,13 +170,14 @@ export function blendNextOversEstimate(input: {
     currentScore: input.score,
     currentOvers: input.overs,
     blendedRunRate: blendedRate,
+    liveRunRate: liveAnchor !== null ? Math.round(liveAnchor * 100) / 100 : null,
     oversAhead: input.oversAhead,
     estimatedRunsLow: low,
     estimatedRunsMid: mid,
     estimatedRunsHigh: high,
     rangeText: `${low}-${high}`,
-    signals: input.signals,
-    note: `${ESTIMATE_NOTE} Blended live + archive signals (weights in "signals"). Not a trained ML model.`,
+    signals: normalized,
+    note: `${ESTIMATE_NOTE} Live RR is the anchor; archive only nudges. Not a trained ML model.`,
   };
 }
 
@@ -437,20 +472,24 @@ async function collectNextOversSignals(
         ? Math.round((score / ballsBowled) * 6 * 100) / 100
         : null;
   if (liveRate !== null && liveRate > 0) {
-    signals.push({ source: 'live_rr', rate: liveRate, weight: 1 });
+    // Heaviest weight: what is happening in this innings right now.
+    signals.push({ source: 'live_rr', rate: liveRate, weight: 2.2 });
   }
+  context.liveRunRate = liveRate;
+  context.liveScore = match.score;
+  context.liveOvers = match.overs;
 
   const striker = match.batsmen[0];
   const strikerRr = strikeRateToRunRate(striker?.strikeRate ?? null);
   if (strikerRr !== null && strikerRr > 0) {
-    signals.push({ source: 'striker_sr', rate: strikerRr, weight: 0.45 });
+    signals.push({ source: 'striker_sr', rate: strikerRr, weight: 0.35 });
   }
 
   try {
     const overFeed = await feeds.get('matchOverHistory', { match_id: matchId });
     const recent = recentOversRunRate(overFeed.data, 3);
     if (recent !== null && recent > 0) {
-      signals.push({ source: 'recent_overs', rate: recent, weight: 0.9 });
+      signals.push({ source: 'recent_overs', rate: recent, weight: 1.4 });
       context.recentOversRate = recent;
     }
   } catch {
@@ -480,8 +519,10 @@ async function collectNextOversSignals(
 
   const history = opts.history;
   const identity = opts.identity;
-  if (history && identity) {
-    const format = formatOf(match.matchType) as HistoryFormat | null;
+  const format = formatOf(match.matchType) as HistoryFormat | null;
+  context.matchFormat = format;
+  // Skip archive blend without a format — otherwise Test career rates (~3 RPO) poison a T20.
+  if (history && identity && format && format !== 'Test') {
     let venueIds: number[] = [];
     if (match.venue?.name) {
       venueIds = await identity.confirmedVenuesFor(match.venue.name, match.venue.city);
@@ -498,26 +539,28 @@ async function collectNextOversSignals(
     if (batterId && venueIds.length > 0) {
       const venueRates = await history.playerVenueRates(batterId, venueIds, format);
       if (venueRates.battingRunRate !== null && venueRates.battingInnings >= 2) {
-        signals.push({ source: 'batter_venue', rate: venueRates.battingRunRate, weight: 0.7 });
+        signals.push({ source: 'batter_venue', rate: venueRates.battingRunRate, weight: 0.45 });
         context.batterVenue = venueRates;
       }
     }
     if (bowlerId && venueIds.length > 0) {
       const bowlVenue = await history.playerVenueRates(bowlerId, venueIds, format);
       if (bowlVenue.bowlingEconomy !== null && bowlVenue.bowlingInnings >= 2) {
-        signals.push({ source: 'bowler_venue', rate: bowlVenue.bowlingEconomy, weight: 0.5 });
+        signals.push({ source: 'bowler_venue', rate: bowlVenue.bowlingEconomy, weight: 0.35 });
         context.bowlerVenue = bowlVenue;
       }
     }
     if (batterId && bowlerId) {
       const matchup = await history.batterVsBowlerRate(batterId, bowlerId, format);
       if (matchup.runRate !== null && matchup.balls >= 12) {
-        signals.push({ source: 'batter_vs_bowler', rate: matchup.runRate, weight: 0.8 });
+        signals.push({ source: 'batter_vs_bowler', rate: matchup.runRate, weight: 0.5 });
         context.batterVsBowler = matchup;
       }
     }
-  } else {
+  } else if (!history || !identity) {
     context.historyBlend = 'skipped (history/identity not wired or AI_HISTORY_ENABLED off)';
+  } else {
+    context.historyBlend = format === 'Test' ? 'skipped for Test' : 'skipped (unknown match format)';
   }
 
   return { signals, context };

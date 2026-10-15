@@ -25,11 +25,16 @@ const PLAYER_HISTORY_WORDS =
   /career|record|stats|statistics|average|strike rate|centur(?:y|ies)|hundreds?|\b100s?\b|\b50s?\b|fifties|wickets?|bowling|economy|how many|करियर|रिकॉर्ड|आंकड़े|औसत|शतक|विकेट|गेंदबाज/i;
 const EVENT_WORDS = /world\s*cup|\bwc\b|asia\s*cup|champions\s*trophy|ashes|ipl|t20\s*world\s*cup/i;
 const EVENT_WINNER_WORDS =
-  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|जीता|विजेता/i;
+  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|ipl\s+\d{4}\s+title|title\b|runner[\s-]?up|जीता|विजेता/i;
 const EVENT_LEADER_RUNS =
   /most\s+runs?|top\s+scorer|highest\s+runs?|orange\s*cap|hit\s+the\s+most\s+run|कौन\s*ने\s*सबसे\s*ज्यादा\s*रन|सर्वाधिक\s*रन/i;
 const EVENT_LEADER_WICKETS =
   /most\s+wickets?|top\s+wicket|purple\s*cap|take\s+the\s+most\s+wicket|कौन\s*ने\s*सबसे\s*ज्यादा\s*विकेट|सर्वाधिक\s*विकेट/i;
+const EVENT_LEADER_CONCEDED =
+  /most\s+runs?\s+conceded|most\s+(?:runs?\s+)?given|runs?\s+conceded|सबसे\s*ज्यादा\s*रन\s*दिए/i;
+const EVENT_LEADER_SIXES = /most\s+sixes?|hit\s+the\s+most\s+six|सर्वाधिक\s*छक्के|सबसे\s*ज्यादा\s*छक्के/i;
+const EVENT_STANDINGS_WORDS =
+  /points?\s*table|league\s*table|standings?|topped\s+the\s+(?:league\s+)?table|how\s+many\s+(?:matches?\s+)?(?:did\s+)?.+\s+win|how\s+many\s+points|net\s*run\s*rate|\bnrr\b|qualify(?:ied)?\s+for\s+(?:the\s+)?playoffs?|पॉइंट(?:्स)?\s*टेबल/i;
 const WIN_PROB_WORDS = /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा/i;
 const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
 const NEXT_OVERS_WORDS = /(?:next|coming|next)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?(?:next\s+)?\d+\s*overs?|अगले\s*\d+\s*ओवर/i;
@@ -123,11 +128,29 @@ function wantsEventResults(question: string): boolean {
   return EVENT_WINNER_WORDS.test(question) && !!guessEvent(question) && !EVENT_LEADER_RUNS.test(question) && !EVENT_LEADER_WICKETS.test(question);
 }
 
-function wantsEventLeaders(question: string): 'batting' | 'bowling' | null {
+function wantsEventLeaders(question: string): 'batting' | 'bowling' | 'runs_conceded' | 'sixes' | null {
   if (!guessEvent(question) && !EVENT_WORDS.test(question)) return null;
+  if (EVENT_LEADER_CONCEDED.test(question)) return 'runs_conceded';
+  if (EVENT_LEADER_SIXES.test(question)) return 'sixes';
   if (EVENT_LEADER_WICKETS.test(question)) return 'bowling';
   if (EVENT_LEADER_RUNS.test(question)) return 'batting';
   return null;
+}
+
+function wantsEventStandings(question: string): boolean {
+  return EVENT_STANDINGS_WORDS.test(question) && (!!guessEvent(question) || EVENT_WORDS.test(question));
+}
+
+function iplArgs(question: string): Record<string, unknown> {
+  const event = guessEvent(question) ?? 'Indian Premier League';
+  const args: Record<string, unknown> = { event };
+  const year = guessYear(question);
+  const format = guessFormat(question) ?? (/indian premier league|\bipl\b/i.test(event) ? 'T20' : null);
+  const gender = guessGender(question);
+  if (year) args.year = year;
+  if (format) args.format = format;
+  if (gender) args.gender = gender;
+  return args;
 }
 
 function guessNextOvers(question: string): number | null {
@@ -180,26 +203,16 @@ function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
     available.has(name) ? [{ id: 'mock_1', name, arguments: JSON.stringify(args) }] : [];
   const leaderKind = wantsEventLeaders(p.question);
   if (leaderKind) {
-    const event = guessEvent(p.question) ?? 'World Cup';
-    const args: Record<string, unknown> = { event, kind: leaderKind };
-    const year = guessYear(p.question);
-    const format = guessFormat(p.question);
-    const gender = guessGender(p.question) ?? (/icc|men|odi|wc/i.test(p.question) ? 'male' : null);
-    if (year) args.year = year;
-    if (format) args.format = format;
-    if (gender) args.gender = gender;
-    return call('get_event_leaders', args);
+    return call('get_event_leaders', { ...iplArgs(p.question), kind: leaderKind });
+  }
+  if (wantsEventStandings(p.question) && available.has('get_event_standings')) {
+    return call('get_event_standings', iplArgs(p.question));
   }
   if (wantsEventResults(p.question)) {
     const event = guessEvent(p.question);
     if (event) {
-      const args: Record<string, unknown> = { event };
-      const year = guessYear(p.question);
-      const format = guessFormat(p.question);
-      const gender = guessGender(p.question) ?? (/icc|men/i.test(p.question) ? 'male' : null);
-      if (year) args.year = year;
-      if (format) args.format = format;
-      if (gender) args.gender = gender;
+      const args = iplArgs(p.question);
+      if (/icc|men|odi|wc/i.test(p.question) && !args.gender && !/\bipl\b/i.test(p.question)) args.gender = 'male';
       return call('get_event_results', args);
     }
   }
@@ -243,7 +256,14 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
   const history = planHistory(p, available);
   if (history.length > 0) return history;
   // Do not fall back to the live match for archive player / tournament questions.
-  if (wantsPlayerHistory(p.question) || wantsEventResults(p.question) || wantsEventLeaders(p.question)) return [];
+  if (
+    wantsPlayerHistory(p.question) ||
+    wantsEventResults(p.question) ||
+    wantsEventLeaders(p.question) ||
+    wantsEventStandings(p.question)
+  ) {
+    return [];
+  }
   if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question)) {
     return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
@@ -326,6 +346,7 @@ const HISTORY_TOOLS = new Set([
   'get_player_history',
   'get_event_results',
   'get_event_leaders',
+  'get_event_standings',
   'get_head_to_head',
   'get_venue_history',
   'get_team_phase_stats',
@@ -457,14 +478,26 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
     if (!top) {
       lines.push(
         hi
-          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए लीडरबोर्ड नहीं मिला।`
-          : `No leaders found for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''}.`,
+          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए लीडरबोर्ड नहीं मिला (सीजन संग्रह में अधूरा हो सकता है)।`
+          : `No leaders found for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} (season may not be finished in the archive).`,
       );
     } else if (data.kind === 'bowling') {
       lines.push(
         hi
           ? `Cricsheet संग्रह के अनुसार ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में सबसे अधिक विकेट: ${str(top.player)} — ${str(top.wickets)} विकेट (${str(top.matches)} मैच).`
           : `In the Cricsheet archive, most wickets in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}: ${str(top.player)} — ${str(top.wickets)} wickets (${str(top.matches)} matches).`,
+      );
+    } else if (data.kind === 'runs_conceded') {
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह: ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में सबसे अधिक रन दिए: ${str(top.player)} — ${str(top.runsConceded)} रन.`
+          : `In the Cricsheet archive, most runs conceded in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}: ${str(top.player)} — ${str(top.runsConceded)} runs.`,
+      );
+    } else if (data.kind === 'sixes') {
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह: ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में सबसे अधिक छक्के: ${str(top.player)} — ${str(top.sixes)}.`
+          : `In the Cricsheet archive, most sixes in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}: ${str(top.player)} — ${str(top.sixes)}.`,
       );
     } else {
       lines.push(
@@ -474,18 +507,36 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
       );
     }
     for (const row of ((data.leaders as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 5)) {
-      if (data.kind === 'bowling') {
-        lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.wickets)} wickets`);
-      } else {
-        lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.runs)} runs`);
+      if (data.kind === 'bowling') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.wickets)} wickets`);
+      else if (data.kind === 'runs_conceded') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.runsConceded)} conceded`);
+      else if (data.kind === 'sixes') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.sixes)} sixes`);
+      else lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.runs)} runs`);
+    }
+  } else if (name === 'get_event_standings') {
+    const rows = (data.standings as Array<Record<string, unknown>> | undefined) ?? [];
+    if (rows.length === 0) {
+      lines.push(
+        hi
+          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए स्टैंडिंग नहीं मिली।`
+          : `No standings in the archive for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''}.`,
+      );
+    } else {
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह स्टैंडिंग ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} (2 अंक जीत; आधिकारिक NRR नहीं):`
+          : `Cricsheet archive standings for ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} (2 pts per win; not official NRR):`,
+      );
+      for (const row of rows.slice(0, 8)) {
+        lines.push(`- ${str(row.team)}: ${str(row.played)} played, ${str(row.won)} won, ${str(row.points)} pts`);
       }
+      if (data.note) lines.push(str(data.note));
     }
   } else if (name === 'get_event_results') {
     if (!data.tournamentWinner && !data.final) {
       lines.push(
         hi
-          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए संग्रह में परिणाम नहीं मिले।`
-          : `No archive results for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''}.`,
+          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए संग्रह में परिणाम नहीं मिले — सीजन अभी अधूरा हो सकता है।`
+          : `No archive results for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} — the season may not be finished in the archive yet.`,
       );
     } else {
       const final = data.final as Record<string, unknown> | undefined;
