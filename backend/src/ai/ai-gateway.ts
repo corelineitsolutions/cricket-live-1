@@ -1,4 +1,5 @@
-import { AiLanguage, LlmMessage, LlmProvider, LlmUsage } from './llm/llm.types';
+import { AiLanguage, LlmMessage, LlmProvider, LlmToolCall, LlmUsage } from './llm/llm.types';
+import { composeAskAnswer, planAskTools } from './llm/mock-llm.provider';
 import { AiToolRegistry } from './tools/ai-tool.registry';
 
 /** Model calls per question, tool rounds included; the last call cannot request tools. */
@@ -28,6 +29,17 @@ const FALLBACK = {
   en: 'Sorry, I could not put together an answer. Please try again.',
   hi: 'माफ़ कीजिए, मैं उत्तर तैयार नहीं कर पाया। कृपया फिर से कोशिश करें।',
 } as const;
+
+const HISTORY_OFF = {
+  en: 'Archive answers need Cricsheet history enabled on the server (AI_HISTORY_ENABLED). Please try again after that is on.',
+  hi: 'संग्रह उत्तरों के लिए सर्वर पर Cricsheet इतिहास चालू होना चाहिए (AI_HISTORY_ENABLED)। कृपया फिर कोशिश करें।',
+} as const;
+
+function looksLikeEmptyOrRefuse(content: string | null): boolean {
+  const text = (content ?? '').trim();
+  if (!text) return true;
+  return /could not|can'?t help|cannot help|no information|don'?t have|do not have|unable to|try again|माफ़|नहीं\s*मिला/i.test(text);
+}
 
 export function buildSystemPrompt(language: AiLanguage, matchId: string | null, now: Date, history = false): string {
   return [
@@ -80,6 +92,9 @@ export class AiGateway {
     const toolsUsed = new Set<string>();
     let toolCalls = 0;
 
+    const available = new Set(this.tools.definitions().map((t) => t.name));
+    let forcedPlanOnce = false;
+
     for (let call = 1; call <= MAX_MODEL_CALLS; call++) {
       input.signal.throwIfAborted();
       const allowTools = call < MAX_MODEL_CALLS;
@@ -92,10 +107,57 @@ export class AiGateway {
       usage.promptTokens += response.usage.promptTokens;
       usage.completionTokens += response.usage.completionTokens;
 
-      if (!allowTools || response.toolCalls.length === 0) {
+      let modelToolCalls: LlmToolCall[] = response.toolCalls;
+      // Real LLMs (e.g. Groq) often skip tools when many are offered. Force the same
+      // deterministic plan the mock uses for IPL/player/archive questions.
+      if (allowTools && modelToolCalls.length === 0 && !forcedPlanOnce && looksLikeEmptyOrRefuse(response.content)) {
+        const planned = planAskTools(input.question, input.matchId, available, { strict: true });
+        if (planned.length > 0) {
+          modelToolCalls = planned;
+          forcedPlanOnce = true;
+        } else if (
+          !available.has('get_player_history') &&
+          /ipl|hundred|centur|world\s*cup|\bwc\b|career|stats|शतक/i.test(input.question)
+        ) {
+          return {
+            answer: HISTORY_OFF[input.language],
+            sources: [...sources],
+            usage,
+            modelCalls: call,
+            toolCalls,
+            toolsUsed: [...toolsUsed],
+          };
+        }
+      }
+
+      if (!allowTools || modelToolCalls.length === 0) {
         const text = (response.content ?? '').trim();
+        if (text) {
+          return {
+            answer: text.slice(0, MAX_ANSWER_CHARS),
+            sources: [...sources],
+            usage,
+            modelCalls: call,
+            toolCalls,
+            toolsUsed: [...toolsUsed],
+          };
+        }
+        // Model returned empty after tools (or with no tools) — compose from tool JSON when we can.
+        if (toolCalls > 0) {
+          const composed = composeAskAnswer(messages, input.language);
+          if (composed) {
+            return {
+              answer: composed.slice(0, MAX_ANSWER_CHARS),
+              sources: [...sources],
+              usage,
+              modelCalls: call,
+              toolCalls,
+              toolsUsed: [...toolsUsed],
+            };
+          }
+        }
         return {
-          answer: text ? text.slice(0, MAX_ANSWER_CHARS) : FALLBACK[input.language],
+          answer: FALLBACK[input.language],
           sources: [...sources],
           usage,
           modelCalls: call,
@@ -104,7 +166,7 @@ export class AiGateway {
         };
       }
 
-      const calls = response.toolCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND);
+      const calls = modelToolCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND);
       messages.push({ role: 'assistant', content: response.content, toolCalls: calls });
       const results = await Promise.all(calls.map((c) => this.tools.execute(c.name, c.arguments)));
       results.forEach((result, index) => {

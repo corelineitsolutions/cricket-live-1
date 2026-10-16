@@ -288,7 +288,18 @@ function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
   return [];
 }
 
-function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
+/**
+ * Deterministic tool plan for a question. Used by the mock provider and as a safety net
+ * when a real LLM returns no tool calls (common with Groq + many tools).
+ * When `strict`, never falls back to get_live_matches — returns [] if nothing matches.
+ */
+export function planAskTools(
+  question: string,
+  matchId: string | null,
+  available: Set<string>,
+  opts: { strict?: boolean } = {},
+): LlmToolCall[] {
+  const p: Parsed = { question, matchId, lang: 'en', toolMessages: [] };
   const rate = rateQuestion(p.question);
   if (rate) {
     const unit = rate.unit.toLowerCase();
@@ -330,6 +341,17 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
     return [{ id: 'mock_1', name: 'project_score', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
   if (p.matchId) {
+    if (opts.strict) {
+      // Only force live match tools when the question clearly asks about this match.
+      if (
+        !SCORECARD_WORDS.test(p.question) &&
+        !BATTER_WORDS.test(p.question) &&
+        !COMMENTARY_WORDS.test(p.question) &&
+        !/\b(score|this match|current|live)\b/i.test(p.question)
+      ) {
+        return [];
+      }
+    }
     const calls: LlmToolCall[] = [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
     if (SCORECARD_WORDS.test(p.question) || BATTER_WORDS.test(p.question)) {
       calls.push({ id: 'mock_2', name: 'get_scorecard', arguments: JSON.stringify({ matchId: p.matchId }) });
@@ -339,7 +361,12 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
     }
     return calls;
   }
+  if (opts.strict) return [];
   return [{ id: 'mock_1', name: 'get_live_matches', arguments: '{}' }];
+}
+
+function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
+  return planAskTools(p.question, p.matchId, available);
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
@@ -721,6 +748,18 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
     }
   }
   return lines;
+}
+
+/** Build a plain answer from tool results (mock templates). Used when a real LLM returns empty. */
+export function composeAskAnswer(messages: LlmMessage[], language: 'en' | 'hi' = 'en'): string {
+  const parsed = parse(messages);
+  parsed.lang = language;
+  const content = compose(parsed);
+  // Strip the demo note when used as a real-provider safety net.
+  return content
+    .replace(/\n?\(Demo answer built from app data without an AI model\.\)\s*$/i, '')
+    .replace(/\n?\(डेमो उत्तर: बिना AI मॉडल के ऐप डेटा से बनाया गया।\)\s*$/i, '')
+    .trim();
 }
 
 function compose(p: Parsed): string {

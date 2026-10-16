@@ -132,6 +132,9 @@ describe('AI history tools', () => {
     expect(guessPlayerName('What is Virat Kohli career record in ODI?')).toBe('Virat Kohli');
     expect(guessPlayerName('Tell me Quinton de Kock stats')).toBe('Quinton de Kock');
     expect(guessPlayerName("there is how many 100 of rohit sharma in icc men's world cup")).toBe('Rohit Sharma');
+    expect(guessPlayerName('ipl hundred of virat kohli')).toBe('Virat Kohli');
+    expect(guessPlayerName('ipl hundred of rohit sharma')).toBe('Rohit Sharma');
+    expect(guessPlayerName('how many hundred score virat kohli in ipl')).toBe('Virat Kohli');
     expect(guessPlayerName('career stats please')).toBeNull();
     expect(guessEvent("icc men's world cup")).toBe('World Cup');
     expect(guessEvent('who win WC 2019')).toBe('World Cup');

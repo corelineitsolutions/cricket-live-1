@@ -3,7 +3,8 @@ import { LlmToolDefinition } from '../llm/llm.types';
 import { AiTool, ToolArgs, ToolResult } from './ai-tool.types';
 
 export const MAX_TOOL_RESULT_CHARS = 6000;
-const TOOL_TIMEOUT_MS = 8000;
+/** Archive player lookups can fan out to several people; keep headroom on small VPS DBs. */
+const TOOL_TIMEOUT_MS = 20_000;
 
 function describeFailure(error: unknown): string {
   if (error instanceof HttpException) {

@@ -143,8 +143,9 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         if (people.length > 1) {
           // Ambiguous surnames (e.g. many "Sharma"): pick the clear archive leader for this event / T20 club.
           const eventFormat = event ? defaultEventFormat(event, format) : format ?? 'T20';
+          const shortlist = people.slice(0, 5);
           const scored = await Promise.all(
-            people.map(async (p) => {
+            shortlist.map(async (p) => {
               if (event) {
                 const rows = await history.playerBattingByEvent(p.personId, event, eventFormat, gender);
                 return {
