@@ -372,7 +372,7 @@ export class HistoryQueryService {
       year?: number | null;
       format?: HistoryFormat | null;
       gender?: 'male' | 'female' | null;
-      kind?: 'batting' | 'bowling' | 'runs_conceded' | 'sixes';
+      kind?: 'batting' | 'bowling' | 'runs_conceded' | 'sixes' | 'fours' | 'hundreds';
       limit?: number;
     } = {},
   ) {
@@ -380,19 +380,26 @@ export class HistoryQueryService {
     const format = opts.format ?? null;
     const gender = opts.gender ?? null;
     const kind =
-      opts.kind === 'bowling' || opts.kind === 'runs_conceded' || opts.kind === 'sixes' ? opts.kind : 'batting';
+      opts.kind === 'bowling' ||
+      opts.kind === 'runs_conceded' ||
+      opts.kind === 'sixes' ||
+      opts.kind === 'fours' ||
+      opts.kind === 'hundreds'
+        ? opts.kind
+        : 'batting';
     const limit = Math.min(Math.max(opts.limit ?? 10, 1), 20);
     const pattern = `%${eventContains}%`;
     const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
     const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(format, gender, tighten, year);
 
-    if (kind === 'sixes') {
+    if (kind === 'sixes' || kind === 'fours') {
+      const boundary = kind === 'sixes' ? 6 : 4;
       const rows = await this.prisma.$queryRaw<
-        Array<{ personId: string; name: string; matches: number; sixes: bigint | number; runs: bigint | number }>
+        Array<{ personId: string; name: string; matches: number; boundaries: bigint | number; runs: bigint | number }>
       >(Prisma.sql`
         SELECT p.id AS personId, p.name AS name,
                COUNT(DISTINCT d.match_id) AS matches,
-               COALESCE(SUM(CASE WHEN d.runs_batter = 6 THEN 1 ELSE 0 END), 0) AS sixes,
+               COALESCE(SUM(CASE WHEN d.runs_batter = ${boundary} THEN 1 ELSE 0 END), 0) AS boundaries,
                COALESCE(SUM(d.runs_batter), 0) AS runs
         FROM hist_deliveries d
         JOIN hist_innings i ON i.match_id = d.match_id AND i.innings_no = d.innings_no AND i.is_super_over = 0
@@ -402,18 +409,18 @@ export class HistoryQueryService {
           AND m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
           ${formatSql} ${genderSql} ${tightenSql} ${yearSql}
         GROUP BY p.id, p.name
-        ORDER BY sixes DESC, runs DESC
+        ORDER BY boundaries DESC, runs DESC
         LIMIT ${Prisma.raw(String(limit))}`);
       const leaders = rows.map((r, index) => ({
         rank: index + 1,
         personId: r.personId,
         player: r.name,
         matches: Number(r.matches),
-        sixes: Number(r.sixes),
+        ...(kind === 'sixes' ? { sixes: Number(r.boundaries) } : { fours: Number(r.boundaries) }),
         runs: Number(r.runs),
       }));
       return {
-        kind: 'sixes' as const,
+        kind: kind === 'sixes' ? ('sixes' as const) : ('fours' as const),
         event: eventContains,
         year,
         format: format ?? 'all',
@@ -422,12 +429,16 @@ export class HistoryQueryService {
         top: leaders[0] ?? null,
         note:
           leaders.length === 0
-            ? `No sixes figures in the archive for "${eventContains}"${year ? ` ${year}` : ''}.`
-            : 'Tournament sixes leaders from Cricsheet archive deliveries (not official totals).',
+            ? `No ${kind} figures in the archive for "${eventContains}"${year ? ` ${year}` : ''}.`
+            : `Tournament ${kind} leaders from Cricsheet archive deliveries (not official totals).`,
       };
     }
 
-    if (kind === 'batting') {
+    if (kind === 'batting' || kind === 'hundreds') {
+      const orderSql =
+        kind === 'hundreds'
+          ? Prisma.sql`ORDER BY hundreds DESC, runs DESC, highest DESC`
+          : Prisma.sql`ORDER BY runs DESC, hundreds DESC, highest DESC`;
       const rows = await this.prisma.$queryRaw<
         Array<{
           personId: string;
@@ -457,7 +468,7 @@ export class HistoryQueryService {
         WHERE m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
           ${formatSql} ${genderSql} ${tightenSql} ${yearSql}
         GROUP BY p.id, p.name
-        ORDER BY runs DESC, hundreds DESC, highest DESC
+        ${orderSql}
         LIMIT ${Prisma.raw(String(limit))}`);
       const leaders = rows.map((r, index) => ({
         rank: index + 1,
@@ -470,7 +481,7 @@ export class HistoryQueryService {
         highest: r.highest ?? 0,
       }));
       return {
-        kind: 'batting' as const,
+        kind: kind === 'hundreds' ? ('hundreds' as const) : ('batting' as const),
         event: eventContains,
         year,
         format: format ?? 'all',
@@ -480,7 +491,9 @@ export class HistoryQueryService {
         note:
           leaders.length === 0
             ? `No batting figures in the archive for "${eventContains}"${year ? ` ${year}` : ''}.`
-            : 'Tournament batting leaders from Cricsheet archive deliveries (not official ICC totals).',
+            : kind === 'hundreds'
+              ? 'Most hundreds in the event from Cricsheet archive deliveries (not official totals).'
+              : 'Tournament batting leaders from Cricsheet archive deliveries (not official ICC totals).',
       };
     }
 
@@ -561,8 +574,8 @@ export class HistoryQueryService {
   }
 
   /**
-   * Simple league table from archive match winners (2 pts per win). Not an official IPL points table
-   * (no NRR / bonus), but enough for "how many wins / who topped the table" style asks.
+   * League table from archive match winners (2 pts per win) plus computed NRR from innings
+   * (runs/overs for − runs/overs against). Close to IPL NRR; not an official published table.
    */
   async eventStandings(
     eventContains: string,
@@ -602,14 +615,50 @@ export class HistoryQueryService {
     };
     const rows = await this.prisma.histMatch.findMany({
       where,
-      include: { team1: { select: { id: true, name: true } }, team2: { select: { id: true, name: true } }, winner: { select: { id: true, name: true } } },
+      include: {
+        team1: { select: { id: true, name: true } },
+        team2: { select: { id: true, name: true } },
+        winner: { select: { id: true, name: true } },
+        innings: {
+          where: { isSuperOver: false },
+          select: { battingTeamId: true, bowlingTeamId: true, runs: true, legalBalls: true },
+        },
+      },
       orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
       take: 500,
     });
-    type Row = { team: string; played: number; won: number; lost: number; noResult: number; points: number };
+    type Row = {
+      teamId: number;
+      team: string;
+      played: number;
+      won: number;
+      lost: number;
+      noResult: number;
+      points: number;
+      runsFor: number;
+      ballsFor: number;
+      runsAgainst: number;
+      ballsAgainst: number;
+      nrr: number | null;
+    };
     const table = new Map<number, Row>();
     const bump = (id: number, name: string) => {
-      const row = table.get(id) ?? { team: name, played: 0, won: 0, lost: 0, noResult: 0, points: 0 };
+      const row =
+        table.get(id) ??
+        ({
+          teamId: id,
+          team: name,
+          played: 0,
+          won: 0,
+          lost: 0,
+          noResult: 0,
+          points: 0,
+          runsFor: 0,
+          ballsFor: 0,
+          runsAgainst: 0,
+          ballsAgainst: 0,
+          nrr: null,
+        } satisfies Row);
       table.set(id, row);
       return row;
     };
@@ -632,8 +681,31 @@ export class HistoryQueryService {
         a.points += 1;
         b.points += 1;
       }
+      for (const inn of m.innings) {
+        if (inn.battingTeamId === null || inn.legalBalls <= 0) continue;
+        const bat = table.get(inn.battingTeamId);
+        if (bat) {
+          bat.runsFor += inn.runs;
+          bat.ballsFor += inn.legalBalls;
+        }
+        if (inn.bowlingTeamId !== null) {
+          const bowl = table.get(inn.bowlingTeamId);
+          if (bowl) {
+            bowl.runsAgainst += inn.runs;
+            bowl.ballsAgainst += inn.legalBalls;
+          }
+        }
+      }
     }
-    const standings = [...table.values()].sort((x, y) => y.points - x.points || y.won - x.won || x.team.localeCompare(y.team));
+    for (const row of table.values()) {
+      const forRate = row.ballsFor > 0 ? (row.runsFor * 6) / row.ballsFor : null;
+      const againstRate = row.ballsAgainst > 0 ? (row.runsAgainst * 6) / row.ballsAgainst : null;
+      row.nrr =
+        forRate !== null && againstRate !== null ? Math.round((forRate - againstRate) * 1000) / 1000 : null;
+    }
+    const standings = [...table.values()]
+      .map(({ teamId: _id, runsFor: _rf, ballsFor: _bf, runsAgainst: _ra, ballsAgainst: _ba, ...rest }) => rest)
+      .sort((x, y) => y.points - x.points || (y.nrr ?? -99) - (x.nrr ?? -99) || y.won - x.won || x.team.localeCompare(y.team));
     return {
       event: eventContains,
       year,
@@ -645,7 +717,448 @@ export class HistoryQueryService {
       note:
         standings.length === 0
           ? `No archive matches whose event name contains "${eventContains}"${year ? ` in ${year}` : ''}.`
-          : 'Archive standings from match winners (2 pts win, 1 pt each for no-result). Not official NRR / IPL points table.',
+          : 'Archive standings: 2 pts win, 1 pt each no-result; NRR = (runs/overs for) − (runs/overs against) from Cricsheet innings. Close to IPL NRR, not an official published table.',
+    };
+  }
+
+  /** Player of the Match leaders in an event (Cricsheet player_of_match). POT is not stored — most POTMs is the proxy. */
+  async eventAwards(
+    eventContains: string,
+    opts: { year?: number | null; format?: HistoryFormat | null; gender?: 'male' | 'female' | null; limit?: number } = {},
+  ) {
+    const year = opts.year ?? null;
+    const format = opts.format ?? null;
+    const gender = opts.gender ?? null;
+    const limit = Math.min(Math.max(opts.limit ?? 10, 1), 20);
+    const pattern = `%${eventContains}%`;
+    const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(
+      format,
+      gender,
+      /world\s*cup/i.test(eventContains) && gender !== 'female',
+      year,
+    );
+    const rows = await this.prisma.$queryRaw<
+      Array<{ personId: string; name: string; awards: bigint | number }>
+    >(Prisma.sql`
+      SELECT p.id AS personId, p.name AS name, COUNT(*) AS awards
+      FROM hist_match_players mp
+      JOIN hist_matches m ON m.id = mp.match_id
+      JOIN hist_people p ON p.id = mp.person_id
+      WHERE mp.is_player_of_match = 1
+        AND m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+        ${formatSql} ${genderSql} ${tightenSql} ${yearSql}
+      GROUP BY p.id, p.name
+      ORDER BY awards DESC, p.name ASC
+      LIMIT ${Prisma.raw(String(limit))}`);
+    const leaders = rows.map((r, index) => ({
+      rank: index + 1,
+      personId: r.personId,
+      player: r.name,
+      playerOfMatchAwards: Number(r.awards),
+    }));
+    return {
+      event: eventContains,
+      year,
+      format: format ?? 'all',
+      gender: gender ?? 'any',
+      leaders,
+      top: leaders[0] ?? null,
+      playerOfTournament: null as string | null,
+      note:
+        leaders.length === 0
+          ? `No Player of the Match awards in the archive for "${eventContains}"${year ? ` ${year}` : ''}.`
+          : 'Most Player of the Match awards from Cricsheet. Official "Player of the Tournament" is not in the archive — use this list as the closest proxy.',
+    };
+  }
+
+  /**
+   * Team or batter phase rates inside an event, with optional won/lost and playoffs filters.
+   * Phases: powerplay / middle / death (T20 overs 1-6 / 7-15 / 16-20).
+   */
+  async eventPhaseStats(
+    eventContains: string,
+    opts: {
+      year?: number | null;
+      format?: HistoryFormat | null;
+      gender?: 'male' | 'female' | null;
+      phase?: 'powerplay' | 'middle' | 'death' | 'all';
+      resultFilter?: 'all' | 'won' | 'lost';
+      stage?: 'all' | 'playoffs';
+      teamIds?: number[] | null;
+      subject?: 'team' | 'batter';
+      limit?: number;
+    } = {},
+  ) {
+    const year = opts.year ?? null;
+    const format = opts.format ?? 'T20';
+    const gender = opts.gender ?? null;
+    const phase = opts.phase ?? 'all';
+    const resultFilter = opts.resultFilter ?? 'all';
+    const stage = opts.stage ?? 'all';
+    const subject = opts.subject ?? 'team';
+    const limit = Math.min(Math.max(opts.limit ?? 10, 1), 20);
+    const pattern = `%${eventContains}%`;
+    const types = FORMAT_MATCH_TYPES[format === 'ODI' ? 'ODI' : 'T20'];
+    const formatSql = Prisma.sql`AND m.match_type IN (${Prisma.join(types)})`;
+    const genderSql = gender ? Prisma.sql`AND m.gender = ${gender}` : Prisma.sql``;
+    const yearSql = year
+      ? Prisma.sql`AND (m.season LIKE ${`%${year}%`} OR (m.start_date >= ${new Date(Date.UTC(year, 0, 1))} AND m.start_date < ${new Date(Date.UTC(year + 1, 0, 1))}))`
+      : Prisma.sql``;
+    const isOdi = format === 'ODI';
+    const phaseSql =
+      phase === 'powerplay'
+        ? isOdi
+          ? Prisma.sql`AND d.over_no < 10`
+          : Prisma.sql`AND d.over_no < 6`
+        : phase === 'middle'
+          ? isOdi
+            ? Prisma.sql`AND d.over_no >= 10 AND d.over_no < 40`
+            : Prisma.sql`AND d.over_no >= 6 AND d.over_no < 15`
+          : phase === 'death'
+            ? isOdi
+              ? Prisma.sql`AND d.over_no >= 40`
+              : Prisma.sql`AND d.over_no >= 15`
+            : Prisma.sql``;
+    const resultSql =
+      resultFilter === 'won'
+        ? Prisma.sql`AND m.winner_id = i.batting_team_id`
+        : resultFilter === 'lost'
+          ? Prisma.sql`AND m.winner_id IS NOT NULL AND m.winner_id <> i.batting_team_id`
+          : Prisma.sql``;
+    const stageSql =
+      stage === 'playoffs'
+        ? Prisma.sql`AND (
+            m.match_number LIKE ${'%Final%'} OR m.match_number LIKE ${'%Qualifier%'}
+            OR m.match_number LIKE ${'%Eliminator%'} OR m.match_number LIKE ${'%Playoff%'}
+            OR m.match_number LIKE ${'%Play-off%'}
+          )`
+        : Prisma.sql``;
+    const teamSql =
+      opts.teamIds && opts.teamIds.length > 0
+        ? Prisma.sql`AND i.batting_team_id IN (${Prisma.join(opts.teamIds)})`
+        : Prisma.sql``;
+
+    if (subject === 'batter') {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ personId: string; name: string; innings: bigint | number; runs: bigint | number; balls: bigint | number; fours: bigint | number; sixes: bigint | number }>
+      >(Prisma.sql`
+        SELECT p.id AS personId, p.name AS name,
+               COUNT(DISTINCT d.match_id, d.innings_no) AS innings,
+               COALESCE(SUM(d.runs_batter), 0) AS runs,
+               COALESCE(SUM(d.is_legal), 0) AS balls,
+               COALESCE(SUM(CASE WHEN d.runs_batter = 4 AND d.non_boundary = 0 THEN 1 ELSE 0 END), 0) AS fours,
+               COALESCE(SUM(CASE WHEN d.runs_batter = 6 AND d.non_boundary = 0 THEN 1 ELSE 0 END), 0) AS sixes
+        FROM hist_deliveries d
+        JOIN hist_innings i ON i.match_id = d.match_id AND i.innings_no = d.innings_no AND i.is_super_over = 0
+        JOIN hist_matches m ON m.id = d.match_id
+        JOIN hist_people p ON p.id = d.batter_id
+        WHERE d.batter_id IS NOT NULL AND m.balls_per_over = 6
+          AND m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+          ${formatSql} ${genderSql} ${yearSql} ${phaseSql} ${resultSql} ${stageSql} ${teamSql}
+        GROUP BY p.id, p.name
+        HAVING COALESCE(SUM(d.is_legal), 0) >= 12
+        ORDER BY runs DESC, balls ASC
+        LIMIT ${Prisma.raw(String(limit))}`);
+      const leaders = rows.map((r, index) => {
+        const runs = Number(r.runs);
+        const balls = Number(r.balls);
+        return {
+          rank: index + 1,
+          personId: r.personId,
+          player: r.name,
+          innings: Number(r.innings),
+          runs,
+          balls,
+          strikeRate: ratio(runs, balls, 100),
+          fours: Number(r.fours),
+          sixes: Number(r.sixes),
+        };
+      });
+      return {
+        subject: 'batter' as const,
+        event: eventContains,
+        year,
+        format,
+        phase,
+        resultFilter,
+        stage,
+        leaders,
+        top: leaders[0] ?? null,
+        note:
+          leaders.length === 0
+            ? `No batter phase figures for "${eventContains}"${year ? ` ${year}` : ''} (${phase}, ${resultFilter}, ${stage}).`
+            : 'Batter phase leaders from Cricsheet deliveries (min 12 balls). Home/away not available.',
+      };
+    }
+
+    const phaseCase = isOdi
+      ? Prisma.sql`CASE WHEN d.over_no < 10 THEN 'powerplay' WHEN d.over_no < 40 THEN 'middle' ELSE 'death' END`
+      : Prisma.sql`CASE WHEN d.over_no < 6 THEN 'powerplay' WHEN d.over_no < 15 THEN 'middle' ELSE 'death' END`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        teamId: number;
+        team: string;
+        phaseName: string;
+        innings: bigint | number;
+        runs: bigint | number;
+        balls: bigint | number;
+        wickets: bigint | number;
+        fours: bigint | number;
+        sixes: bigint | number;
+        dots: bigint | number;
+      }>
+    >(Prisma.sql`
+      SELECT i.batting_team_id AS teamId, t.name AS team,
+             ${phaseCase} AS phaseName,
+             COUNT(DISTINCT d.match_id, d.innings_no) AS innings,
+             COALESCE(SUM(d.total_runs), 0) AS runs,
+             COALESCE(SUM(d.is_legal), 0) AS balls,
+             COALESCE(SUM(d.team_wickets), 0) AS wickets,
+             COALESCE(SUM(CASE WHEN d.runs_batter = 4 AND d.non_boundary = 0 THEN 1 ELSE 0 END), 0) AS fours,
+             COALESCE(SUM(CASE WHEN d.runs_batter = 6 AND d.non_boundary = 0 THEN 1 ELSE 0 END), 0) AS sixes,
+             COALESCE(SUM(CASE WHEN d.is_legal = 1 AND d.total_runs = 0 THEN 1 ELSE 0 END), 0) AS dots
+      FROM hist_deliveries d
+      JOIN hist_innings i ON i.match_id = d.match_id AND i.innings_no = d.innings_no AND i.is_super_over = 0
+      JOIN hist_matches m ON m.id = d.match_id
+      JOIN hist_teams t ON t.id = i.batting_team_id
+      WHERE i.batting_team_id IS NOT NULL AND m.balls_per_over = 6
+        AND m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+        ${formatSql} ${genderSql} ${yearSql} ${phaseSql} ${resultSql} ${stageSql} ${teamSql}
+      GROUP BY i.batting_team_id, t.name, phaseName
+      HAVING COALESCE(SUM(d.is_legal), 0) >= 30
+      ORDER BY (COALESCE(SUM(d.total_runs), 0) * 6) / COALESCE(SUM(d.is_legal), 0) DESC, runs DESC
+      LIMIT ${Prisma.raw(String(limit * (phase === 'all' ? 3 : 1)))}`);
+    const leaders = rows.map((r, index) => {
+      const runs = Number(r.runs);
+      const balls = Number(r.balls);
+      const innings = Number(r.innings);
+      return {
+        rank: index + 1,
+        teamId: r.teamId,
+        team: r.team,
+        phase: r.phaseName,
+        innings,
+        runs,
+        runRate: ratio(runs, balls, 6),
+        wicketsPerInnings: ratio(Number(r.wickets), innings),
+        dotBallPercent: ratio(Number(r.dots), balls, 100),
+        fours: Number(r.fours),
+        sixes: Number(r.sixes),
+      };
+    });
+    return {
+      subject: 'team' as const,
+      event: eventContains,
+      year,
+      format,
+      phase,
+      resultFilter,
+      stage,
+      leaders,
+      top: leaders[0] ?? null,
+      note:
+        leaders.length === 0
+          ? `No team phase figures for "${eventContains}"${year ? ` ${year}` : ''} (${phase}, ${resultFilter}, ${stage}).`
+          : 'Team phase rates from Cricsheet deliveries. Playoffs = Final/Qualifier/Eliminator match_number. Home/away not available.',
+    };
+  }
+
+  /**
+   * Matches between two teams inside an event (e.g. CSK vs MI in IPL 2019), with innings scores.
+   * Covers "what was the result / score / margin / target" style asks from the IPL question set.
+   */
+  async eventTeamMatches(
+    eventContains: string,
+    teamAIds: number[],
+    teamBIds: number[],
+    opts: { year?: number | null; format?: HistoryFormat | null; gender?: 'male' | 'female' | null } = {},
+  ) {
+    const year = opts.year ?? null;
+    const format = opts.format ?? null;
+    const gender = opts.gender ?? null;
+    const and: Prisma.HistMatchWhereInput[] = [
+      { eventName: { contains: eventContains } },
+      {
+        OR: [
+          { team1Id: { in: teamAIds }, team2Id: { in: teamBIds } },
+          { team1Id: { in: teamBIds }, team2Id: { in: teamAIds } },
+        ],
+      },
+    ];
+    if (format) and.push({ matchType: { in: FORMAT_MATCH_TYPES[format] } });
+    if (gender) and.push({ gender });
+    if (year) {
+      and.push({
+        OR: [
+          { season: { contains: String(year) } },
+          {
+            startDate: {
+              gte: new Date(Date.UTC(year, 0, 1)),
+              lt: new Date(Date.UTC(year + 1, 0, 1)),
+            },
+          },
+        ],
+      });
+    }
+    const rows = await this.prisma.histMatch.findMany({
+      where: { AND: and },
+      include: {
+        team1: { select: { id: true, name: true } },
+        team2: { select: { id: true, name: true } },
+        winner: { select: { id: true, name: true } },
+        innings: {
+          where: { isSuperOver: false },
+          orderBy: { inningsNo: 'asc' },
+          select: {
+            inningsNo: true,
+            battingTeamId: true,
+            runs: true,
+            wickets: true,
+            legalBalls: true,
+            targetRuns: true,
+            extras: true,
+          },
+        },
+      },
+      orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+      take: 40,
+    });
+    const matches = rows.map((m) => {
+      const innings = m.innings.map((i) => {
+        const batting =
+          i.battingTeamId === m.team1.id ? m.team1.name : i.battingTeamId === m.team2.id ? m.team2.name : null;
+        return {
+          inning: i.inningsNo,
+          team: batting,
+          score: `${i.runs}/${i.wickets}`,
+          overs: overs(i.legalBalls),
+          target: i.targetRuns,
+          extras: i.extras,
+        };
+      });
+      return {
+        date: day(m.startDate),
+        season: m.season,
+        matchNumber: m.matchNumber,
+        teams: [m.team1.name, m.team2.name],
+        winner: m.winner?.name ?? m.eliminatorTeam ?? null,
+        winByRuns: m.winByRuns,
+        winByWickets: m.winByWickets,
+        outcome: m.outcome,
+        innings,
+      };
+    });
+    return {
+      event: eventContains,
+      year,
+      format: format ?? 'all',
+      matchCount: matches.length,
+      matches,
+      note:
+        matches.length === 0
+          ? `No archive matches between these teams for "${eventContains}"${year ? ` in ${year}` : ''}.`
+          : 'Archive match list for this fixture (Cricsheet). Multiple meetings in a season are all listed.',
+    };
+  }
+
+  /** Season extremes: highest/lowest team totals and biggest win margins in an event. */
+  async eventExtremes(
+    eventContains: string,
+    opts: { year?: number | null; format?: HistoryFormat | null; gender?: 'male' | 'female' | null } = {},
+  ) {
+    const year = opts.year ?? null;
+    const format = opts.format ?? null;
+    const gender = opts.gender ?? null;
+    const pattern = `%${eventContains}%`;
+    const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(
+      format,
+      gender,
+      /world\s*cup/i.test(eventContains) && gender !== 'female',
+      year,
+    );
+    const totals = await this.prisma.$queryRaw<
+      Array<{
+        matchId: number;
+        date: Date | null;
+        team: string;
+        runs: number;
+        wickets: number;
+        legalBalls: number;
+        opponent: string | null;
+      }>
+    >(Prisma.sql`
+      SELECT m.id AS matchId, m.start_date AS date, bt.name AS team, i.runs AS runs, i.wickets AS wickets,
+             i.legal_balls AS legalBalls, ot.name AS opponent
+      FROM hist_innings i
+      JOIN hist_matches m ON m.id = i.match_id
+      JOIN hist_teams bt ON bt.id = i.batting_team_id
+      LEFT JOIN hist_teams ot ON ot.id = i.bowling_team_id
+      WHERE i.is_super_over = 0 AND m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+        ${formatSql} ${genderSql} ${tightenSql} ${yearSql}
+      ORDER BY i.runs DESC
+      LIMIT 5`);
+    const lowest = await this.prisma.$queryRaw<
+      Array<{ matchId: number; date: Date | null; team: string; runs: number; wickets: number; opponent: string | null }>
+    >(Prisma.sql`
+      SELECT m.id AS matchId, m.start_date AS date, bt.name AS team, i.runs AS runs, i.wickets AS wickets, ot.name AS opponent
+      FROM hist_innings i
+      JOIN hist_matches m ON m.id = i.match_id
+      JOIN hist_teams bt ON bt.id = i.batting_team_id
+      LEFT JOIN hist_teams ot ON ot.id = i.bowling_team_id
+      WHERE i.is_super_over = 0 AND i.wickets >= 10 AND m.event_name IS NOT NULL AND m.event_name LIKE ${pattern}
+        ${formatSql} ${genderSql} ${tightenSql} ${yearSql}
+      ORDER BY i.runs ASC
+      LIMIT 5`);
+    const margins = await this.prisma.histMatch.findMany({
+      where: {
+        eventName: { contains: eventContains },
+        ...(format ? { matchType: { in: FORMAT_MATCH_TYPES[format] } } : {}),
+        ...(gender ? { gender } : {}),
+        ...(year
+          ? {
+              OR: [
+                { season: { contains: String(year) } },
+                {
+                  startDate: {
+                    gte: new Date(Date.UTC(year, 0, 1)),
+                    lt: new Date(Date.UTC(year + 1, 0, 1)),
+                  },
+                },
+              ],
+            }
+          : {}),
+        OR: [{ winByRuns: { not: null } }, { winByWickets: { not: null } }],
+      },
+      include: { team1: { select: { name: true } }, team2: { select: { name: true } }, winner: { select: { name: true } } },
+      orderBy: [{ winByRuns: 'desc' }, { winByWickets: 'desc' }],
+      take: 8,
+    });
+    const mapTotal = (r: { date: Date | null; team: string; runs: number; wickets: number; opponent: string | null; legalBalls?: number }) => ({
+      date: day(r.date),
+      team: r.team,
+      opponent: r.opponent,
+      score: `${r.runs}/${r.wickets}`,
+      overs: r.legalBalls !== undefined ? overs(r.legalBalls) : null,
+      runs: r.runs,
+    });
+    return {
+      event: eventContains,
+      year,
+      format: format ?? 'all',
+      highestTotals: totals.map(mapTotal),
+      lowestAllOutTotals: lowest.map(mapTotal),
+      biggestWins: margins.map((m) => ({
+        date: day(m.startDate),
+        teams: [m.team1.name, m.team2.name],
+        winner: m.winner?.name ?? null,
+        winByRuns: m.winByRuns,
+        winByWickets: m.winByWickets,
+        matchNumber: m.matchNumber,
+      })),
+      note:
+        totals.length === 0
+          ? `No innings totals in the archive for "${eventContains}"${year ? ` in ${year}` : ''}.`
+          : 'Season extremes from Cricsheet archive innings (not official IPL records).',
     };
   }
 

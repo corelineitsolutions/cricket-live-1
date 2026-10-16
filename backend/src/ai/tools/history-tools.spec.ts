@@ -5,7 +5,7 @@ import type { MatchesService } from '../../matches/matches.service';
 import { FakeDb } from '../../testing/fake-db';
 import { guessEvent, guessFormat, guessGender, guessPlayerName, guessYear } from '../llm/mock-llm.provider';
 import { AiToolRegistry } from './ai-tool.registry';
-import { createHistoryTools, formatOf } from './history-tools';
+import { createHistoryTools, formatOf, normalizePlayerQuery } from './history-tools';
 
 const D = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
@@ -145,9 +145,60 @@ describe('AI history tools', () => {
     expect(guessYear('who win IPL 2026')).toBe(2026);
     expect(guessGender("icc men's world cup")).toBe('male');
     expect(guessPlayerName('How many runs per over does WA need?')).toBeNull();
+    expect(normalizePlayerQuery('rohit sharam')).toBe('Rohit Sharma');
+    expect(normalizePlayerQuery('virat kohili')).toBe('Virat Kohli');
   });
 
-  it('returns archive standings for an IPL-style event', async () => {
+  it('auto-picks Rohit Sharma among Sharma candidates when IPL runs dominate', async () => {
+    const iplBat = (runs: number, hundreds: number) => [
+      {
+        eventName: 'Indian Premier League',
+        matchType: 'T20',
+        gender: 'male',
+        matches: runs > 100 ? 200 : 2,
+        innings: runs > 100 ? 200 : 2,
+        runs,
+        hundreds,
+        fifties: 0,
+        highest: runs > 100 ? 109 : 22,
+      },
+    ];
+    let calls = 0;
+    db.$queryRaw.mockImplementation(async () => {
+      calls += 1;
+      // Disambiguation queries (per candidate), then final batting + bowling.
+      if (calls === 1) return iplBat(6000, 7); // RG Sharma
+      if (calls === 2) return iplBat(40, 0); // R Sharma
+      if (calls === 3) return iplBat(6000, 7); // chosen player batting
+      return []; // bowling
+    });
+    const res = await run('get_player_history', {
+      name: 'Rohit Sharma',
+      event: 'Indian Premier League',
+      format: 'T20',
+    });
+    expect(res.ok).toBe(true);
+    expect(res.data.found).not.toBe(false);
+    expect(res.data.player).toBe('RG Sharma');
+    expect(res.data.hundredsInEvent).toBe(7);
+  });
+
+  it('returns most-hundreds leaders for an IPL-style event', async () => {
+    db.$queryRaw.mockResolvedValueOnce([
+      { personId: 'cccccccc', name: 'V Kohli', matches: 200, innings: 200, runs: 7000, hundreds: 8, highest: 113 },
+      { personId: 'aaaaaaaa', name: 'RG Sharma', matches: 200, innings: 200, runs: 6000, hundreds: 7, highest: 109 },
+    ]);
+    const res = await run('get_event_leaders', {
+      event: 'Indian Premier League',
+      format: 'T20',
+      kind: 'hundreds',
+    });
+    expect(res.ok).toBe(true);
+    expect(res.data.kind).toBe('hundreds');
+    expect(res.data.top).toMatchObject({ player: 'V Kohli', hundreds: 8, rank: 1 });
+  });
+
+  it('returns archive standings with NRR for an IPL-style event', async () => {
     db.rows.histMatch.push(
       {
         id: 10,
@@ -166,6 +217,10 @@ describe('AI history tools', () => {
         team1: { id: 1, name: 'Mumbai Indians' },
         team2: { id: 2, name: 'Chennai Super Kings' },
         winner: { id: 1, name: 'Mumbai Indians' },
+        innings: [
+          { battingTeamId: 1, bowlingTeamId: 2, runs: 180, legalBalls: 120 },
+          { battingTeamId: 2, bowlingTeamId: 1, runs: 160, legalBalls: 120 },
+        ],
       },
       {
         id: 11,
@@ -184,12 +239,57 @@ describe('AI history tools', () => {
         team1: { id: 2, name: 'Chennai Super Kings' },
         team2: { id: 1, name: 'Mumbai Indians' },
         winner: { id: 1, name: 'Mumbai Indians' },
+        innings: [
+          { battingTeamId: 2, bowlingTeamId: 1, runs: 140, legalBalls: 120 },
+          { battingTeamId: 1, bowlingTeamId: 2, runs: 141, legalBalls: 114 },
+        ],
       },
     );
     const res = await run('get_event_standings', { event: 'Indian Premier League', year: 2026, format: 'T20' });
     expect(res.ok).toBe(true);
     expect(res.data.top).toMatchObject({ team: 'Mumbai Indians', won: 2, points: 4 });
+    expect(typeof (res.data.top as { nrr: number }).nrr).toBe('number');
     expect(res.label).toContain('standings');
+  });
+
+  it('returns Player of the Match award leaders', async () => {
+    db.$queryRaw.mockResolvedValueOnce([
+      { personId: 'cccccccc', name: 'V Kohli', awards: 5 },
+      { personId: 'aaaaaaaa', name: 'RG Sharma', awards: 3 },
+    ]);
+    const res = await run('get_event_awards', { event: 'Indian Premier League', year: 2026, format: 'T20' });
+    expect(res.ok).toBe(true);
+    expect(res.data.top).toMatchObject({ player: 'V Kohli', playerOfMatchAwards: 5 });
+    expect(res.data.note).toMatch(/Player of the Tournament/i);
+  });
+
+  it('returns filtered death-over team phase leaders', async () => {
+    db.$queryRaw.mockResolvedValueOnce([
+      {
+        teamId: 1,
+        team: 'Mumbai Indians',
+        phaseName: 'death',
+        innings: 10,
+        runs: 200,
+        balls: 120,
+        wickets: 15,
+        fours: 12,
+        sixes: 10,
+        dots: 30,
+      },
+    ]);
+    const res = await run('get_event_phase_stats', {
+      event: 'Indian Premier League',
+      year: 2026,
+      format: 'T20',
+      phase: 'death',
+      resultFilter: 'won',
+      stage: 'all',
+      subject: 'team',
+    });
+    expect(res.ok).toBe(true);
+    expect(res.data.top).toMatchObject({ team: 'Mumbai Indians', phase: 'death' });
+    expect((res.data.top as { runRate: number }).runRate).toBe(10);
   });
 
   it('counts hundreds and wickets for an event filter without inventing SQL from the question', async () => {

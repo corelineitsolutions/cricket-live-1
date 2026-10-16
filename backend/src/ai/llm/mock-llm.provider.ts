@@ -33,8 +33,19 @@ const EVENT_LEADER_WICKETS =
 const EVENT_LEADER_CONCEDED =
   /most\s+runs?\s+conceded|most\s+(?:runs?\s+)?given|runs?\s+conceded|सबसे\s*ज्यादा\s*रन\s*दिए/i;
 const EVENT_LEADER_SIXES = /most\s+sixes?|hit\s+the\s+most\s+six|सर्वाधिक\s*छक्के|सबसे\s*ज्यादा\s*छक्के/i;
+const EVENT_LEADER_FOURS = /most\s+fours?|hit\s+the\s+most\s+four|सर्वाधिक\s*चौके|सबसे\s*ज्यादा\s*चौके/i;
+const EVENT_LEADER_HUNDREDS =
+  /most\s+hundreds?|most\s+centur(?:y|ies)|hit\s+the\s+most\s+hundred|who\s+hit\s+the\s+most\s+hundred|सर्वाधिक\s*शतक|सबसे\s*ज्यादा\s*शतक/i;
+const EVENT_EXTREMES_WORDS =
+  /highest\s+(?:team\s+)?total|lowest\s+(?:team\s+)?total|biggest\s+winn(?:ing)?\s+margin|smallest\s+margin|highest\s+successful\s+chase/i;
+const EVENT_MATCH_WORDS =
+  /(?:result|score|target|winning\s+margin|margin)\s+.*(?:vs\.?|versus|against)|(?:vs\.?|versus|against).*(?:result|score|target|margin)|what\s+score\s+did|how\s+many\s+overs\s+did\s+.+\s+take\s+to\s+chase/i;
 const EVENT_STANDINGS_WORDS =
   /points?\s*table|league\s*table|standings?|topped\s+the\s+(?:league\s+)?table|how\s+many\s+(?:matches?\s+)?(?:did\s+)?.+\s+win|how\s+many\s+points|net\s*run\s*rate|\bnrr\b|qualify(?:ied)?\s+for\s+(?:the\s+)?playoffs?|पॉइंट(?:्स)?\s*टेबल/i;
+const EVENT_AWARDS_WORDS =
+  /player\s+of\s+the\s+(?:match|tournament)|most\s+player\s+of\s+the\s+match|potm|\bpot\b|मैन\s*ऑफ\s*द\s*मैच|प्लेयर\s*ऑफ\s*द\s*टूर्नामेंट/i;
+const EVENT_PHASE_WORDS =
+  /powerplay|death[\s-]?overs?|middle[\s-]?overs?|phase|best\s+(?:batting|bowling)\s+performance|which\s+(?:team|batter|bowler)\s+had\s+the\s+best/i;
 const WIN_PROB_WORDS = /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा/i;
 const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
 const NEXT_OVERS_WORDS = /(?:next|coming|next)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?(?:next\s+)?\d+\s*overs?|अगले\s*\d+\s*ओवर/i;
@@ -128,10 +139,14 @@ function wantsEventResults(question: string): boolean {
   return EVENT_WINNER_WORDS.test(question) && !!guessEvent(question) && !EVENT_LEADER_RUNS.test(question) && !EVENT_LEADER_WICKETS.test(question);
 }
 
-function wantsEventLeaders(question: string): 'batting' | 'bowling' | 'runs_conceded' | 'sixes' | null {
+function wantsEventLeaders(
+  question: string,
+): 'batting' | 'bowling' | 'runs_conceded' | 'sixes' | 'fours' | 'hundreds' | null {
   if (!guessEvent(question) && !EVENT_WORDS.test(question)) return null;
+  if (EVENT_LEADER_HUNDREDS.test(question)) return 'hundreds';
   if (EVENT_LEADER_CONCEDED.test(question)) return 'runs_conceded';
   if (EVENT_LEADER_SIXES.test(question)) return 'sixes';
+  if (EVENT_LEADER_FOURS.test(question)) return 'fours';
   if (EVENT_LEADER_WICKETS.test(question)) return 'bowling';
   if (EVENT_LEADER_RUNS.test(question)) return 'batting';
   return null;
@@ -204,6 +219,40 @@ function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
   const leaderKind = wantsEventLeaders(p.question);
   if (leaderKind) {
     return call('get_event_leaders', { ...iplArgs(p.question), kind: leaderKind });
+  }
+  if (EVENT_AWARDS_WORDS.test(p.question) && available.has('get_event_awards') && (guessEvent(p.question) || EVENT_WORDS.test(p.question))) {
+    return call('get_event_awards', iplArgs(p.question));
+  }
+  if (EVENT_PHASE_WORDS.test(p.question) && available.has('get_event_phase_stats') && (guessEvent(p.question) || EVENT_WORDS.test(p.question))) {
+    const q = p.question;
+    const phase = /death/i.test(q) ? 'death' : /powerplay/i.test(q) ? 'powerplay' : /middle/i.test(q) ? 'middle' : 'all';
+    const resultFilter = /matches?\s+won|while\s+winning|in\s+wins/i.test(q)
+      ? 'won'
+      : /matches?\s+lost|while\s+losing|in\s+losses/i.test(q)
+        ? 'lost'
+        : 'all';
+    const stage = /playoffs?|knockout|final|qualifier|eliminator/i.test(q) ? 'playoffs' : 'all';
+    const subject = /batter|batsman|bowler|player/i.test(q) && !/which\s+team/i.test(q) ? 'batter' : 'team';
+    return call('get_event_phase_stats', { ...iplArgs(q), phase, resultFilter, stage, subject });
+  }
+  if (EVENT_EXTREMES_WORDS.test(p.question) && available.has('get_event_extremes') && (guessEvent(p.question) || EVENT_WORDS.test(p.question))) {
+    return call('get_event_extremes', iplArgs(p.question));
+  }
+  if (EVENT_MATCH_WORDS.test(p.question) && available.has('get_event_team_matches')) {
+    const teams = TEAMS_VS.exec(p.question);
+    const against = /([A-Z][\w']*(?:\s+[A-Z][\w']*){0,4})\s+(?:against|vs\.?|versus)\s+([A-Z][\w']*(?:\s+[A-Z][\w']*){0,4})/i.exec(
+      p.question,
+    );
+    const pair = teams ?? against;
+    if (pair) {
+      const clean = (team: string) =>
+        team.replace(/\s+(?:'s|IPL|in|match|the|of).*$/i, '').replace(/\s+'s$/i, '').trim();
+      return call('get_event_team_matches', {
+        ...iplArgs(p.question),
+        team1: clean(pair[1]),
+        team2: clean(pair[2]),
+      });
+    }
   }
   if (wantsEventStandings(p.question) && available.has('get_event_standings')) {
     return call('get_event_standings', iplArgs(p.question));
@@ -347,6 +396,10 @@ const HISTORY_TOOLS = new Set([
   'get_event_results',
   'get_event_leaders',
   'get_event_standings',
+  'get_event_team_matches',
+  'get_event_extremes',
+  'get_event_awards',
+  'get_event_phase_stats',
   'get_head_to_head',
   'get_venue_history',
   'get_team_phase_stats',
@@ -499,6 +552,12 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
           ? `Cricsheet संग्रह: ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में सबसे अधिक छक्के: ${str(top.player)} — ${str(top.sixes)}.`
           : `In the Cricsheet archive, most sixes in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}: ${str(top.player)} — ${str(top.sixes)}.`,
       );
+    } else if (data.kind === 'hundreds') {
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह: ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में सबसे अधिक शतक: ${str(top.player)} — ${str(top.hundreds)} शतक (${str(top.runs)} रन).`
+          : `In the Cricsheet archive, most hundreds in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}: ${str(top.player)} — ${str(top.hundreds)} hundreds (${str(top.runs)} runs).`,
+      );
     } else {
       lines.push(
         hi
@@ -510,7 +569,56 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
       if (data.kind === 'bowling') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.wickets)} wickets`);
       else if (data.kind === 'runs_conceded') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.runsConceded)} conceded`);
       else if (data.kind === 'sixes') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.sixes)} sixes`);
+      else if (data.kind === 'fours') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.fours)} fours`);
+      else if (data.kind === 'hundreds') lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.hundreds)} hundreds`);
       else lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.runs)} runs`);
+    }
+  } else if (name === 'get_event_team_matches') {
+    const matches = (data.matches as Array<Record<string, unknown>> | undefined) ?? [];
+    if (matches.length === 0) {
+      lines.push(
+        hi
+          ? `${str(data.team1)} बनाम ${str(data.team2)} के लिए ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में मैच नहीं मिले।`
+          : `No archive matches for ${str(data.team1)} vs ${str(data.team2)} in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}.`,
+      );
+    } else {
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह: ${str(data.team1)} बनाम ${str(data.team2)} (${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}):`
+          : `Cricsheet archive: ${str(data.team1)} vs ${str(data.team2)} (${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}):`,
+      );
+      for (const m of matches.slice(0, 5)) {
+        const inns = ((m.innings as Array<Record<string, unknown>> | undefined) ?? [])
+          .map((i) => `${str(i.team)} ${str(i.score)}`)
+          .join(', ');
+        const margin =
+          m.winByRuns != null ? `by ${str(m.winByRuns)} runs` : m.winByWickets != null ? `by ${str(m.winByWickets)} wickets` : '';
+        lines.push(`- ${str(m.date)}: ${inns || (m.teams as string[] | undefined)?.join(' vs ')}; winner ${str(m.winner)}${margin ? ` ${margin}` : ''}.`);
+      }
+    }
+  } else if (name === 'get_event_extremes') {
+    const high = (data.highestTotals as Array<Record<string, unknown>> | undefined) ?? [];
+    if (high.length === 0) {
+      lines.push(
+        hi
+          ? `"${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''} के लिए एक्सट्रीम नहीं मिले।`
+          : `No extremes in the archive for "${str(data.event)}"${data.year ? ` ${str(data.year)}` : ''}.`,
+      );
+    } else {
+      const top = high[0];
+      lines.push(
+        hi
+          ? `Cricsheet: ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} में सर्वोच्च टीम स्कोर ${str(top.team)} ${str(top.score)}.`
+          : `Cricsheet archive: highest team total in ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''}: ${str(top.team)} ${str(top.score)}.`,
+      );
+      const low = (data.lowestAllOutTotals as Array<Record<string, unknown>> | undefined)?.[0];
+      if (low) lines.push(hi ? `सबसे कम ऑल-आउट: ${str(low.team)} ${str(low.score)}.` : `Lowest all-out: ${str(low.team)} ${str(low.score)}.`);
+      const win = (data.biggestWins as Array<Record<string, unknown>> | undefined)?.[0];
+      if (win) {
+        const margin =
+          win.winByRuns != null ? `${str(win.winByRuns)} runs` : win.winByWickets != null ? `${str(win.winByWickets)} wickets` : '';
+        lines.push(hi ? `बड़ी जीत: ${str(win.winner)} (${margin}).` : `Biggest win: ${str(win.winner)} (${margin}).`);
+      }
     }
   } else if (name === 'get_event_standings') {
     const rows = (data.standings as Array<Record<string, unknown>> | undefined) ?? [];
@@ -523,14 +631,56 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
     } else {
       lines.push(
         hi
-          ? `Cricsheet संग्रह स्टैंडिंग ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} (2 अंक जीत; आधिकारिक NRR नहीं):`
-          : `Cricsheet archive standings for ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} (2 pts per win; not official NRR):`,
+          ? `Cricsheet संग्रह स्टैंडिंग ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} (2 अंक जीत + NRR):`
+          : `Cricsheet archive standings for ${str(data.event)}${data.year ? ` ${str(data.year)}` : ''} (2 pts/win + NRR):`,
       );
       for (const row of rows.slice(0, 8)) {
-        lines.push(`- ${str(row.team)}: ${str(row.played)} played, ${str(row.won)} won, ${str(row.points)} pts`);
+        lines.push(
+          `- ${str(row.team)}: ${str(row.played)} played, ${str(row.won)} won, ${str(row.points)} pts, NRR ${str(row.nrr ?? '-')}`,
+        );
       }
       if (data.note) lines.push(str(data.note));
     }
+  } else if (name === 'get_event_awards') {
+    const top = data.top as Record<string, unknown> | undefined;
+    if (!top) {
+      lines.push(
+        hi
+          ? `Player of the Match अवॉर्ड नहीं मिले।`
+          : `No Player of the Match awards found in the archive.`,
+      );
+    } else {
+      lines.push(
+        hi
+          ? `Cricsheet: सबसे अधिक Player of the Match — ${str(top.player)} (${str(top.playerOfMatchAwards)}). आधिकारिक Player of the Tournament संग्रह में नहीं है; यह निकटतम अनुमान है।`
+          : `Cricsheet archive: most Player of the Match awards — ${str(top.player)} (${str(top.playerOfMatchAwards)}). Official Player of the Tournament is not stored; this is the closest proxy.`,
+      );
+      for (const row of ((data.leaders as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 5)) {
+        lines.push(`- ${str(row.rank)}. ${str(row.player)}: ${str(row.playerOfMatchAwards)}`);
+      }
+    }
+  } else if (name === 'get_event_phase_stats') {
+    const top = data.top as Record<string, unknown> | undefined;
+    if (!top) {
+      lines.push(
+        hi
+          ? `इस फिल्टर के लिए फेज़ आंकड़े नहीं मिले।`
+          : `No phase figures for this filter in the archive.`,
+      );
+    } else if (data.subject === 'batter') {
+      lines.push(
+        hi
+          ? `Cricsheet ${str(data.phase)}: ${str(top.player)} — ${str(top.runs)} रन (SR ${str(top.strikeRate)}).`
+          : `Cricsheet ${str(data.phase)}: ${str(top.player)} — ${str(top.runs)} runs (SR ${str(top.strikeRate)}).`,
+      );
+    } else {
+      lines.push(
+        hi
+          ? `Cricsheet ${str(top.phase ?? data.phase)}: ${str(top.team)} — रन रेट ${str(top.runRate)}.`
+          : `Cricsheet ${str(top.phase ?? data.phase)}: ${str(top.team)} — run rate ${str(top.runRate)}.`,
+      );
+    }
+    if (data.note) lines.push(str(data.note));
   } else if (name === 'get_event_results') {
     if (!data.tournamentWinner && !data.final) {
       lines.push(

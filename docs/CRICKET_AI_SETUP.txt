@@ -403,11 +403,16 @@ Only with AI_HISTORY_ENABLED=true (Cricsheet archive):
                             (IPL title / who won IPL {year})
   get_event_leaders         most runs (Orange Cap), most wickets (Purple Cap),
                             most runs conceded, most sixes — by event + year
-  get_event_standings       archive points-table style W/L/points (not official NRR)
+  get_event_standings       points table + computed NRR (archive estimate)
+  get_event_awards          most Player of the Match (POT proxy)
+  get_event_phase_stats     powerplay/middle/death with won/lost/playoffs filters
+                            (team or batter); home/away not supported
+  get_event_team_matches    A vs B results/scores/margins in an event/year
+  get_event_extremes        highest/lowest totals, biggest margins
   get_head_to_head          results between two teams (by matchId or names), per format
   get_venue_history         matches, average first-innings score, bat-first vs chasing
                             wins, highest and lowest totals (all spellings combined)
-  get_team_phase_stats      T20/ODI run rate, wickets and dot balls per phase
+  get_team_phase_stats      career team phases (prefer get_event_phase_stats for IPL)
 
 Formats: T20 = T20 + IT20, ODI = ODI + ODM, Test = Test + MDM (domestic included; each
 row says which). Every history result carries the coverage note.

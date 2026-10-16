@@ -1,0 +1,52 @@
+================================================================================
+  IPL Ask coverage (vs questions/ipl_10000_unique_questions.txt)
+================================================================================
+
+Server needs: AI_HISTORY_ENABLED=true + Cricsheet IPL in hist_* + redeploy.
+
+
+--------------------------------------------------------------------------------
+1. READY (use these tools)
+--------------------------------------------------------------------------------
+
+  Winner / title          get_event_results
+  Orange / Purple Cap     get_event_leaders (batting / bowling)
+  Most hundreds/sixes/
+    fours/runs conceded   get_event_leaders (hundreds / sixes / fours / runs_conceded)
+  Named player IPL stats  get_player_history (event=Indian Premier League)
+                          Ambiguous names (Sharma…) auto-pick archive leader
+  Points table + NRR      get_event_standings  (NRR computed from innings)
+  Team A vs B result      get_event_team_matches
+  Highest/lowest totals   get_event_extremes
+  Player of the Match     get_event_awards
+  Player of Tournament    get_event_awards (proxy = most POTMs; official POT
+                          title is NOT in Cricsheet)
+  Phase filters           get_event_phase_stats
+                          phase=powerplay|middle|death|all
+                          resultFilter=all|won|lost
+                          stage=all|playoffs
+                          subject=team|batter
+
+
+--------------------------------------------------------------------------------
+2. STILL LIMITED
+--------------------------------------------------------------------------------
+
+  - Home / away splits (no home-ground map in archive)
+  - Official published IPL NRR / DLS edge cases (ours is archive estimate)
+  - Official "Player of the Tournament" nameplate (only POTM counts)
+  - Narrative asks (strengths, weaknesses, "turning point", uncapped "impact")
+  - Fastest fifty / century milestones
+
+
+--------------------------------------------------------------------------------
+3. OUT-OF-THE-BOX
+--------------------------------------------------------------------------------
+
+  Call a tool first. If none fits → "not in Cricsheet archive". Never invent.
+  Live match questions need matchId.
+
+
+================================================================================
+End
+================================================================================
