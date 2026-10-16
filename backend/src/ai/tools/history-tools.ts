@@ -62,11 +62,24 @@ export function normalizePlayerQuery(name: string): string {
 }
 
 export function createHistoryTools(history: HistoryQueryService, identity: IdentityService, matches: MatchesService): AiTool[] {
+  const asGender = (g: string | null | undefined): 'male' | 'female' | null =>
+    g === 'male' || g === 'female' ? g : null;
+
   /** Confirmed identity mapping first; otherwise an exact Cricsheet team name. */
-  const resolveTeam = async (latiyalId: number | null, name: string | null, gender: string | null): Promise<HistTeamSide | null> => {
+  const resolveTeam = async (
+    latiyalId: number | null,
+    name: string | null,
+    gender: 'male' | 'female' | null,
+  ): Promise<HistTeamSide | null> => {
     if (latiyalId !== null) {
       const mapped = await identity.confirmedTeamsFor(latiyalId);
-      if (mapped) return { ids: mapped.histTeamIds, name: name ?? String(latiyalId), gender: gender ?? mapped.gender };
+      if (mapped) {
+        return {
+          ids: mapped.histTeamIds,
+          name: name ?? String(latiyalId),
+          gender: gender ?? asGender(mapped.gender),
+        };
+      }
     }
     if (!name) return null;
     const split = splitTeamGender(name);

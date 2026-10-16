@@ -29,7 +29,7 @@ const overs = (balls: number) => `${Math.floor(balls / 6)}.${balls % 6}`;
 export interface HistTeamSide {
   ids: number[];
   name: string;
-  gender: string | null;
+  gender: 'male' | 'female' | null;
 }
 
 /**
