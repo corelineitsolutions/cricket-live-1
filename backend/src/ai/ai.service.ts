@@ -10,10 +10,11 @@ import { IdentityService } from '../identity/identity.service';
 import { MatchDetailService } from '../matches/match-detail.service';
 import { MatchesService } from '../matches/matches.service';
 import { RedisService } from '../redis/redis.service';
+import { generalSuggestions, matchSuggestions } from './ai-suggestions';
 import { AI_DISCLAIMER, AiErrorCode, LLM_PROVIDER } from './ai.constants';
 import { AiGateway } from './ai-gateway';
 import { AiUsageService, UsageIncrements, utcDay } from './ai-usage.service';
-import { AI_LANGUAGES, AI_QUESTION_MAX_LENGTH, AiStatusDto, AskDto, AskResultDto } from './dto/ask.dto';
+import { AI_LANGUAGES, AI_QUESTION_MAX_LENGTH, AiStatusDto, AskDto, AskResultDto, SuggestionsResultDto } from './dto/ask.dto';
 import { LlmProvider, LlmProviderError } from './llm/llm.types';
 import { validateLlmBaseUrl } from './llm/openai-compatible.provider';
 import { AiToolRegistry } from './tools/ai-tool.registry';
@@ -48,6 +49,7 @@ const DAY_TTL_SECONDS = 2 * 24 * 3600;
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly gateway: AiGateway | null;
+  private readonly matches: MatchesService;
   private inFlight = 0;
 
   constructor(
@@ -61,6 +63,7 @@ export class AiService {
     feeds: FeedsService,
     @Optional() @Inject(LLM_PROVIDER) private readonly provider: LlmProvider | null,
   ) {
+    this.matches = matches;
     const tools = new AiToolRegistry([
       ...createLiveTools(matches, details),
       requiredRateTool,
@@ -79,6 +82,21 @@ export class AiService {
 
   status(): AiStatusDto {
     return { available: this.readiness().ready, languages: [...AI_LANGUAGES], maxQuestionLength: AI_QUESTION_MAX_LENGTH };
+  }
+
+  /**
+   * Suggested chip questions for the Ask UI.
+   * With matchId: format + innings phase (no chase/RRR chips in the 1st innings).
+   * Without matchId: general tournament / player chips.
+   */
+  async suggestions(matchId: string | null, language: AskDto['language'] = 'en'): Promise<SuggestionsResultDto> {
+    if (!matchId) {
+      const result = generalSuggestions(language);
+      return { ...result, available: this.readiness().ready };
+    }
+    const match = await this.matches.getMatch(matchId);
+    const result = matchSuggestions(match, language);
+    return { ...result, available: this.readiness().ready };
   }
 
   get providerName(): string {
@@ -191,17 +209,26 @@ export class AiService {
       };
     } catch (error) {
       const timedOut = controller.signal.aborted || (error instanceof LlmProviderError && error.kind === 'timeout');
+      const rateLimited = error instanceof LlmProviderError && error.status === 429;
       await this.usage.record(this.providerName, this.modelName, { ...base, [timedOut ? 'timeouts' : 'errors']: 1 });
       logEvent(this.logger, 'warn', 'ai-ask', {
-        outcome: timedOut ? 'timeout' : 'error',
+        outcome: timedOut ? 'timeout' : rateLimited ? 'rate_limited' : 'error',
         provider: this.providerName,
         kind: error instanceof LlmProviderError ? error.kind : 'internal',
         status: error instanceof LlmProviderError ? error.status : null,
         latencyMs: Date.now() - started,
       });
-      throw timedOut
-        ? apiError(HttpStatus.SERVICE_UNAVAILABLE, 'The AI assistant took too long. Try again.', AiErrorCode.TIMEOUT)
-        : apiError(HttpStatus.BAD_GATEWAY, 'The AI assistant could not answer right now', AiErrorCode.PROVIDER_ERROR);
+      if (timedOut) {
+        throw apiError(HttpStatus.SERVICE_UNAVAILABLE, 'The AI assistant took too long. Try again.', AiErrorCode.TIMEOUT);
+      }
+      if (rateLimited) {
+        throw apiError(
+          HttpStatus.TOO_MANY_REQUESTS,
+          'The AI model is busy (rate limit). Wait a minute and try again.',
+          AiErrorCode.BUSY,
+        );
+      }
+      throw apiError(HttpStatus.BAD_GATEWAY, 'The AI assistant could not answer right now', AiErrorCode.PROVIDER_ERROR);
     } finally {
       clearTimeout(timer);
       this.inFlight--;

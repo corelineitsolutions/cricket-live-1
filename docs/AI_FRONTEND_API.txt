@@ -28,6 +28,51 @@ If available is false → hide the AI chat UI.
 
 
 --------------------------------------------------------------------------------
+1b. SUGGESTED QUESTIONS (chips on Ask screen)
+--------------------------------------------------------------------------------
+
+GET /api/v1/ai/suggestions?language=en
+GET /api/v1/ai/suggestions?matchId=14193&language=en
+GET /api/v1/ai/suggestions?matchId=14193&language=hi
+
+Query:
+  matchId    optional, digits only. Pass on match Ask screen; omit on home Ask.
+  language   optional, "en" (default) or "hi"
+
+Success 200 (with matchId, 1st innings ODI example):
+{
+  "success": true,
+  "data": {
+    "available": true,
+    "language": "en",
+    "format": "ODI",
+    "phase": "first_innings",
+    "matchId": "14193",
+    "battingTeam": "CAN",
+    "teams": ["CAN", "NEP"],
+    "questions": [
+      { "id": "m-proj", "question": "What is the projected score for CAN?" },
+      { "id": "m-est-target", "question": "What target might CAN set?" }
+    ]
+  }
+}
+
+phase values:
+  general         — no matchId (IPL / World Cup / player chips)
+  pre_match       — not started
+  first_innings   — batting first: projected score / estimated target chips
+                    (NO "runs per over needed" / official target)
+  chase           — 2nd innings: required rate, runs needed, target
+  finished        — result / top scorer / H2H
+
+format values: T20 | ODI | Test | other
+
+UI: render data.questions as tappable chips; on tap POST /ai/ask with the
+same matchId (or omit matchId for general). Refresh suggestions when the
+innings changes (e.g. after score websocket update).
+
+
+--------------------------------------------------------------------------------
 2. ASK A QUESTION
 --------------------------------------------------------------------------------
 
@@ -157,6 +202,7 @@ Shape:
 |------|----------------------|-----------------------------------------|
 | 400  | VALIDATION_ERROR     | Fix body (question/deviceId/matchId)   |
 | 429  | AI_QUOTA_EXCEEDED    | Show message (5/min, 50/day per device) |
+| 429  | AI_BUSY              | Groq/model rate limit — wait ~1 min     |
 | 503  | AI_DISABLED          | Hide AI feature                         |
 | 503  | AI_NOT_CONFIGURED    | Hide AI feature                         |
 | 503  | AI_BUDGET_EXHAUSTED  | "Try again tomorrow"                    |
@@ -171,6 +217,12 @@ Shape:
 
 # Status
 curl -sS "https://<api-host>/api/v1/ai/status"
+
+# Suggested chips (match screen)
+curl -sS "https://<api-host>/api/v1/ai/suggestions?matchId=14193&language=en"
+
+# Suggested chips (home / no match)
+curl -sS "https://<api-host>/api/v1/ai/suggestions?language=hi"
 
 # With match (live match screen)
 curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \

@@ -15,8 +15,25 @@ function teamName(match: MatchDto, sportmonksId: number | null): string | null {
   return null;
 }
 
+/** True when the batting side is chasing (2nd+ innings with a published target). */
+export function isChasePhase(match: MatchDto): boolean {
+  const inning = match.currentInning ?? match.innings.length;
+  return inning >= 2 && match.target != null;
+}
+
+/** first_innings | chase | finished | pre_match */
+export function matchPhase(match: MatchDto): 'pre_match' | 'first_innings' | 'chase' | 'finished' {
+  if (match.isFinished) return 'finished';
+  if (!match.isLive && match.innings.length === 0) return 'pre_match';
+  if (isChasePhase(match) || (match.currentInning ?? 0) >= 2) return 'chase';
+  if (match.innings.length > 0 || match.isLive) return 'first_innings';
+  return 'pre_match';
+}
+
 /** Compact, model-friendly view of a match: names instead of ids, nothing the app does not show. */
 export function summarizeMatch(match: MatchDto) {
+  const phase = matchPhase(match);
+  const chasing = isChasePhase(match);
   return {
     matchId: match.matchId,
     teams: [match.localTeam.name, match.visitorTeam.name],
@@ -26,6 +43,9 @@ export function summarizeMatch(match: MatchDto) {
     statusDetail: match.statusDetail,
     isLive: match.isLive,
     isFinished: match.isFinished,
+    phase,
+    /** Only true in a real chase. Do not invent a target from the current 1st-innings score. */
+    chaseActive: chasing,
     note: match.note,
     venue: match.venue ? [match.venue.name, match.venue.city].filter(Boolean).join(', ') || null : null,
     startTime: match.startTime,
@@ -38,14 +58,15 @@ export function summarizeMatch(match: MatchDto) {
     current: match.isLive
       ? {
           battingTeam: teamName(match, match.battingTeamSportmonksId),
+          inning: match.currentInning,
           score: match.score,
           wickets: match.wickets,
           overs: match.overs,
           runRate: match.runRate,
-          target: match.target,
-          runsRequired: match.runsRequired,
-          ballsRemaining: match.ballsRemaining,
-          requiredRunRate: match.requiredRunRate,
+          target: chasing ? match.target : null,
+          runsRequired: chasing ? match.runsRequired : null,
+          ballsRemaining: chasing ? match.ballsRemaining : null,
+          requiredRunRate: chasing ? match.requiredRunRate : null,
         }
       : null,
     batsmen: match.batsmen.map((b) => ({ name: b.name, runs: b.runs, balls: b.balls, fours: b.fours, sixes: b.sixes })),

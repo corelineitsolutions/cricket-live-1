@@ -1,5 +1,5 @@
-import { AiLanguage, LlmMessage, LlmProvider, LlmToolCall, LlmUsage } from './llm/llm.types';
-import { composeAskAnswer, planAskTools } from './llm/mock-llm.provider';
+import { AiLanguage, LlmMessage, LlmProvider, LlmProviderError, LlmToolCall, LlmUsage } from './llm/llm.types';
+import { composeAskAnswer, MOCK_NOTE, planAskTools } from './llm/mock-llm.provider';
 import { AiToolRegistry } from './tools/ai-tool.registry';
 
 /** Model calls per question, tool rounds included; the last call cannot request tools. */
@@ -35,10 +35,38 @@ const HISTORY_OFF = {
   hi: 'संग्रह उत्तरों के लिए सर्वर पर Cricsheet इतिहास चालू होना चाहिए (AI_HISTORY_ENABLED)। कृपया फिर कोशिश करें।',
 } as const;
 
+/** Tools we can run and answer from without calling the LLM (saves Groq quota; survives 429). */
+const OFFLINE_TOOLS = new Set([
+  'calculate_required_rate',
+  'project_score',
+  'project_next_overs',
+  'get_win_probability',
+  'get_match',
+  'get_scorecard',
+  'get_recent_commentary',
+  'get_live_matches',
+  'get_player_history',
+  'get_event_results',
+  'get_event_leaders',
+  'get_event_standings',
+  'get_event_team_matches',
+  'get_event_extremes',
+  'get_event_awards',
+  'get_event_phase_stats',
+  'get_head_to_head',
+  'get_venue_history',
+  'get_team_phase_stats',
+]);
+
 function looksLikeEmptyOrRefuse(content: string | null): boolean {
   const text = (content ?? '').trim();
   if (!text) return true;
   return /could not|can'?t help|cannot help|no information|don'?t have|do not have|unable to|try again|माफ़|नहीं\s*मिला/i.test(text);
+}
+
+function isProviderSoftFailure(error: unknown): boolean {
+  if (!(error instanceof LlmProviderError)) return false;
+  return error.status === 429 || error.kind === 'network' || error.kind === 'timeout';
 }
 
 export function buildSystemPrompt(language: AiLanguage, matchId: string | null, now: Date, history = false): string {
@@ -59,6 +87,7 @@ export function buildSystemPrompt(language: AiLanguage, matchId: string | null, 
         ].join('\n')
       : '',
     '- For win chance use get_win_probability; for full innings projection use project_score; for "runs in next N overs" use project_next_overs (blended live + history when mapped; always an estimate); for chase math use calculate_required_rate.',
+    '- CRITICAL: If tool data says phase=first_innings or chaseActive=false, there is NO official target yet. Never say the target is currentScore+1. For "kitna target / target de shakta" in the 1st innings, use project_score estimatedFinalTotal / estimatedChaseTargetIfFinishNearProjection and say it is only an estimate until the innings ends.',
     '- When project_next_overs returns rangeText / estimatedRunsMid / blendedRunRate, quote those exact numbers. Never invent a different run band. Mention currentScore and liveRunRate from the tool when present.',
     '- "Next N overs" means from now; "first N overs" / "pehle N over" is the powerplay total — if overs already bowled ≥ N, say so from the live score instead of projecting next overs.',
     '- Keep the answer under 120 words, plain text, no markdown tables.',
@@ -80,6 +109,73 @@ export class AiGateway {
   ) {}
 
   async answer(input: GatewayInput): Promise<GatewayResult> {
+    const available = new Set(this.tools.definitions().map((t) => t.name));
+    const planned = planAskTools(input.question, input.matchId, available, { strict: true });
+
+    // IPL / player / tournament / run-rate: answer from tools without calling Groq.
+    // Avoids burning the free-tier quota and survives provider 429s.
+    if (planned.length > 0 && planned.every((c) => OFFLINE_TOOLS.has(c.name))) {
+      return this.answerFromPlan(input, planned);
+    }
+
+    if (
+      planned.length === 0 &&
+      !available.has('get_player_history') &&
+      /ipl|hundred|centur|world\s*cup|\bwc\b|career|stats|शतक/i.test(input.question)
+    ) {
+      return {
+        answer: HISTORY_OFF[input.language],
+        sources: [],
+        usage: { promptTokens: 0, completionTokens: 0 },
+        modelCalls: 0,
+        toolCalls: 0,
+        toolsUsed: [],
+      };
+    }
+
+    try {
+      return await this.answerWithModel(input, available);
+    } catch (error) {
+      if (!isProviderSoftFailure(error)) throw error;
+      const fallback = planAskTools(input.question, input.matchId, available, { strict: true });
+      if (fallback.length > 0) return this.answerFromPlan(input, fallback);
+      throw error;
+    }
+  }
+
+  private async answerFromPlan(input: GatewayInput, planned: LlmToolCall[]): Promise<GatewayResult> {
+    const messages: LlmMessage[] = [
+      {
+        role: 'system',
+        content: buildSystemPrompt(input.language, input.matchId, input.now ?? new Date(), this.tools.has('get_player_history')),
+      },
+      { role: 'user', content: input.question },
+    ];
+    const sources = new Set<string>();
+    const toolsUsed = new Set<string>();
+    const calls = planned.slice(0, MAX_TOOL_CALLS_PER_ROUND);
+    messages.push({ role: 'assistant', content: null, toolCalls: calls });
+    const results = await Promise.all(calls.map((c) => this.tools.execute(c.name, c.arguments)));
+    results.forEach((result, index) => {
+      toolsUsed.add(result.name);
+      if (result.label) sources.add(result.label);
+      messages.push({ role: 'tool', toolCallId: calls[index].id, name: calls[index].name, content: result.content });
+    });
+    let answer = composeAskAnswer(messages, input.language) || FALLBACK[input.language];
+    if (this.provider.mocked && !answer.includes(MOCK_NOTE[input.language])) {
+      answer = `${answer}\n${MOCK_NOTE[input.language]}`;
+    }
+    return {
+      answer: answer.slice(0, MAX_ANSWER_CHARS),
+      sources: [...sources],
+      usage: { promptTokens: 0, completionTokens: 0 },
+      modelCalls: 0,
+      toolCalls: calls.length,
+      toolsUsed: [...toolsUsed],
+    };
+  }
+
+  private async answerWithModel(input: GatewayInput, available: Set<string>): Promise<GatewayResult> {
     const messages: LlmMessage[] = [
       {
         role: 'system',
@@ -91,8 +187,6 @@ export class AiGateway {
     const sources = new Set<string>();
     const toolsUsed = new Set<string>();
     let toolCalls = 0;
-
-    const available = new Set(this.tools.definitions().map((t) => t.name));
     let forcedPlanOnce = false;
 
     for (let call = 1; call <= MAX_MODEL_CALLS; call++) {
@@ -109,24 +203,12 @@ export class AiGateway {
 
       let modelToolCalls: LlmToolCall[] = response.toolCalls;
       // Real LLMs (e.g. Groq) often skip tools when many are offered. Force the same
-      // deterministic plan the mock uses for IPL/player/archive questions.
+      // deterministic plan the mock uses for live / remaining questions.
       if (allowTools && modelToolCalls.length === 0 && !forcedPlanOnce && looksLikeEmptyOrRefuse(response.content)) {
         const planned = planAskTools(input.question, input.matchId, available, { strict: true });
         if (planned.length > 0) {
           modelToolCalls = planned;
           forcedPlanOnce = true;
-        } else if (
-          !available.has('get_player_history') &&
-          /ipl|hundred|centur|world\s*cup|\bwc\b|career|stats|शतक/i.test(input.question)
-        ) {
-          return {
-            answer: HISTORY_OFF[input.language],
-            sources: [...sources],
-            usage,
-            modelCalls: call,
-            toolCalls,
-            toolsUsed: [...toolsUsed],
-          };
         }
       }
 
@@ -142,7 +224,6 @@ export class AiGateway {
             toolsUsed: [...toolsUsed],
           };
         }
-        // Model returned empty after tools (or with no tools) — compose from tool JSON when we can.
         if (toolCalls > 0) {
           const composed = composeAskAnswer(messages, input.language);
           if (composed) {

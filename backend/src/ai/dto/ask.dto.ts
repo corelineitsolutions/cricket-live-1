@@ -83,3 +83,49 @@ export class AiStatusDto {
   @ApiProperty({ example: AI_QUESTION_MAX_LENGTH })
   maxQuestionLength!: number;
 }
+
+export class SuggestionItemDto {
+  @ApiProperty({ example: 'm-proj' })
+  id!: string;
+
+  @ApiProperty({ example: 'What is the projected score for CAN?' })
+  question!: string;
+}
+
+export class SuggestionsResultDto {
+  @ApiProperty({ description: 'Same as /ai/status available — hide chips if false.' })
+  available!: boolean;
+
+  @ApiProperty({ enum: AI_LANGUAGES })
+  language!: string;
+
+  @ApiProperty({ enum: ['T20', 'ODI', 'Test', 'other'], example: 'ODI' })
+  format!: string;
+
+  @ApiProperty({
+    enum: ['pre_match', 'first_innings', 'chase', 'finished', 'general'],
+    example: 'first_innings',
+    description: 'first_innings = no chase/RRR chips; chase = target / required rate chips.',
+  })
+  phase!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '14193' })
+  matchId!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'CAN' })
+  battingTeam!: string | null;
+
+  @ApiProperty({ type: [String], example: ['CAN', 'NEP'] })
+  teams!: string[];
+
+  @ApiProperty({ type: [SuggestionItemDto] })
+  questions!: SuggestionItemDto[];
+}
+
+export class SuggestionsEnvelopeDto {
+  @ApiProperty({ example: true })
+  success!: boolean;
+
+  @ApiProperty({ type: SuggestionsResultDto })
+  data!: SuggestionsResultDto;
+}

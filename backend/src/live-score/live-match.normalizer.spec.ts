@@ -93,6 +93,26 @@ describe('normalizeLatiyalMatch', () => {
     expect(match.ballsRemaining).toBeNull();
   });
 
+  it('ignores Latiyal target / need noise while the first innings is still in progress', () => {
+    const base = latiyalMatch({ runs: [[1, LOCAL_TEAM_ID, 80, 2, 16.4]] });
+    const raw = {
+      ...base,
+      target: '81',
+      run_need: '81',
+      need_run_ball: 'Afghanistan need 81 runs in 200 balls',
+      rr_rate: '2.43',
+      ball_rem: '200',
+    };
+    const match = normalizeLatiyalMatch(listItem(raw), raw, NOW);
+
+    expect(match.currentInning).toBe(1);
+    expect(match.score).toBe(80);
+    expect(match.target).toBeNull();
+    expect(match.runsRequired).toBeNull();
+    expect(match.requiredRunRate).toBeNull();
+    expect(match.ballsRemaining).toBeNull();
+  });
+
   it('keeps a listed match live even when its status still says it has not started', () => {
     const match = normalize({ id: 71391, status: 'Upcoming', runs: [] });
 

@@ -1,16 +1,17 @@
-import { Body, Controller, Get, HttpCode, Ip, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Ip, Post, Query } from '@nestjs/common';
 import {
   ApiBadGatewayResponse,
   ApiBadRequestResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { AiService } from './ai.service';
-import { AiStatusDto, AskDto, AskEnvelopeDto } from './dto/ask.dto';
+import { AI_LANGUAGES, AiStatusDto, AskDto, AskEnvelopeDto, SuggestionsEnvelopeDto } from './dto/ask.dto';
 
 @ApiTags('AI assistant')
 @Controller({ path: 'ai', version: '1' })
@@ -22,6 +23,26 @@ export class AiController {
   @ApiOkResponse({ type: AiStatusDto })
   status() {
     return this.ai.status();
+  }
+
+  @Get('suggestions')
+  @ApiOperation({
+    summary: 'Suggested Ask chips for the UI',
+    description:
+      'Pass matchId on a match screen for format + innings-aware chips (no target/RRR in the 1st innings). ' +
+      'Omit matchId for general IPL / World Cup / player chips.',
+  })
+  @ApiQuery({ name: 'matchId', required: false, example: '14193' })
+  @ApiQuery({ name: 'language', required: false, enum: AI_LANGUAGES })
+  @ApiOkResponse({ type: SuggestionsEnvelopeDto })
+  @ApiBadRequestResponse({ type: ErrorResponseDto })
+  suggestions(
+    @Query('matchId') matchId?: string,
+    @Query('language') language?: (typeof AI_LANGUAGES)[number],
+  ) {
+    const id = matchId && /^\d{1,10}$/.test(matchId) ? matchId : null;
+    const lang = language === 'hi' ? 'hi' : 'en';
+    return this.ai.suggestions(id, lang);
   }
 
   @Post('ask')

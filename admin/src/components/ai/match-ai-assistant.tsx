@@ -72,21 +72,26 @@ function battingTeam(match: Match) {
   return null;
 }
 
-function suggestionsFor(match: Match): string[] {
+type SuggestionChip = { id: string; question: string };
+
+function fallbackSuggestions(match: Match): SuggestionChip[] {
   const bat = battingTeam(match);
   const batName = bat ? teamLabel(bat) : teamLabel(match.localTeam);
   const a = teamLabel(match.localTeam);
   const b = teamLabel(match.visitorTeam);
-  const ground = match.venue?.name ? 'this ground' : 'the venue';
+  const chase = (match.currentInning ?? 0) >= 2 && match.target != null;
+  if (chase) {
+    return [
+      { id: 'f-rrr', question: `How many runs per over does ${batName} need?` },
+      { id: 'f-win', question: `What is the win chance for ${a} vs ${b}?` },
+      { id: 'f-batter', question: 'How is the current batter performing?' },
+    ];
+  }
   return [
-    `How many runs per over does ${batName} need?`,
-    `What is the win chance for ${a} vs ${b}?`,
-    `What is the projected score for ${batName}?`,
-    `How is the current batter performing?`,
-    `Show ${ground}'s record from the Cricsheet archive`,
-    `What is the head-to-head between ${a} and ${b}?`,
-    `Who is the top scorer on the scorecard?`,
-    `Who won the ICC ODI World Cup 2019?`,
+    { id: 'f-proj', question: `What is the projected score for ${batName}?` },
+    { id: 'f-target', question: `What target might ${batName} set?` },
+    { id: 'f-win', question: `What is the win chance for ${a} vs ${b}?` },
+    { id: 'f-batter', question: 'How is the current batter performing?' },
   ];
 }
 
@@ -98,6 +103,7 @@ export function MatchAiAssistant({ match }: { match: Match }) {
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [chips, setChips] = useState<SuggestionChip[]>(() => fallbackSuggestions(match));
 
   const vs = `${teamLabel(match.localTeam)} vs ${teamLabel(match.visitorTeam)}`;
   const bat = battingTeam(match);
@@ -128,6 +134,19 @@ export function MatchAiAssistant({ match }: { match: Match }) {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const qs = new URLSearchParams({ language, matchId: String(match.matchId) });
+    apiRequest<{ questions: SuggestionChip[] }>(`/ai/suggestions?${qs}`, { auth: false, signal: controller.signal })
+      .then((res) => {
+        if (res.data.questions?.length) setChips(res.data.questions);
+      })
+      .catch(() => {
+        setChips(fallbackSuggestions(match));
+      });
+    return () => controller.abort();
+  }, [match, language]);
 
   const ask = useCallback(async (raw: string) => {
     const text = raw.trim().slice(0, QUESTION_MAX);
@@ -216,18 +235,18 @@ export function MatchAiAssistant({ match }: { match: Match }) {
         <div>
           <p className="mb-2 text-sm font-medium text-zinc-200">What would you like to know?</p>
           <ul className="space-y-2">
-            {suggestionsFor(match).map((suggestion) => (
-              <li key={suggestion}>
+            {chips.map((suggestion) => (
+              <li key={suggestion.id}>
                 <button
                   type="button"
                   disabled={!ready || busy}
-                  onClick={() => void ask(suggestion)}
+                  onClick={() => void ask(suggestion.question)}
                   className="flex w-full items-center gap-3 rounded-xl bg-zinc-900/80 px-3.5 py-3 text-left text-sm text-zinc-100 ring-1 ring-zinc-700 transition hover:bg-zinc-800 hover:ring-zinc-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-zinc-400" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h8M8 14h5M7 4h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H11l-4 3v-3H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" />
                   </svg>
-                  <span className="min-w-0 flex-1">{suggestion}</span>
+                  <span className="min-w-0 flex-1">{suggestion.question}</span>
                   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
                   </svg>

@@ -654,12 +654,22 @@ export function createPredictionTools(
         oversLimit: limit,
         wickets: match.wickets,
       });
+      const chasing = (match.currentInning ?? 0) >= 2 && match.target != null;
+      const projected =
+        projection.available && 'projectedScore' in projection ? Number(projection.projectedScore) : null;
       return {
         matchId,
         matchType: match.matchType,
         isLive: match.isLive,
-        target: match.target,
-        runsRequired: match.runsRequired,
+        phase: chasing ? 'chase' : 'first_innings',
+        chaseActive: chasing,
+        // Official chase target only; never currentScore+1 during the 1st innings.
+        target: chasing ? match.target : null,
+        runsRequired: chasing ? match.runsRequired : null,
+        // If still batting first: estimated final total, and what the chase target *would be* if they finish near that.
+        estimatedFinalTotal: !chasing && projected != null ? projected : null,
+        estimatedChaseTargetIfFinishNearProjection:
+          !chasing && projected != null && Number.isFinite(projected) ? projected + 1 : null,
         ...projection,
       };
     },

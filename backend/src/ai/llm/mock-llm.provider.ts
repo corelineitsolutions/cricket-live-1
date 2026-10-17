@@ -48,6 +48,9 @@ const EVENT_PHASE_WORDS =
   /powerplay|death[\s-]?overs?|middle[\s-]?overs?|phase|best\s+(?:batting|bowling)\s+performance|which\s+(?:team|batter|bowler)\s+had\s+the\s+best/i;
 const WIN_PROB_WORDS = /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा/i;
 const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
+/** Target / "kitna target" — 1st innings → project_score; chase → get_match. Never invent score+1 as the official target. */
+const TARGET_WORDS =
+  /\btarget\b|लक्ष्य|kitn[ae]\s+(?:ka\s+)?target|target\s+kitn|de\s+shakt|दे\s*सक|जीतने\s*के\s*लिए|jeetne\s*ke\s*liye/i;
 const NEXT_OVERS_WORDS = /(?:next|coming|next)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?(?:next\s+)?\d+\s*overs?|अगले\s*\d+\s*ओवर/i;
 const TEAMS_VS = /([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})\s+(?:vs\.?|v|versus|बनाम)\s+([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})/;
 const NAME_PARTICLES = new Set(['de', 'van', 'du', 'der', 'la', 'le', 'da']);
@@ -313,6 +316,13 @@ export function planAskTools(
   if (p.matchId && wantsLiveRequiredRate(p.question)) {
     return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
+  // "Target kitna / de shakta" during 1st innings → projected total (not current score + 1).
+  if (p.matchId && TARGET_WORDS.test(p.question) && available.has('project_score')) {
+    return [{ id: 'mock_1', name: 'project_score', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  if (p.matchId && TARGET_WORDS.test(p.question) && available.has('get_match')) {
+    return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
   const history = planHistory(p, available);
   if (history.length > 0) return history;
   // Do not fall back to the live match for archive player / tournament questions.
@@ -379,11 +389,20 @@ function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' 
   const current = m.current as Record<string, unknown> | null;
   const batsmen = (m.batsmen as Array<Record<string, unknown>> | undefined) ?? [];
   const parts: string[] = [];
-  if (focus === 'rate' && current?.runsRequired != null && current?.requiredRunRate != null) {
+  const chaseActive = m.chaseActive === true || (current?.runsRequired != null && current?.requiredRunRate != null);
+  if (focus === 'rate') {
+    if (chaseActive && current?.runsRequired != null && current?.requiredRunRate != null) {
+      parts.push(
+        lang === 'hi'
+          ? `${str(current.battingTeam)} को ${str(current.ballsRemaining)} गेंदों में ${str(current.runsRequired)} रन चाहिए — आवश्यक रन रेट ${str(current.requiredRunRate)} प्रति ओवर.`
+          : `${str(current.battingTeam)} need ${str(current.runsRequired)} runs from ${str(current.ballsRemaining)} balls — required rate ${str(current.requiredRunRate)} runs per over.`,
+      );
+      return parts.join(' ');
+    }
     parts.push(
       lang === 'hi'
-        ? `${str(current.battingTeam)} को ${str(current.ballsRemaining)} गेंदों में ${str(current.runsRequired)} रन चाहिए — आवश्यक रन रेट ${str(current.requiredRunRate)} प्रति ओवर.`
-        : `${str(current.battingTeam)} need ${str(current.runsRequired)} runs from ${str(current.ballsRemaining)} balls — required rate ${str(current.requiredRunRate)} runs per over.`,
+        ? `अभी पहली पारी चल रही है, इसलिए कोई chase target या आवश्यक रन रेट नहीं है। वर्तमान स्कोर: ${str(current?.battingTeam)} ${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)} ओवर, रन रेट ${str(current?.runRate)}). अनुमानित अंतिम स्कोर के लिए projected score पूछें।`
+        : `This is still the first innings — there is no chase target or required run rate yet. Current: ${str(current?.battingTeam)} ${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)} ov, RR ${str(current?.runRate)}). Ask for a projected score for an estimated final total.`,
     );
     return parts.join(' ');
   }
@@ -405,11 +424,17 @@ function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' 
   }
   parts.push(`${vs}${m.statusDetail ? ` - ${str(m.statusDetail)}` : ''}.`);
   if (scores) parts.push(lang === 'hi' ? `स्कोर: ${scores}.` : `Score: ${scores}.`);
-  if (current?.runsRequired !== null && current?.runsRequired !== undefined && current.ballsRemaining) {
+  if (chaseActive && current?.runsRequired != null && current.ballsRemaining) {
     parts.push(
       lang === 'hi'
         ? `${str(current.battingTeam)} को ${str(current.ballsRemaining)} गेंदों में ${str(current.runsRequired)} रन चाहिए (आवश्यक रन रेट ${str(current.requiredRunRate)}).`
         : `${str(current.battingTeam)} need ${str(current.runsRequired)} runs from ${str(current.ballsRemaining)} balls (required rate ${str(current.requiredRunRate)}).`,
+    );
+  } else if (m.phase === 'first_innings' || (!chaseActive && current)) {
+    parts.push(
+      lang === 'hi'
+        ? 'पहली पारी अभी पूरी नहीं हुई — वर्तमान स्कोर को विपक्षी का target न समझें।'
+        : 'First innings is still in progress — do not treat the current score as the chase target.',
     );
   } else if (m.note) {
     parts.push(`${str(m.note)}.`);
@@ -801,11 +826,18 @@ function compose(p: Parsed): string {
             ? `अनुमानित स्कोर नहीं निकाल सके। ${str(data.note)}`.trim()
             : `Could not project a score. ${str(data.note)}`.trim(),
         );
-      } else {
+      } else if (data.chaseActive) {
         lines.push(
           lang === 'hi'
-            ? `${str(data.team)} का अनुमानित स्कोर लगभग ${str(data.projectedScore)} (वर्तमान ${str(data.currentScore)}, रन रेट ${str(data.runRate)}, शेष ${str(data.oversRemaining)} ओवर). यह केवल अनुमान है।`
-            : `${str(data.team)} projected score about ${str(data.projectedScore)} (now ${str(data.currentScore)} at RR ${str(data.runRate)}, ${str(data.oversRemaining)} overs left). Estimate only.`,
+            ? `${str(data.team)} chase में हैं। लक्ष्य ${str(data.target)}; वर्तमान ${str(data.currentScore)}, रन रेट ${str(data.runRate)}.`
+            : `${str(data.team)} are chasing. Target ${str(data.target)}; now ${str(data.currentScore)} at RR ${str(data.runRate)}.`,
+        );
+      } else {
+        const estTarget = data.estimatedChaseTargetIfFinishNearProjection;
+        lines.push(
+          lang === 'hi'
+            ? `${str(data.team)} अभी पहली पारी खेल रहे हैं (वर्तमान ${str(data.currentScore)}/${str(data.wickets ?? '-')} , ${str(data.overs)} ओवर, रन रेट ${str(data.runRate)}). अनुमानित अंतिम स्कोर लगभग ${str(data.projectedScore)} — यह अभी अंतिम target नहीं है। अगर वे इसी रफ्तार से खत्म करें तो विपक्षी का अनुमानित लक्ष्य लगभग ${str(estTarget ?? '-')} हो सकता है। केवल अनुमान।`
+            : `${str(data.team)} are still batting first (now ${str(data.currentScore)}/${str(data.wickets ?? '-')} in ${str(data.overs)} ov at RR ${str(data.runRate)}). Estimated final total about ${str(data.projectedScore)} — this is not the official target yet. If they finish near that, the chase target would be about ${str(estTarget ?? '-')}. Estimate only.`,
         );
       }
     } else if (name === 'project_next_overs') {

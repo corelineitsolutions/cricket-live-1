@@ -62,7 +62,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
     private readonly fetchFn: LlmFetch,
   ) {}
 
-  async chat(request: LlmChatRequest): Promise<LlmChatResponse> {
+  async chat(request: LlmChatRequest, attempt = 0): Promise<LlmChatResponse> {
     const timeout = AbortSignal.timeout(this.timeoutMs);
     const signal = AbortSignal.any([request.signal, timeout]);
     const body = {
@@ -97,6 +97,14 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       throw new LlmProviderError(timeout.aborted || request.signal.aborted ? 'timeout' : 'network');
     }
     if (!response.ok) {
+      // Groq free tier often returns 429; one short retry then give up so the gateway can fall back.
+      if (response.status === 429 && attempt === 0) {
+        const retryAfter = Number(response.headers.get('retry-after') ?? '1');
+        const waitMs = Number.isFinite(retryAfter) ? Math.min(Math.max(retryAfter, 0.2) * 1000, 2000) : 1000;
+        await response.body?.cancel().catch(() => undefined);
+        await sleep(waitMs, request.signal);
+        return this.chat(request, 1);
+      }
       await response.body?.cancel().catch(() => undefined);
       throw new LlmProviderError('http', response.status);
     }
@@ -131,4 +139,19 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       },
     };
   }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new LlmProviderError('timeout'));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new LlmProviderError('timeout'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }

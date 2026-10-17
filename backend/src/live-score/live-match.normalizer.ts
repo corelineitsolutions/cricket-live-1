@@ -281,16 +281,23 @@ export function normalizeLatiyalMatch(
     const balls = oversToBalls(current.overs);
     runRate = pickNumber(raw, ['curr_rate', 'current_run_rate', 'crr', 'run_rate']) ?? (balls > 0 ? round2((current.score * 6) / balls) : null);
     const previous = innings[innings.length - 2];
-    target =
-      pickNumber(raw, ['target']) ??
-      (need ? current.score + Number(need[1]) : oversLimit !== null && current.inning === 2 && previous ? previous.score + 1 : null);
-    runsRequired = pickNumber(raw, ['run_need', 'runs_need', 'need_runs']) ?? (need ? Number(need[1]) : target !== null ? Math.max(0, target - current.score) : null);
-    ballsRemaining =
-      pickNumber(raw, ['ball_rem', 'balls_rem', 'remaining_balls']) ??
-      (need ? Number(need[2]) : oversLimit !== null && target !== null ? Math.max(0, oversToBalls(oversLimit) - balls) : null);
-    requiredRunRate =
-      pickNumber(raw, ['rr_rate', 'required_run_rate', 'rrr']) ??
-      (ballsRemaining !== null && ballsRemaining > 0 && runsRequired !== null ? round2((runsRequired * 6) / ballsRemaining) : null);
+    // Chase fields only make sense from the 2nd innings onward. Latiyal sometimes
+    // sends target / need_run_ball noise during the 1st innings — ignore it.
+    const chasing = current.inning >= 2;
+    if (chasing) {
+      target =
+        pickNumber(raw, ['target']) ??
+        (need ? current.score + Number(need[1]) : oversLimit !== null && previous ? previous.score + 1 : null);
+      runsRequired =
+        pickNumber(raw, ['run_need', 'runs_need', 'need_runs']) ??
+        (need ? Number(need[1]) : target !== null ? Math.max(0, target - current.score) : null);
+      ballsRemaining =
+        pickNumber(raw, ['ball_rem', 'balls_rem', 'remaining_balls']) ??
+        (need ? Number(need[2]) : oversLimit !== null && target !== null ? Math.max(0, oversToBalls(oversLimit) - balls) : null);
+      requiredRunRate =
+        pickNumber(raw, ['rr_rate', 'required_run_rate', 'rrr']) ??
+        (ballsRemaining !== null && ballsRemaining > 0 && runsRequired !== null ? round2((runsRequired * 6) / ballsRemaining) : null);
+    }
   }
 
   const seriesName = pickText(raw, ['series', 'series_name', 'seriesName']);
