@@ -47,11 +47,11 @@ function q(id: string, en: string, hi: string, language: SuggestionLanguage): Su
 /** Chip questions when the user is not on a match screen. */
 export function generalSuggestions(language: SuggestionLanguage): SuggestionsResult {
   const questions = [
-    q('g-ipl-2019', 'Who won IPL 2019?', 'IPL 2019 कौन जीता?', language),
-    q('g-odi-wc-2019', 'Who won the ICC ODI World Cup 2019?', 'ICC ODI विश्व कप 2019 कौन जीता?', language),
-    q('g-t20-wc', 'Who won the T20 World Cup 2024?', 'T20 विश्व कप 2024 कौन जीता?', language),
+    q('g-ipl-2025', 'Who won IPL 2025?', 'IPL 2025 कौन जीता?', language),
+    q('g-orange-2026', 'Who is leading the Orange Cap in IPL 2026?', 'IPL 2026 में ऑरेंज कैप में कौन आगे है?', language),
+    q('g-purple-2026', 'Who has the most wickets in IPL 2026?', 'IPL 2026 में सबसे ज्यादा विकेट किसके पास हैं?', language),
+    q('g-t20-wc-2024', 'Who won the T20 World Cup 2024?', 'T20 विश्व कप 2024 कौन जीता?', language),
     q('g-kohli-ipl', 'How many hundreds has Virat Kohli scored in the IPL?', 'विराट कोहली ने IPL में कितने शतक लगाए?', language),
-    q('g-orange', 'Who won the Orange Cap in IPL 2023?', 'IPL 2023 में ऑरेंज कैप किसने जीता?', language),
     q('g-live', 'Which matches are live right now?', 'अभी कौन से मैच लाइव हैं?', language),
   ];
   return {

@@ -48,7 +48,7 @@ describe('ai-suggestions', () => {
   it('returns general chips without a match', () => {
     const res = generalSuggestions('en');
     expect(res.phase).toBe('general');
-    expect(res.questions.some((q) => /World Cup|IPL/i.test(q.question))).toBe(true);
+    expect(res.questions.some((q) => /IPL 2025|IPL 2026/i.test(q.question))).toBe(true);
   });
 
   it('does not suggest required-rate / target chips in the first innings', () => {

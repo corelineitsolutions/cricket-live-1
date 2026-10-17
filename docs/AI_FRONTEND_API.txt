@@ -131,7 +131,7 @@ Good with matchId:
 Omit matchId (or do not send the field).
 
 {
-  "question": "Who won IPL 2019?",
+  "question": "Who won IPL 2025?",
   "language": "en",
   "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"
 }
@@ -233,7 +233,7 @@ curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \
 # Without match (IPL / general)
 curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \
   -H "Content-Type: application/json" \
-  -d "{\"question\":\"Who won IPL 2019?\",\"language\":\"en\",\"deviceId\":\"dev-device-0001\"}"
+  -d "{\"question\":\"Who won IPL 2025?\",\"language\":\"en\",\"deviceId\":\"dev-device-0001\"}"
 
 # Hindi, no match
 curl -sS -X POST "https://<api-host>/api/v1/ai/ask" \
@@ -262,7 +262,7 @@ language controls the reply script.
   - Do not log or store the question/answer on the client beyond the chat UI session
     (backend also does not store questions)
   - Prefer one Ask at a time; wait for the response before sending another
-  - For finished seasons (e.g. who won IPL 2019) omit matchId
+  - For finished seasons (e.g. who won IPL 2025) omit matchId
   - For "who will win IPL 2026" while the season is unfinished, the AI may say
     the winner is not known yet — that is expected until the final is in the archive
 
@@ -274,12 +274,12 @@ language controls the reply script.
 Requires server AI_HISTORY_ENABLED=true and Cricsheet IPL data imported.
 
 Examples that should use archive tools (not invent answers):
-  Who won IPL 2019?
-  Who won the Orange Cap in IPL 2024?
-  Purple Cap IPL 2023?
+  Who won IPL 2025?
+  Who is leading the Orange Cap in IPL 2026?
+  Who has the most wickets in IPL 2026?
   How many runs has Virat Kohli scored in IPL?
-  IPL 2023 points table / who topped the table?
-  Most sixes in IPL 2019?
+  IPL 2025 points table / who topped the table?
+  Most sixes in IPL 2024?
   Most runs conceded in IPL 2024?
 
 If the season final is not in the archive yet, the answer should say so
