@@ -158,7 +158,7 @@ describe('AiGateway', () => {
 });
 
 describe('planAskTools', () => {
-  const available = new Set(['get_player_history', 'get_event_leaders']);
+  const available = new Set(['get_player_history', 'get_event_leaders', 'get_win_probability', 'get_toss_prediction']);
 
   it('routes IPL hundreds phrasings to get_player_history', () => {
     for (const q of [
@@ -173,6 +173,21 @@ describe('planAskTools', () => {
         format: 'T20',
       });
     }
+  });
+
+  it('routes toss and match-win Hinglish to live prediction tools', () => {
+    expect(planAskTools('toss kon jit sakata', '14193', available, { strict: true })[0]?.name).toBe(
+      'get_toss_prediction',
+    );
+    expect(planAskTools('who will win the toss', '14193', available, { strict: true })[0]?.name).toBe(
+      'get_toss_prediction',
+    );
+    expect(planAskTools('match kon jit sakta', '14193', available, { strict: true })[0]?.name).toBe(
+      'get_win_probability',
+    );
+    expect(planAskTools('what do you think who win', '14193', available, { strict: true })[0]?.name).toBe(
+      'get_win_probability',
+    );
   });
 });
 

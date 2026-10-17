@@ -121,8 +121,10 @@ export function matchSuggestions(match: MatchDto, language: SuggestionLanguage):
       );
     }
   } else {
+    // pre_match / upcoming — prediction chips from Latiyal
     questions.push(
-      q('m-start', `When does ${a} vs ${b} start?`, `${a} बनाम ${b} कब शुरू होगा?`, language),
+      q('m-toss', `Who might win the toss, ${a} or ${b}?`, `टॉस कौन जीत सकता है, ${a} या ${b}?`, language),
+      q('m-win-pre', `Who is favoured to win ${a} vs ${b}?`, `${a} बनाम ${b} में कौन जीत सकता है?`, language),
       q('m-h2h', `What is the head-to-head between ${a} and ${b}?`, `${a} और ${b} का हेड-टू-हेड क्या है?`, language),
       q('m-venue', "Show this ground's record from the Cricsheet archive", 'इस मैदान का Cricsheet रिकॉर्ड दिखाओ', language),
     );

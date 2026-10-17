@@ -46,7 +46,10 @@ const EVENT_AWARDS_WORDS =
   /player\s+of\s+the\s+(?:match|tournament)|most\s+player\s+of\s+the\s+match|potm|\bpot\b|मैन\s*ऑफ\s*द\s*मैच|प्लेयर\s*ऑफ\s*द\s*टूर्नामेंट/i;
 const EVENT_PHASE_WORDS =
   /powerplay|death[\s-]?overs?|middle[\s-]?overs?|phase|best\s+(?:batting|bowling)\s+performance|which\s+(?:team|batter|bowler)\s+had\s+the\s+best/i;
-const WIN_PROB_WORDS = /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा/i;
+const TOSS_WORDS =
+  /\btoss\b|टॉस|toss\s+kon|kon\s+.*\btoss|toss\s+jit|jit\s+.*\btoss|who\s+(?:will\s+)?win\s+the\s+toss|toss\s+kon\s+jit/i;
+const WIN_PROB_WORDS =
+  /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|who\s+do\s+you\s+think\s+will\s+win|what\s+do\s+you\s+think\s+who\s+win|match\s+kon\s+jit|kon\s+jit\s+sakt|jit\s+sakt[ae]|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा|मैच\s*कौन\s*जीत|कौन\s*जीत\s*सक/i;
 const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
 /** Target / "kitna target" — 1st innings → project_score; chase → get_match. Never invent score+1 as the official target. */
 const TARGET_WORDS =
@@ -334,7 +337,11 @@ export function planAskTools(
   ) {
     return [];
   }
-  if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question)) {
+  // Toss before match-win (both phrases contain "win" / "jit").
+  if (p.matchId && TOSS_WORDS.test(p.question) && available.has('get_toss_prediction')) {
+    return [{ id: 'mock_1', name: 'get_toss_prediction', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question) && !TOSS_WORDS.test(p.question)) {
     return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
   const nextOvers = guessNextOvers(p.question);
@@ -804,18 +811,57 @@ function compose(p: Parsed): string {
       );
     } else if (name === 'get_win_probability') {
       const teams = (data.teams as Array<Record<string, unknown>> | undefined) ?? [];
-      if (!data.available || teams.length === 0) {
+      if (!data.available || (teams.length === 0 && !data.favouriteTeam)) {
         lines.push(
           lang === 'hi'
-            ? `इस मैच के लिए जीत की संभावना उपलब्ध नहीं है। ${str(data.note)}`.trim()
-            : `Win probability is not available for this match. ${str(data.note)}`.trim(),
+            ? `इस मैच के लिए लाइव जीत संभावना अभी उपलब्ध नहीं है। ${str(data.note)}`.trim()
+            : `Live win probability is not available for this match yet. ${str(data.note)}`.trim(),
         );
       } else {
-        const parts = teams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
+        if (teams.length > 0) {
+          const parts = teams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
+          lines.push(
+            lang === 'hi'
+              ? `लाइव अनुमान (Latiyal): जीत संभावना — ${parts.join(', ')}. यह अनुमान है, पक्का नहीं।`
+              : `Live estimate (Latiyal): win chance — ${parts.join(', ')}. Estimate only, not certain.`,
+          );
+        }
+        if (data.favouriteTeam) {
+          lines.push(
+            lang === 'hi'
+              ? `फेवरेट टीम: ${str(data.favouriteTeam)}.`
+              : `Favourite side: ${str(data.favouriteTeam)}.`,
+          );
+        }
+        if (data.note) lines.push(str(data.note));
+      }
+    } else if (name === 'get_toss_prediction') {
+      if (data.tossComplete && data.tossWinner) {
         lines.push(
           lang === 'hi'
-            ? `अनुमानित जीत संभावना: ${parts.join(', ')}. यह एक अनुमान है, पक्का परिणाम नहीं।`
-            : `Estimated win chance: ${parts.join(', ')}. This is an estimate, not a certain result.`,
+            ? `टॉस हो चुका है: ${str(data.tossWinner)} ने टॉस जीता${data.tossDecision ? ` (${str(data.tossDecision)})` : ''}.`
+            : `Toss completed: ${str(data.tossWinner)} won the toss${data.tossDecision ? ` (${str(data.tossDecision)})` : ''}.`,
+        );
+      } else if (!data.available) {
+        lines.push(
+          lang === 'hi'
+            ? `टॉस का पूर्वानुमान उपलब्ध नहीं है। सिक्का किसी के भी पक्ष में जा सकता है। ${str(data.note)}`.trim()
+            : `No toss outlook is available from the live feed. A coin toss can go either way. ${str(data.note)}`.trim(),
+        );
+      } else {
+        const teams = (data.teams as Array<Record<string, unknown>> | undefined) ?? [];
+        const bits = teams
+          .map((t) => {
+            const pct = t.tossWinPercent != null ? `${str(t.tossWinPercent)}%` : null;
+            const wins = t.tossWins != null ? `${str(t.tossWins)} wins` : null;
+            const detail = [pct, wins].filter(Boolean).join(', ');
+            return detail ? `${str(t.team)} (${detail})` : str(t.team);
+          })
+          .filter(Boolean);
+        lines.push(
+          lang === 'hi'
+            ? `टॉस अभी नहीं हुआ। Latiyal टॉस तुलना (पुराना फॉर्म): ${bits.join('; ') || 'डेटा सीमित'}. ${data.lean ? `ऐतिहासिक रुझान: ${str(data.lean)}.` : ''} यह आज के सिक्के की गारंटी नहीं है।`
+            : `Toss not done yet. Latiyal toss comparison (historical form): ${bits.join('; ') || 'limited data'}. ${data.lean ? `Historical lean: ${str(data.lean)}.` : ''} This does not guarantee tonight's coin toss.`,
         );
         if (data.note) lines.push(str(data.note));
       }

@@ -24,6 +24,14 @@ function teamName(match: MatchDto, sportmonksId: number | null): string | null {
   return null;
 }
 
+/** Latiyal team-comparison APIs use numeric match_type (same family as H2H samples). */
+export function latiyalTeamMatchTypeParam(matchType: string | null): string {
+  const t = (matchType ?? '').toUpperCase();
+  if (/TEST|5.?DAY|FC|FIRST.?CLASS|MDM/.test(t)) return '3';
+  if (/ODI|LIST.?A|ONE.?DAY|ODM/.test(t)) return '2';
+  return '1'; // T20 / IT20 / T10 / default
+}
+
 /** Overs limit for limited-overs formats; null for Tests / unknown. */
 export function oversLimitFor(matchType: string | null): number | null {
   const format = formatOf(matchType);
@@ -254,6 +262,119 @@ function num(value: unknown): number | null {
 export function strikeRateToRunRate(strikeRate: number | null | undefined): number | null {
   if (strikeRate === null || strikeRate === undefined || !Number.isFinite(strikeRate) || strikeRate <= 0) return null;
   return Math.round((strikeRate / 100) * 6 * 100) / 100;
+}
+
+/**
+ * Parse matchInfo / liveMatch for an already-completed toss.
+ */
+export function parseTossResult(data: unknown, match: MatchDto): {
+  tossComplete: boolean;
+  tossWinner: string | null;
+  tossDecision: string | null;
+} {
+  const root = asRecord(data);
+  if (!root) return { tossComplete: false, tossWinner: null, tossDecision: null };
+  const nested = asRecord(root.toss ?? root.toss_info ?? root.match_info) ?? root;
+  const winnerId = num(nested.toss_winner_id ?? nested.tossWinnerId ?? nested.toss_win_team_id);
+  const winnerName =
+    (typeof nested.toss_winner === 'string' && nested.toss_winner.trim()) ||
+    (typeof nested.toss_win_team === 'string' && nested.toss_win_team.trim()) ||
+    (typeof nested.tossWinner === 'string' && nested.tossWinner.trim()) ||
+    (winnerId !== null ? teamName(match, winnerId) : null) ||
+    null;
+  const decision =
+    (typeof nested.toss_decision === 'string' && nested.toss_decision.trim()) ||
+    (typeof nested.decision === 'string' && nested.decision.trim()) ||
+    (typeof nested.toss_choose === 'string' && nested.toss_choose.trim()) ||
+    null;
+  return {
+    tossComplete: Boolean(winnerName),
+    tossWinner: winnerName,
+    tossDecision: decision,
+  };
+}
+
+/**
+ * Historical toss comparison between two teams (Latiyal tossComparisonByTeamId).
+ * This is form/history — not a live "who will win tonight" guarantee.
+ */
+export function parseTossComparison(
+  data: unknown,
+  match: MatchDto,
+): {
+  available: boolean;
+  teams: Array<{ team: string; tossWins: number | null; tossWinPercent: number | null }>;
+  lean: string | null;
+  note: string;
+} {
+  const empty = (note: string) => ({
+    available: false,
+    teams: [] as Array<{ team: string; tossWins: number | null; tossWinPercent: number | null }>,
+    lean: null as string | null,
+    note,
+  });
+  if (data === null || data === undefined) return empty('No toss-comparison data from Latiyal for these teams.');
+  const root = asRecord(data);
+  const nested = root ? (root.data ?? root.result ?? root.comparison ?? root.toss) : null;
+  const src = asRecord(nested) ?? root;
+  if (!src && !Array.isArray(data) && !Array.isArray(nested)) {
+    return empty('Toss comparison payload was empty or unreadable.');
+  }
+
+  const teamA = match.localTeam.name ?? 'Team A';
+  const teamB = match.visitorTeam.name ?? 'Team B';
+  const readSide = (prefixes: string[]) => {
+    let wins: number | null = null;
+    let pct: number | null = null;
+    const bag = src ?? {};
+    for (const p of prefixes) {
+      wins = wins ?? num(bag[`${p}_toss_win`] ?? bag[`${p}_toss_wins`] ?? bag[`${p}_win`] ?? bag[`${p}_wins`]);
+      const rawPct = num(bag[`${p}_toss_per`] ?? bag[`${p}_toss_percent`] ?? bag[`${p}_per`] ?? bag[`${p}_percent`]);
+      if (rawPct !== null) pct = rawPct > 1 ? Math.round(rawPct * 10) / 10 : Math.round(rawPct * 1000) / 10;
+    }
+    return { wins, pct };
+  };
+
+  let a = readSide(['team_a', 'teama', 'team1', 'a']);
+  let b = readSide(['team_b', 'teamb', 'team2', 'b']);
+
+  if (Array.isArray(nested) || Array.isArray(data)) {
+    const list = (Array.isArray(nested) ? nested : data) as unknown[];
+    for (const row of list) {
+      const r = asRecord(row);
+      if (!r) continue;
+      const label = pickTeamLabel(r, match);
+      const wins = num(r.toss_wins ?? r.toss_win ?? r.wins ?? r.won);
+      const rawPct = num(r.toss_percent ?? r.percent ?? r.percentage ?? r.per);
+      const pct = rawPct === null ? null : rawPct > 1 ? Math.round(rawPct * 10) / 10 : Math.round(rawPct * 1000) / 10;
+      if (label && (label === teamA || label === match.localTeam.shortName)) a = { wins, pct };
+      if (label && (label === teamB || label === match.visitorTeam.shortName)) b = { wins, pct };
+      const id = num(r.team_id ?? r.teamId);
+      if (id !== null && id === match.localTeam.sportmonksId) a = { wins, pct };
+      if (id !== null && id === match.visitorTeam.sportmonksId) b = { wins, pct };
+    }
+  }
+
+  if (a.wins === null && a.pct === null && b.wins === null && b.pct === null) {
+    return empty('Toss comparison had no usable win counts or percentages.');
+  }
+
+  const teams = [
+    { team: teamA, tossWins: a.wins, tossWinPercent: a.pct },
+    { team: teamB, tossWins: b.wins, tossWinPercent: b.pct },
+  ];
+  let lean: string | null = null;
+  if (a.pct !== null && b.pct !== null) lean = a.pct >= b.pct ? teamA : teamB;
+  else if (a.wins !== null && b.wins !== null) lean = a.wins >= b.wins ? teamA : teamB;
+
+  return {
+    available: true,
+    teams,
+    lean,
+    note:
+      ESTIMATE_NOTE +
+      ' Based on Latiyal toss comparison (historical toss form between these teams), not a live forecast of tonight\'s coin toss.',
+  };
 }
 
 /**
@@ -575,8 +696,9 @@ export function createPredictionTools(
     definition: {
       name: 'get_win_probability',
       description:
-        'Current win-chance estimate for each team in a live match from Latiyal matchProbHistory ' +
-        '(and liveMatch prediction fields when present). Always describe as an estimate, never as certain.',
+        'Who is favoured to win this match (live or upcoming). Uses Latiyal matchProbHistory, then liveMatch ' +
+        'prediction fields. For "match kon jit sakta", "who will win", "win chance". Always an estimate, never certain. ' +
+        'For toss questions use get_toss_prediction instead.',
       parameters: matchIdSchema,
     },
     parse: (raw) => {
@@ -595,24 +717,28 @@ export function createPredictionTools(
             matchId,
             matchTeams: [match.localTeam.name, match.visitorTeam.name],
             isLive: match.isLive,
+            isFinished: match.isFinished,
             stale: feed.stale,
+            kind: 'match_win',
             ...parsed,
             message: feed.message,
           };
         }
       } catch {
-        /* fall through to liveMatch prediction */
+        /* fall through */
       }
       try {
         const live = await feeds.get('liveMatch', { match_id: matchId });
         const fromLive = parseLiveMatchPrediction(live.data, match);
-        if (fromLive.available && fromLive.teams.length > 0) {
+        if (fromLive.available && (fromLive.teams.length > 0 || fromLive.favouriteTeam)) {
           return {
             matchId,
             matchTeams: [match.localTeam.name, match.visitorTeam.name],
             isLive: match.isLive,
+            isFinished: match.isFinished,
             stale: live.stale || stale,
             available: true,
+            kind: 'match_win',
             teams: fromLive.teams,
             favouriteTeam: fromLive.favouriteTeam,
             note: fromLive.note,
@@ -624,13 +750,107 @@ export function createPredictionTools(
       }
       return {
         matchId,
+        matchTeams: [match.localTeam.name, match.visitorTeam.name],
+        isLive: match.isLive,
+        isFinished: match.isFinished,
         available: false,
+        kind: 'match_win',
         teams: [],
-        note: 'Win-probability / prediction is temporarily unavailable for this match.',
+        note:
+          'Live win-probability / prediction is not available for this match yet (common before the match starts or if Latiyal has no fav%). Do not invent percentages.',
         rawShape: 'unavailable',
       };
     },
     label: ({ matchId }) => `Win probability ${matchId}`,
+  };
+
+  const getTossPrediction: AiTool<{ matchId: string }> = {
+    definition: {
+      name: 'get_toss_prediction',
+      description:
+        'Toss outlook for a match: if the toss is already done, return the winner; otherwise Latiyal ' +
+        'tossComparisonByTeamId historical toss form. Use for "who will win the toss", "toss kon jit sakta". ' +
+        'Never invent a coin-toss result. Always say historical form is an estimate only.',
+      parameters: matchIdSchema,
+    },
+    parse: getWinProbability.parse,
+    run: async ({ matchId }) => {
+      const match = await matches.getMatch(matchId);
+      const teams = [match.localTeam.name, match.visitorTeam.name];
+      // 1) Already tossed?
+      for (const endpoint of ['matchInfo', 'liveMatch'] as const) {
+        try {
+          const feed = await feeds.get(endpoint, { match_id: matchId });
+          const tossed = parseTossResult(feed.data, match);
+          if (tossed.tossComplete) {
+            return {
+              matchId,
+              matchTeams: teams,
+              available: true,
+              kind: 'toss',
+              tossComplete: true,
+              tossWinner: tossed.tossWinner,
+              tossDecision: tossed.tossDecision,
+              teams: [],
+              lean: tossed.tossWinner,
+              note: 'Toss has already happened (from Latiyal match info / live feed).',
+              stale: feed.stale,
+              rawShape: endpoint,
+            };
+          }
+        } catch {
+          /* try next */
+        }
+      }
+      // 2) Historical toss comparison between the two teams
+      const aId = match.localTeam.sportmonksId;
+      const bId = match.visitorTeam.sportmonksId;
+      if (aId == null || bId == null) {
+        return {
+          matchId,
+          matchTeams: teams,
+          available: false,
+          kind: 'toss',
+          tossComplete: false,
+          note: 'Cannot load toss comparison — team ids missing for this match.',
+          teams: [],
+          lean: null,
+          rawShape: 'no_team_ids',
+        };
+      }
+      try {
+        const feed = await feeds.get('tossComparisonByTeamId', {
+          team_a_id: String(aId),
+          team_b_id: String(bId),
+          match_type: latiyalTeamMatchTypeParam(match.matchType),
+        });
+        const parsed = parseTossComparison(feed.data, match);
+        return {
+          matchId,
+          matchTeams: teams,
+          kind: 'toss',
+          tossComplete: false,
+          tossWinner: null,
+          tossDecision: null,
+          stale: feed.stale,
+          rawShape: 'tossComparisonByTeamId',
+          ...parsed,
+        };
+      } catch {
+        return {
+          matchId,
+          matchTeams: teams,
+          available: false,
+          kind: 'toss',
+          tossComplete: false,
+          teams: [],
+          lean: null,
+          note: 'Toss comparison feed is temporarily unavailable. Do not invent who will win the toss.',
+          rawShape: 'unavailable',
+        };
+      }
+    },
+    label: ({ matchId }) => `Toss outlook ${matchId}`,
   };
 
   const projectScore: AiTool<{ matchId: string }> = {
@@ -732,5 +952,5 @@ export function createPredictionTools(
     label: ({ matchId, overs }) => `Next ${overs} overs ${matchId}`,
   };
 
-  return [getWinProbability, projectScore, projectNextOversTool] as AiTool[];
+  return [getWinProbability, getTossPrediction, projectScore, projectNextOversTool] as AiTool[];
 }

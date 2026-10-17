@@ -115,10 +115,11 @@ Hindi example:
 
 Good with matchId:
   - current score / batters / bowler
-  - required run rate / chase math
+  - required run rate / chase math (2nd innings only)
   - next N overs estimate
-  - projected score
-  - win probability (when Latiyal feed has data)
+  - projected score / "kitna target de sakta" (1st innings = estimate)
+  - win chance / "match kon jit sakta" (Latiyal live prediction when available)
+  - toss / "toss kon jit sakta" (toss result if done, else historical toss comparison)
   - scorecard / recent balls
   - "this match" venue or head-to-head
 

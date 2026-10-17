@@ -10,6 +10,8 @@ import {
   oversLimitFor,
   parseLiveMatchPrediction,
   parseMatchProbHistory,
+  parseTossComparison,
+  parseTossResult,
   projectInningsScore,
   projectNextOvers,
   recentOversRunRate,
@@ -124,6 +126,21 @@ describe('prediction helpers', () => {
     });
   });
 
+  it('parses toss result and toss comparison payloads', () => {
+    expect(parseTossResult({ toss_winner: 'India', toss_decision: 'bat' }, match)).toMatchObject({
+      tossComplete: true,
+      tossWinner: 'India',
+      tossDecision: 'bat',
+    });
+    const cmp = parseTossComparison(
+      { team_a_toss_win: 12, team_a_toss_per: 55, team_b_toss_win: 10, team_b_toss_per: 45 },
+      match,
+    );
+    expect(cmp.available).toBe(true);
+    expect(cmp.lean).toBe('Delhi Royals');
+    expect(cmp.teams[0]).toMatchObject({ team: 'Delhi Royals', tossWins: 12, tossWinPercent: 55 });
+  });
+
   it('parses common matchProbHistory shapes and refuses empty payloads', () => {
     expect(parseMatchProbHistory(null, match).available).toBe(false);
     expect(parseMatchProbHistory([], match)).toMatchObject({
@@ -199,6 +216,33 @@ describe('prediction tools', () => {
     const registry = new AiToolRegistry(createPredictionTools(matches, feeds));
     const win = await registry.execute('get_win_probability', JSON.stringify({ matchId: '61521' }));
     expect(win.data).toMatchObject({ available: false });
+  });
+
+  it('returns toss comparison when the toss is not done yet', async () => {
+    const feeds = {
+      get: vi.fn(async (endpoint: string) => {
+        if (endpoint === 'matchInfo' || endpoint === 'liveMatch') {
+          return { endpoint, data: {}, message: null, updatedAt: null, stale: false };
+        }
+        return {
+          endpoint: 'tossComparisonByTeamId',
+          data: { team_a_toss_win: 8, team_a_toss_per: 60, team_b_toss_win: 5, team_b_toss_per: 40 },
+          message: null,
+          updatedAt: null,
+          stale: false,
+        };
+      }),
+    } as unknown as FeedsService;
+    const matches = { getMatch: vi.fn(async () => match) } as unknown as MatchesService;
+    const registry = new AiToolRegistry(createPredictionTools(matches, feeds));
+    const toss = await registry.execute('get_toss_prediction', JSON.stringify({ matchId: '61521' }));
+    expect(toss.ok).toBe(true);
+    expect(toss.data).toMatchObject({
+      available: true,
+      kind: 'toss',
+      tossComplete: false,
+      lean: 'Delhi Royals',
+    });
   });
 
   it('blends history signals into project_next_overs when identity maps exist', async () => {
