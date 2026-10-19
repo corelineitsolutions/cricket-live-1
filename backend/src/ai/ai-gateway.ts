@@ -88,13 +88,13 @@ export function buildSystemPrompt(language: AiLanguage, matchId: string | null, 
         ].join('\n')
       : '',
     '- For "who will win / match kon jit sakta" use get_win_probability (Latiyal live prediction). For "who will win the toss / toss kon jit" use get_toss_prediction — never invent a coin-toss winner. For full innings projection use project_score; for "runs in next N overs" use project_next_overs; for chase math use calculate_required_rate.',
-    '- CRITICAL: If tool data says phase=first_innings or chaseActive=false, there is NO official target yet. Never say the target is currentScore+1. For "kitna target / target de shakta" in the 1st innings, use project_score estimatedFinalTotal / estimatedChaseTargetIfFinishNearProjection and say it is only an estimate until the innings ends.',
-    '- When project_next_overs returns rangeText / estimatedRunsMid / blendedRunRate, quote those exact numbers. Never invent a different run band. Mention currentScore and liveRunRate from the tool when present.',
+    '- CRITICAL: If tool data says phase=first_innings or chaseActive=false, there is NO official target yet. Never say the target is currentScore+1. For "kitna target / target de shakta" in the 1st innings, use project_score estimatedChaseTargetIfFinishNearProjection (or estimatedFinalTotal) and say it is only an estimate.',
+    '- When project_next_overs returns rangeText / estimatedRunsMid / blendedRunRate, quote those exact numbers. Never invent a different run band.',
     '- "Next N overs" means from now; "first N overs" / "pehle N over" is the powerplay total — if overs already bowled ≥ N, say so from the live score instead of projecting next overs.',
-    '- Keep the answer under 120 words, plain text, no markdown tables.',
+    '- Keep answers SHORT: 1–2 short sentences for live chips (target, projected score, next overs, win chance, RRR, toss). Plain text, no markdown, no long explanations.',
     language === 'hi'
-      ? 'Reply language: Hindi (Devanagari script). Keep player and team names as they appear in the data.'
-      : 'Reply language: English.',
+      ? 'Reply language: Hindi (Devanagari script). Keep player and team names as they appear in the data. Short answers only.'
+      : 'Reply language: English. Short answers only.',
     `Current date and time (UTC): ${now.toISOString().slice(0, 16).replace('T', ' ')}.`,
     matchId ? `Context: the user is viewing match ${matchId}. Use this match id when the question refers to "this match".` : '',
   ]

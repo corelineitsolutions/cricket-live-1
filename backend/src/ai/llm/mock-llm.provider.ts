@@ -408,8 +408,8 @@ function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' 
     }
     parts.push(
       lang === 'hi'
-        ? `अभी पहली पारी चल रही है, इसलिए कोई chase target या आवश्यक रन रेट नहीं है। वर्तमान स्कोर: ${str(current?.battingTeam)} ${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)} ओवर, रन रेट ${str(current?.runRate)}). अनुमानित अंतिम स्कोर के लिए projected score पूछें।`
-        : `This is still the first innings — there is no chase target or required run rate yet. Current: ${str(current?.battingTeam)} ${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)} ov, RR ${str(current?.runRate)}). Ask for a projected score for an estimated final total.`,
+        ? `अभी पहली पारी है — chase target / RRR नहीं है। स्कोर ${str(current?.battingTeam)} ${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)} ov).`
+        : `Still first innings — no chase target/RRR yet. ${str(current?.battingTeam)} ${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)} ov).`,
     );
     return parts.join(' ');
   }
@@ -436,12 +436,6 @@ function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' 
       lang === 'hi'
         ? `${str(current.battingTeam)} को ${str(current.ballsRemaining)} गेंदों में ${str(current.runsRequired)} रन चाहिए (आवश्यक रन रेट ${str(current.requiredRunRate)}).`
         : `${str(current.battingTeam)} need ${str(current.runsRequired)} runs from ${str(current.ballsRemaining)} balls (required rate ${str(current.requiredRunRate)}).`,
-    );
-  } else if (m.phase === 'first_innings' || (!chaseActive && current)) {
-    parts.push(
-      lang === 'hi'
-        ? 'पहली पारी अभी पूरी नहीं हुई — वर्तमान स्कोर को विपक्षी का target न समझें।'
-        : 'First innings is still in progress — do not treat the current score as the chase target.',
     );
   } else if (m.note) {
     parts.push(`${str(m.note)}.`);
@@ -812,112 +806,63 @@ function compose(p: Parsed): string {
     } else if (name === 'get_win_probability') {
       const teams = (data.teams as Array<Record<string, unknown>> | undefined) ?? [];
       if (!data.available || (teams.length === 0 && !data.favouriteTeam)) {
+        lines.push(lang === 'hi' ? 'जीत संभावना अभी उपलब्ध नहीं है।' : 'Win chance not available yet.');
+      } else if (teams.length > 0) {
+        const parts = teams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
         lines.push(
-          lang === 'hi'
-            ? `इस मैच के लिए लाइव जीत संभावना अभी उपलब्ध नहीं है। ${str(data.note)}`.trim()
-            : `Live win probability is not available for this match yet. ${str(data.note)}`.trim(),
+          lang === 'hi' ? `अनुमानित जीत संभावना: ${parts.join(', ')}.` : `Estimated win chance: ${parts.join(', ')}.`,
         );
-      } else {
-        if (teams.length > 0) {
-          const parts = teams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
-          lines.push(
-            lang === 'hi'
-              ? `लाइव अनुमान (Latiyal): जीत संभावना — ${parts.join(', ')}. यह अनुमान है, पक्का नहीं।`
-              : `Live estimate (Latiyal): win chance — ${parts.join(', ')}. Estimate only, not certain.`,
-          );
-        }
-        if (data.favouriteTeam) {
-          lines.push(
-            lang === 'hi'
-              ? `फेवरेट टीम: ${str(data.favouriteTeam)}.`
-              : `Favourite side: ${str(data.favouriteTeam)}.`,
-          );
-        }
-        if (data.note) lines.push(str(data.note));
+      } else if (data.favouriteTeam) {
+        lines.push(lang === 'hi' ? `फेवरेट: ${str(data.favouriteTeam)}.` : `Favourite: ${str(data.favouriteTeam)}.`);
       }
     } else if (name === 'get_toss_prediction') {
       if (data.tossComplete && data.tossWinner) {
         lines.push(
           lang === 'hi'
-            ? `टॉस हो चुका है: ${str(data.tossWinner)} ने टॉस जीता${data.tossDecision ? ` (${str(data.tossDecision)})` : ''}.`
-            : `Toss completed: ${str(data.tossWinner)} won the toss${data.tossDecision ? ` (${str(data.tossDecision)})` : ''}.`,
+            ? `टॉस: ${str(data.tossWinner)} जीता${data.tossDecision ? ` (${str(data.tossDecision)})` : ''}.`
+            : `Toss: ${str(data.tossWinner)} won${data.tossDecision ? ` (${str(data.tossDecision)})` : ''}.`,
         );
       } else if (!data.available) {
-        lines.push(
-          lang === 'hi'
-            ? `टॉस का पूर्वानुमान उपलब्ध नहीं है। सिक्का किसी के भी पक्ष में जा सकता है। ${str(data.note)}`.trim()
-            : `No toss outlook is available from the live feed. A coin toss can go either way. ${str(data.note)}`.trim(),
-        );
+        lines.push(lang === 'hi' ? 'टॉस अनुमान उपलब्ध नहीं — सिक्का किसी का भी हो सकता है।' : 'No toss outlook — coin toss could go either way.');
       } else {
-        const teams = (data.teams as Array<Record<string, unknown>> | undefined) ?? [];
-        const bits = teams
-          .map((t) => {
-            const pct = t.tossWinPercent != null ? `${str(t.tossWinPercent)}%` : null;
-            const wins = t.tossWins != null ? `${str(t.tossWins)} wins` : null;
-            const detail = [pct, wins].filter(Boolean).join(', ');
-            return detail ? `${str(t.team)} (${detail})` : str(t.team);
-          })
-          .filter(Boolean);
         lines.push(
           lang === 'hi'
-            ? `टॉस अभी नहीं हुआ। Latiyal टॉस तुलना (पुराना फॉर्म): ${bits.join('; ') || 'डेटा सीमित'}. ${data.lean ? `ऐतिहासिक रुझान: ${str(data.lean)}.` : ''} यह आज के सिक्के की गारंटी नहीं है।`
-            : `Toss not done yet. Latiyal toss comparison (historical form): ${bits.join('; ') || 'limited data'}. ${data.lean ? `Historical lean: ${str(data.lean)}.` : ''} This does not guarantee tonight's coin toss.`,
+            ? `टॉस बाकी है। पुराने फॉर्म से रुझान: ${str(data.lean ?? 'साफ नहीं')}. गारंटी नहीं।`
+            : `Toss pending. Historical lean: ${str(data.lean ?? 'unclear')}. Not a guarantee.`,
         );
-        if (data.note) lines.push(str(data.note));
       }
     } else if (name === 'project_score') {
       if (!data.available) {
-        lines.push(
-          lang === 'hi'
-            ? `अनुमानित स्कोर नहीं निकाल सके। ${str(data.note)}`.trim()
-            : `Could not project a score. ${str(data.note)}`.trim(),
-        );
+        lines.push(lang === 'hi' ? 'अनुमानित स्कोर नहीं मिल सका।' : 'Could not project a score.');
       } else if (data.chaseActive) {
         lines.push(
           lang === 'hi'
-            ? `${str(data.team)} chase में हैं। लक्ष्य ${str(data.target)}; वर्तमान ${str(data.currentScore)}, रन रेट ${str(data.runRate)}.`
-            : `${str(data.team)} are chasing. Target ${str(data.target)}; now ${str(data.currentScore)} at RR ${str(data.runRate)}.`,
+            ? `Target ${str(data.target)}. अभी ${str(data.currentScore)}, RR ${str(data.runRate)}.`
+            : `Target ${str(data.target)}. Now ${str(data.currentScore)} at RR ${str(data.runRate)}.`,
         );
-      } else {
-        const estTarget = data.estimatedChaseTargetIfFinishNearProjection;
+      } else if (TARGET_WORDS.test(p.question)) {
+        const estTarget = data.estimatedChaseTargetIfFinishNearProjection ?? data.projectedScore;
         lines.push(
           lang === 'hi'
-            ? `${str(data.team)} अभी पहली पारी खेल रहे हैं (वर्तमान ${str(data.currentScore)}/${str(data.wickets ?? '-')} , ${str(data.overs)} ओवर, रन रेट ${str(data.runRate)}). अनुमानित अंतिम स्कोर लगभग ${str(data.projectedScore)} — यह अभी अंतिम target नहीं है। अगर वे इसी रफ्तार से खत्म करें तो विपक्षी का अनुमानित लक्ष्य लगभग ${str(estTarget ?? '-')} हो सकता है। केवल अनुमान।`
-            : `${str(data.team)} are still batting first (now ${str(data.currentScore)}/${str(data.wickets ?? '-')} in ${str(data.overs)} ov at RR ${str(data.runRate)}). Estimated final total about ${str(data.projectedScore)} — this is not the official target yet. If they finish near that, the chase target would be about ${str(estTarget ?? '-')}. Estimate only.`,
+            ? `अनुमानित target लगभग ${str(estTarget)} (अभी ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}). केवल अनुमान।`
+            : `Estimated target about ${str(estTarget)} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}). Estimate only.`,
+        );
+      } else {
+        lines.push(
+          lang === 'hi'
+            ? `अनुमानित स्कोर लगभग ${str(data.projectedScore)} (अभी ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`
+            : `Projected score about ${str(data.projectedScore)} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`,
         );
       }
     } else if (name === 'project_next_overs') {
       if (!data.available) {
-        lines.push(
-          lang === 'hi'
-            ? `अगले ओवरों का अनुमान नहीं बन सका। ${str(data.note)}`.trim()
-            : `Could not estimate the next overs. ${str(data.note)}`.trim(),
-        );
+        lines.push(lang === 'hi' ? 'अगले ओवरों का अनुमान नहीं बन सका।' : 'Could not estimate the next overs.');
       } else {
-        const rr = data.blendedRunRate ?? data.runRate;
-        const signals = (data.signals as Array<Record<string, unknown>> | undefined) ?? [];
-        const sources = signals.map((s) => str(s.source)).filter(Boolean);
-        const why =
-          sources.length > 1
-            ? lang === 'hi'
-              ? ` संकेत: ${sources.join(', ')}.`
-              : ` Signals: ${sources.join(', ')}.`
-            : '';
         lines.push(
           lang === 'hi'
-            ? `${str(data.team)} अगले ${str(data.oversAhead)} ओवर में लगभग ${str(data.rangeText)} रन (मध्य ${str(data.estimatedRunsMid)}, ब्लेंडेड रन रेट ${str(rr)}). यह केवल अनुमान है।${why}`
-            : `${str(data.team)} may score about ${str(data.rangeText)} runs in the next ${str(data.oversAhead)} overs (mid ${str(data.estimatedRunsMid)} at blended RR ${str(rr)}). Estimate only.${why}`,
+            ? `अगले ${str(data.oversAhead)} ओवर में लगभग ${str(data.rangeText)} रन (मध्य ${str(data.estimatedRunsMid)}).`
+            : `About ${str(data.rangeText)} runs in the next ${str(data.oversAhead)} overs (mid ${str(data.estimatedRunsMid)}).`,
         );
-        const ctx = data.context as Record<string, unknown> | undefined;
-        const win = (ctx?.latiyalWinProbability as Array<Record<string, unknown>> | undefined) ?? [];
-        if (win.length > 0) {
-          const parts = win.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
-          lines.push(
-            lang === 'hi'
-              ? `Latiyal जीत संभावना (संदर्भ): ${parts.join(', ')}.`
-              : `Latiyal win chance (context): ${parts.join(', ')}.`,
-          );
-        }
       }
     } else if (name === 'get_live_matches') {
       const matches = (data.matches as Array<Record<string, unknown>> | undefined) ?? [];

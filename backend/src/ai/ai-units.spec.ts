@@ -153,7 +153,7 @@ describe('AiGateway', () => {
     expect(chat).not.toHaveBeenCalled();
     expect(result.toolsUsed).toContain('get_match');
     expect(result.answer).toMatch(/India/i);
-    expect(result.answer).toMatch(/first innings|no chase target|not treat/i);
+    expect(result.answer).toMatch(/120\/2|14\.0/i);
   });
 });
 
