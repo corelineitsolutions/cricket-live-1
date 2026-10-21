@@ -20,10 +20,19 @@ const intents = [
   'needs_match',
 ].join(', ');
 
-const SYSTEM = `You classify cricket Ask questions for a live score app. Reply with ONLY one JSON object, no markdown, no thinking.
+const SYSTEM = `You classify cricket Ask questions for a live score app. Reply with ONLY one JSON object. No markdown. No <think> text.
 Schema: {"domain":"cricket"|"other","intent":"<name>","parameters":{},"needs_match":true|false,"confidence":0.0-1.0}
 Allowed intent values: ${intents}.
-Do NOT invent match ids or statistics.`;
+Rules:
+- required_run_rate = RRR / kitne run per over only.
+- win_probability = who wins / can they chase / jit sakta (NOT required_run_rate).
+- player_history = named player + World Cup/IPL/career; set playerName/event/format; needs_match=false.
+- project_next_overs = next N overs; set overs; needs_match=true.
+- next_wicket = agla wicket / when wicket falls.
+- Do NOT invent match ids or statistics.
+Examples:
+Q: Can they chase this? → {"domain":"cricket","intent":"win_probability","parameters":{},"needs_match":true,"confidence":0.9}
+Q: What did Virat Kohli score in the World Cup? → {"domain":"cricket","intent":"player_history","parameters":{"playerName":"Virat Kohli","event":"World Cup","format":"ODI"},"needs_match":false,"confidence":0.9}`;
 
 const QUESTIONS = [
   { q: "What's the required run rate?", match: true },

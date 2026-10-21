@@ -6,17 +6,29 @@ import { LlmFetch, validateLlmBaseUrl } from '../llm/openai-compatible.provider'
 import { AI_INTENTS, AiIntentClassifyOutcome } from './ai-intent.types';
 import { parseIntentPayload } from './parse-intent-json';
 
-const CLASSIFIER_SYSTEM = `You classify cricket Ask questions for a live score app. Reply with ONLY one JSON object, no markdown, no thinking.
+const CLASSIFIER_SYSTEM = `You classify cricket Ask questions for a live score app. Reply with ONLY one JSON object. No markdown. No <think> text.
 Schema:
 {"domain":"cricket"|"other","intent":"<name>","parameters":{},"needs_match":true|false,"confidence":0.0-1.0}
 Allowed intent values: ${AI_INTENTS.join(', ')}.
 Rules:
-- domain=other and intent=out_of_domain for non-cricket topics.
-- needs_match=true when the question is about the current/selected match (RRR, chase, win chance, target, next overs, commentary, scorecard).
+- domain=other and intent=out_of_domain for non-cricket topics (weather, politics, etc.).
+- needs_match=true for live match questions: RRR, chase chance, win chance, target, next overs, commentary, scorecard, batters, next wicket.
+- required_run_rate = only "required run rate / RRR / kitne run per over chahiye" math from the live chase.
+- win_probability = who wins / can they chase / likely to win / jit sakta (NOT required_run_rate).
+- project_next_overs = runs in next N overs; set parameters.overs when N is given; needs_match=true.
+- project_score = projected final total / what is the target (estimate).
+- next_wicket = when next wicket might fall (agla wicket / kb hogi).
+- player_history = named player career / World Cup / IPL / hundreds / runs scored in a tournament. Put playerName + event/year/format in parameters. needs_match=false.
+- head_to_head = head to head / h2h between teams.
 - Do NOT invent match ids, player ids, scores, or statistics.
 - parameters may include only: playerName, event, year, format (T20|ODI|Test), gender (male|female), leaderKind, team1, team2, overs (1-20), runsNeeded, oversRemaining, ballsRemaining.
-- Use intent=needs_match when cricket live context is required but no match is selected.
-- English, Hindi, and Hinglish are all cricket if about a match or cricket stats.`;
+- English, Hindi, and Hinglish are cricket if about a match or cricket stats.
+Examples:
+Q: Can they chase this? → {"domain":"cricket","intent":"win_probability","parameters":{},"needs_match":true,"confidence":0.9}
+Q: Ab kitne run per over chahiye? → {"domain":"cricket","intent":"required_run_rate","parameters":{},"needs_match":true,"confidence":0.9}
+Q: What did Virat Kohli score in the World Cup? → {"domain":"cricket","intent":"player_history","parameters":{"playerName":"Virat Kohli","event":"World Cup","format":"ODI"},"needs_match":false,"confidence":0.9}
+Q: How many runs in the next five overs? → {"domain":"cricket","intent":"project_next_overs","parameters":{"overs":5},"needs_match":true,"confidence":0.9}
+Q: What is the weather in Paris? → {"domain":"other","intent":"out_of_domain","parameters":{},"needs_match":false,"confidence":0.95}`;
 
 @Injectable()
 export class AiIntentClassifier {
