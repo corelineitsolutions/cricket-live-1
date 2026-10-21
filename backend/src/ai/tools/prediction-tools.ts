@@ -400,14 +400,19 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
   const nested = asRecord(root.prediction ?? root.predictions ?? root.predict ?? root.fav ?? root.favourite);
   const src = nested ?? root;
 
-  const favName =
+  const favNameRaw =
     (typeof src.fav_team === 'string' && src.fav_team.trim()) ||
     (typeof src.favourite === 'string' && src.favourite.trim()) ||
     (typeof src.favorite === 'string' && src.favorite.trim()) ||
     (typeof src.fav_team_name === 'string' && src.fav_team_name.trim()) ||
     null;
   const favId = num(src.fav_team_id ?? src.favourite_team_id ?? src.favorite_team_id);
-  const favouriteTeam = favName ?? (favId !== null ? teamName(match, favId) : null);
+  const favResolved = favNameRaw ?? (favId !== null ? teamName(match, favId) : null);
+  // Never treat Draw/Tie/NR as a match favourite for "who will win".
+  const favouriteTeam =
+    favResolved && /^(the\s+)?(draw|tie|tied|nr|n\/?r|no\s*result|abandoned)$/i.test(favResolved.trim())
+      ? null
+      : favResolved;
 
   const teams: Array<{ team: string; probabilityPercent: number }> = [];
   const p1 = num(src.team_a_per ?? src.team_a_win ?? src.team1_prob ?? src.teama_win ?? src.a_win ?? src.win_team_a);

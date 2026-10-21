@@ -8,6 +8,7 @@ import { AdminAiController } from './admin-ai.controller';
 import { LLM_FETCH, LLM_PROVIDER } from './ai.constants';
 import { AiController } from './ai.controller';
 import { aiReadiness, AiService } from './ai.service';
+import { AiIntentClassifier } from './intent/ai-intent-classifier';
 import { AiTrainingService } from './ai-training.service';
 import { AiUsageService } from './ai-usage.service';
 import { LlmProvider } from './llm/llm.types';
@@ -21,6 +22,7 @@ import { LlmFetch, OpenAiCompatibleProvider, validateLlmBaseUrl } from './llm/op
     AiService,
     AiUsageService,
     AiTrainingService,
+    AiIntentClassifier,
     { provide: LLM_FETCH, useValue: ((input, init) => fetch(input, init)) satisfies LlmFetch },
     {
       provide: LLM_PROVIDER,

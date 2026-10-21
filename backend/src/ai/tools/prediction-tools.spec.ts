@@ -126,6 +126,12 @@ describe('prediction helpers', () => {
     });
   });
 
+  it('ignores Draw/Tie as a favourite team label', () => {
+    const parsed = parseLiveMatchPrediction({ fav_team: 'The Draw', projected_score: 160 }, match);
+    expect(parsed.favouriteTeam).toBeNull();
+    expect(parsed.available).toBe(true); // projected score still usable
+  });
+
   it('parses toss result and toss comparison payloads', () => {
     expect(parseTossResult({ toss_winner: 'India', toss_decision: 'bat' }, match)).toMatchObject({
       tossComplete: true,

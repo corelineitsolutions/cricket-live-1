@@ -1,0 +1,112 @@
+================================================================================
+  Local Qwen (llama.cpp) intent classifier — ops + wiring
+  Updated: 2026-10-21
+================================================================================
+
+Role
+----
+Qwen3-1.7B on llama-server is used ONLY to classify Ask intent (JSON).
+Cricket facts still come from Latiyal live tools + Cricsheet history tools +
+composeAskAnswer templates. Keep LLM_PROVIDER=mock for production answers.
+
+
+Recommended .env (backend)
+--------------------------
+AI_ENABLED=true
+LLM_PROVIDER=mock
+AI_HISTORY_ENABLED=true
+AI_INTENT_CLASSIFIER=local
+AI_LOCAL_MODEL_URL=http://127.0.0.1:8081
+AI_LOCAL_MODEL_NAME=qwen3-1.7b
+AI_LOCAL_MODEL_TIMEOUT_MS=5000
+AI_INTENT_MIN_CONFIDENCE=0.45
+AI_INTENT_MAX_OUTPUT_TOKENS=120
+AI_INTENT_MAX_CONCURRENT=2
+
+Do NOT publish port 8081 on the public firewall. Bind llama-server to 127.0.0.1 only.
+
+
+Ask flow with classifier
+------------------------
+1. Exact arithmetic ("100 runs in 6 overs") → calculator (no Qwen).
+2. Ambiguous / short / Hinglish / chase questions → local classifier JSON.
+3. Validate intent allowlist + parameters (never trust matchId from model).
+4. Map intent → existing tools → composeAskAnswer.
+5. If Qwen down / timeout / bad JSON → deterministic planAskTools fallback.
+6. Rollback: AI_INTENT_CLASSIFIER=off (or unset) → planner-only, same as before.
+
+
+Manual llama-server (foreground smoke)
+--------------------------------------
+/opt/llama.cpp/build/bin/llama-server \
+  -m /opt/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf \
+  --host 127.0.0.1 --port 8081 \
+  -c 4096 -t 2 -np 2
+
+curl -s http://127.0.0.1:8081/health
+curl -s http://127.0.0.1:8081/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{"model":"qwen","temperature":0,"max_tokens":80,"messages":[{"role":"user","content":"ping"}]}'
+
+
+systemd unit (create on the Ubuntu server — not applied from this repo alone)
+-----------------------------------------------------------------------------
+File: /etc/systemd/system/llama-qwen.service
+
+[Unit]
+Description=llama.cpp Qwen3-1.7B (local intent classifier)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/llama.cpp/build/bin/llama-server -m /opt/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf --host 127.0.0.1 --port 8081 -c 4096 -t 2 -np 2
+Restart=on-failure
+RestartSec=3
+# Keep model logs separate from the Nest API:
+StandardOutput=append:/var/log/llama-qwen.log
+StandardError=append:/var/log/llama-qwen.log
+
+[Install]
+WantedBy=multi-user.target
+
+Commands (run on the server as root):
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now llama-qwen.service
+  systemctl status llama-qwen.service
+  journalctl -u llama-qwen.service -n 50 --no-pager
+  curl -s http://127.0.0.1:8081/health
+
+IMPORTANT: Persistence is NOT configured until you create/enable this unit on
+the server and verify status + health. This document alone does not start it.
+
+
+Tests
+-----
+Automated (mocked model; no llama required):
+  cd backend && npx vitest run src/ai/intent src/ai/ai-units.spec.ts
+
+Live smoke against the model (on the Ubuntu host with llama-server up):
+  cd backend && AI_LOCAL_MODEL_URL=http://127.0.0.1:8081 node scripts/ai-intent-smoke.mjs
+
+Record avg / p50 / concurrent-pair wall time from the smoke script before
+claiming capacity.
+
+
+Rollback
+--------
+  AI_INTENT_CLASSIFIER=off
+  # keep LLM_PROVIDER=mock
+  # restart API only — leave llama-server running or stop it separately
+
+
+Key source files
+----------------
+  backend/src/ai/intent/ai-intent-classifier.ts
+  backend/src/ai/intent/parse-intent-json.ts
+  backend/src/ai/intent/intent-to-tools.ts
+  backend/src/ai/intent/resolve-ask-plan.ts
+  backend/src/ai/ai-gateway.ts
+  docs/AI_ASK_FLOW.txt
+
+================================================================================

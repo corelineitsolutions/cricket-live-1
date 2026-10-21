@@ -48,15 +48,44 @@ export class HistoryQueryService {
     return format ? { in: FORMAT_MATCH_TYPES[format] } : undefined;
   }
 
-  /** Cricsheet people whose name fits `name` ("Virat Kohli" finds "V Kohli"). */
+  /**
+   * Cricsheet people whose name fits `name` ("Virat Kohli" finds "V Kohli", "Rohit Sharma" finds "RG Sharma").
+   * Prefer surname+given scans so common surnames (Sharma) are not truncated by NAME_SCAN_LIMIT.
+   */
   async findPeople(name: string): Promise<Array<{ personId: string; name: string }>> {
     const wanted = nameParts(name);
     if (!wanted) return [];
-    const rows = await this.prisma.histPersonName.findMany({
-      where: { name: { contains: wanted.surname.split(' ').pop()! } },
-      select: { personId: true, name: true },
-      take: NAME_SCAN_LIMIT,
-    });
+    const surname = wanted.surname.split(' ').pop()!;
+    const given = wanted.full.split(' ')[0] ?? '';
+    const givenLong = given.length >= 3 && given !== surname;
+    // Narrow query first (Rohit+Sharma), then surname-only fallback for initials forms (RG Sharma).
+    const scans: Array<{ name: { contains: string } } | { AND: Array<{ name: { contains: string } }> }> = [];
+    if (givenLong) scans.push({ AND: [{ name: { contains: surname } }, { name: { contains: given } }] });
+    // Cricsheet short forms: "RG Sharma", "V Kohli", "SA Yadav"
+    if (wanted.initials) {
+      scans.push({ AND: [{ name: { contains: surname } }, { name: { contains: wanted.initials.toUpperCase() } }] });
+      scans.push({ AND: [{ name: { contains: surname } }, { name: { contains: wanted.initials } }] });
+    }
+    scans.push({ name: { contains: surname } });
+
+    const seenRow = new Set<string>();
+    const rows: Array<{ personId: string; name: string }> = [];
+    for (const where of scans) {
+      const batch = await this.prisma.histPersonName.findMany({
+        where,
+        select: { personId: true, name: true },
+        take: NAME_SCAN_LIMIT,
+      });
+      for (const row of batch) {
+        const key = `${row.personId}:${row.name}`;
+        if (seenRow.has(key)) continue;
+        seenRow.add(key);
+        rows.push(row);
+      }
+      // Enough close matches from a narrow scan — stop before the broad surname dump.
+      if (givenLong && rows.length >= MAX_PEOPLE) break;
+    }
+
     const exact = new Set<string>();
     const close = new Set<string>();
     for (const row of rows) {
@@ -150,10 +179,11 @@ export class HistoryQueryService {
     eventContains: string,
     format: HistoryFormat | null = null,
     gender: 'male' | 'female' | null = null,
+    year: number | null = null,
   ) {
     const pattern = `%${eventContains}%`;
     const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
-    const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(format, gender, tighten, null);
+    const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(format, gender, tighten, year);
     const rows = await this.prisma.$queryRaw<
       Array<{
         eventName: string;
@@ -209,10 +239,11 @@ export class HistoryQueryService {
     eventContains: string,
     format: HistoryFormat | null = null,
     gender: 'male' | 'female' | null = null,
+    year: number | null = null,
   ) {
     const pattern = `%${eventContains}%`;
     const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
-    const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(format, gender, tighten, null);
+    const { formatSql, genderSql, tightenSql, yearSql } = this.eventMatchSql(format, gender, tighten, year);
     const rows = await this.prisma.$queryRaw<
       Array<{
         eventName: string;

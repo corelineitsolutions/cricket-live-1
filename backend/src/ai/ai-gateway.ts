@@ -1,3 +1,5 @@
+import { AiIntentClassifier } from './intent/ai-intent-classifier';
+import { resolveAskPlan } from './intent/resolve-ask-plan';
 import { AiLanguage, LlmMessage, LlmProvider, LlmProviderError, LlmToolCall, LlmUsage } from './llm/llm.types';
 import { composeAskAnswer, MOCK_NOTE, planAskTools } from './llm/mock-llm.provider';
 import { AiToolRegistry } from './tools/ai-tool.registry';
@@ -33,6 +35,16 @@ const FALLBACK = {
 const HISTORY_OFF = {
   en: 'Archive answers need Cricsheet history enabled on the server (AI_HISTORY_ENABLED). Please try again after that is on.',
   hi: 'संग्रह उत्तरों के लिए सर्वर पर Cricsheet इतिहास चालू होना चाहिए (AI_HISTORY_ENABLED)। कृपया फिर कोशिश करें।',
+} as const;
+
+const OUT_OF_DOMAIN = {
+  en: 'I only answer cricket questions about matches, scores, and statistics.',
+  hi: 'मैं केवल क्रिकेट मैच, स्कोर और आंकड़ों से जुड़े सवालों के उत्तर देता हूँ।',
+} as const;
+
+const NEEDS_MATCH = {
+  en: 'Open a match and ask again so I can use the live score for this question.',
+  hi: 'कृपया कोई मैच खोलकर फिर पूछें — इस सवाल के लिए लाइव स्कोर चाहिए।',
 } as const;
 
 /** Tools we can run and answer from without calling the LLM (saves Groq quota; survives 429). */
@@ -107,14 +119,43 @@ export class AiGateway {
   constructor(
     private readonly provider: LlmProvider,
     private readonly tools: AiToolRegistry,
+    private readonly intentClassifier: AiIntentClassifier | null = null,
   ) {}
 
   async answer(input: GatewayInput): Promise<GatewayResult> {
     const available = new Set(this.tools.definitions().map((t) => t.name));
-    const planned = planAskTools(input.question, input.matchId, available, { strict: true });
+    const plan = await resolveAskPlan({
+      question: input.question,
+      language: input.language,
+      matchId: input.matchId,
+      available,
+      signal: input.signal,
+      classifier: this.intentClassifier,
+    });
 
-    // IPL / player / tournament / run-rate: answer from tools without calling Groq.
-    // Avoids burning the free-tier quota and survives provider 429s.
+    if (plan.refuse === 'out_of_domain') {
+      return {
+        answer: OUT_OF_DOMAIN[input.language],
+        sources: [],
+        usage: { promptTokens: 0, completionTokens: 0 },
+        modelCalls: 0,
+        toolCalls: 0,
+        toolsUsed: [],
+      };
+    }
+    if (plan.refuse === 'needs_match') {
+      return {
+        answer: NEEDS_MATCH[input.language],
+        sources: [],
+        usage: { promptTokens: 0, completionTokens: 0 },
+        modelCalls: 0,
+        toolCalls: 0,
+        toolsUsed: [],
+      };
+    }
+
+    const planned = plan.calls;
+    // Tools + composer path (mock or offline). Local Qwen is only used for intent, not facts.
     if (planned.length > 0 && planned.every((c) => OFFLINE_TOOLS.has(c.name))) {
       return this.answerFromPlan(input, planned);
     }
@@ -134,6 +175,7 @@ export class AiGateway {
       };
     }
 
+    // No offline plan: optional real chat LLM (Groq/Ollama). Not used when LLM_PROVIDER=mock.
     try {
       return await this.answerWithModel(input, available);
     } catch (error) {

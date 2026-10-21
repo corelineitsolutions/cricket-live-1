@@ -13,6 +13,7 @@ import { RedisService } from '../redis/redis.service';
 import { generalSuggestions, matchSuggestions } from './ai-suggestions';
 import { AI_DISCLAIMER, AiErrorCode, LLM_PROVIDER } from './ai.constants';
 import { AiGateway } from './ai-gateway';
+import { AiIntentClassifier } from './intent/ai-intent-classifier';
 import { AiTrainingService } from './ai-training.service';
 import { AiUsageService, UsageIncrements, utcDay } from './ai-usage.service';
 import { AI_LANGUAGES, AI_QUESTION_MAX_LENGTH, AiStatusDto, AskDto, AskResultDto, SuggestionsResultDto } from './dto/ask.dto';
@@ -58,6 +59,7 @@ export class AiService {
     private readonly redis: RedisService,
     private readonly usage: AiUsageService,
     private readonly training: AiTrainingService,
+    private readonly intentClassifier: AiIntentClassifier,
     matches: MatchesService,
     details: MatchDetailService,
     history: HistoryQueryService,
@@ -72,7 +74,7 @@ export class AiService {
       ...createPredictionTools(matches, feeds, config.aiHistoryEnabled ? { history, identity } : {}),
       ...(config.aiHistoryEnabled ? createHistoryTools(history, identity, matches) : []),
     ]);
-    this.gateway = provider ? new AiGateway(provider, tools) : null;
+    this.gateway = provider ? new AiGateway(provider, tools, intentClassifier) : null;
   }
 
   readiness(): AiReadiness {

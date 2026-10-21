@@ -56,6 +56,18 @@ export const envValidationSchema = Joi.object({
   AI_HISTORY_ENABLED: Joi.boolean().default(false),
   /** When true, store Ask question text for team training (admin list). Off by default for privacy. */
   AI_LOG_QUESTIONS: Joi.boolean().default(false),
+  /**
+   * Local intent classifier (llama.cpp Qwen on 127.0.0.1). Off = deterministic planner only.
+   * Does not replace LLM_PROVIDER; keep LLM_PROVIDER=mock so facts still come from tools.
+   */
+  AI_INTENT_CLASSIFIER: Joi.string().valid('off', 'local').default('off'),
+  AI_LOCAL_MODEL_URL: Joi.string().allow('').default(''),
+  AI_LOCAL_MODEL_NAME: Joi.string().allow('').max(64).default(''),
+  AI_LOCAL_MODEL_TIMEOUT_MS: Joi.number().integer().min(500).max(60000).default(5000),
+  AI_INTENT_MIN_CONFIDENCE: Joi.number().min(0).max(1).default(0.45),
+  AI_INTENT_MAX_OUTPUT_TOKENS: Joi.number().integer().min(32).max(256).default(120),
+  /** Max concurrent local classifier calls per API process (keep ≤ llama-server -np). */
+  AI_INTENT_MAX_CONCURRENT: Joi.number().integer().min(1).max(4).default(2),
 })
   .unknown(true)
   .prefs({ abortEarly: false, convert: true });

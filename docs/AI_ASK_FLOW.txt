@@ -1,0 +1,250 @@
+================================================================================
+  Cricket Live — AI Ask flow (how a question becomes an answer)
+  Updated: 2026-10-21
+================================================================================
+
+This is the CURRENT backend flow with LLM_PROVIDER=mock (recommended for team
+training / no Groq). A real openai-compatible provider follows the same tool
+plan when possible, then may call the model; on 429/timeout it falls back to
+the same offline tool path.
+
+
+--------------------------------------------------------------------------------
+1. ENTRY
+--------------------------------------------------------------------------------
+
+  App / admin  →  POST /api/v1/ai/ask
+
+  Body (AskDto):
+    question   string (required, max ~500 chars)
+    language   "en" | "hi" (optional, default en)
+    matchId    digits (optional — set when user is on a match screen)
+    deviceId   string (required for quota)
+
+  Also used: client IP (for per-IP rate limit).
+
+
+--------------------------------------------------------------------------------
+2. GATES (AiService.ask) — before any understanding
+--------------------------------------------------------------------------------
+
+  Order of checks (any fail → refuse, no tool run):
+
+  1) AI_ENABLED must be true
+  2) Provider ready (mock = always ready; real LLM needs URL/model/key/budget)
+  3) Quota: per device / minute, per device / day, per IP / minute (Redis)
+  4) Daily token budget (skipped for mock)
+  5) Concurrent in-flight limit on this API instance
+  6) Request timeout (AbortController)
+
+  Usage counters always recorded (ai_usage_daily / Redis).
+  If AI_LOG_QUESTIONS=true → question text saved to ai_training_questions
+  (answered, refused, error, timeout). Admin: GET /admin/ai/training-questions
+  and Admin UI → AI assistant → Training questions.
+
+
+--------------------------------------------------------------------------------
+3. GATEWAY (AiGateway.answer) — understand + answer
+--------------------------------------------------------------------------------
+
+  Input: question, language, matchId, timeout signal.
+
+  Step A0 — Optional local Qwen intent classifier (AI_INTENT_CLASSIFIER=local)
+  ---------------------------------------------------------------------------
+  resolveAskPlan():
+    1) Exact arithmetic ("100 runs in 6 overs") → calculator (never Qwen).
+    2) Ambiguous / short / Hinglish / chase asks → POST local
+       AI_LOCAL_MODEL_URL/v1/chat/completions (temperature 0, small max_tokens).
+       Response must be allowlisted JSON intent (not shown to the user).
+       matchId is NEVER taken from the model — only from the app.
+    3) Map intent → existing tools (intentToToolCalls).
+    4) On timeout / bad JSON / busy → fall back to planAskTools.
+    5) out_of_domain → polite cricket-only message; needs_match → open a match.
+
+  See docs/AI_LOCAL_QWEN.txt for llama-server systemd and smoke tests.
+
+  Step A — PLAN tools (deterministic fallback / when classifier off)
+  -----------------------------------------------------------------
+  Call: planAskTools(question, matchId, availableToolNames, { strict: true })
+
+  Pattern / keyword based (Hinglish + English). Still used when the local
+  classifier is off or fails.
+
+  Planner order (first match wins):
+
+    1. Explicit run-rate math in the text
+         e.g. "100 runs in 6 overs"
+         → calculate_required_rate
+
+    2. Live chase RRR (needs matchId)
+         e.g. "how many runs per over does AUS need"
+         → get_match
+
+    3. Next wicket Hinglish / English (needs matchId)
+         e.g. "next wicket kb hogi"
+         → get_match (+ get_recent_commentary if available)
+         NOTE: must run BEFORE player-history so "kb hogi" is not treated
+         as a player name.
+
+    4. Toss (needs matchId)
+         e.g. "toss kon jit sakata"
+         → get_toss_prediction
+
+    5. Who wins / win chance (needs matchId)
+         e.g. "match kon jit sakata", "who will win"
+         → get_win_probability
+
+    6. Target / "kitna target" (needs matchId)
+         → project_score (preferred) or get_match
+         (1st innings = estimate only; never invent score+1 as official target)
+
+    7. HISTORY / ARCHIVE plan (planHistory)
+         Tournament leaders, standings, awards, phase, extremes, H2H, venue,
+         then single-player history when a player name is guessed:
+
+         Helpers used:
+           guessPlayerName   — 2+ word name run; stop-words block Hinglish
+                               filler (kb, hogi, kon, sakata, next, …)
+           guessEvent        — World Cup, IPL, Asia Cup, …
+           guessFormat       — ODI / T20 / Test (bare "world cup" → ODI)
+           guessYear         — e.g. 2023
+           guessGender       — male/female; "icc" on WC often → male
+
+         → get_player_history { name, event?, format?, gender?, year? }
+         → get_event_results / get_event_leaders / get_event_standings / …
+           (as matched)
+
+    8. Next N overs / projected score (needs matchId)
+         → project_next_overs / project_score
+
+    9. Generic live match (needs matchId)
+         → get_match
+         (+ get_scorecard for batter/scorecard words)
+         (+ get_recent_commentary for commentary words)
+
+   10. No matchId + nothing matched
+         → get_live_matches  (unless strict and no match → [])
+
+
+  Step B — OFFLINE answer path (usual with mock)
+  ----------------------------------------------
+  If every planned tool is in OFFLINE_TOOLS (live + history + calculators):
+
+    1) Execute tool(s) in parallel via AiToolRegistry
+    2) Build answer with composeAskAnswer(...) templates
+       (short number-first English/Hindi; no markdown)
+    3) If provider is mock, append demo note
+    4) Cap length (~2000 chars)
+    5) Return { answer, sources, toolsUsed, mocked, disclaimer, … }
+
+  NO LLM call. This is what you want on the 4-core server with LLM_PROVIDER=mock.
+
+
+  Step C — Real LLM path (only if plan empty or non-offline, and provider not mock)
+  ---------------------------------------------------------------------------------
+  Rare when mock is on. With openai-compatible (Groq/Ollama/…):
+
+    1) System prompt (rules: use tools, never invent stats, short answers, …)
+    2) Model may request tools (bounded rounds)
+    3) Tools execute; results fed back
+    4) Final model text, or composeAskAnswer as safety net
+    5) On 429 / network / timeout → fall back to planAskTools + offline path
+
+
+--------------------------------------------------------------------------------
+4. TOOLS — where numbers come from (never invented)
+--------------------------------------------------------------------------------
+
+  LIVE / MATCH (Latiyal via MatchesService / FeedsService)
+    get_match, get_scorecard, get_recent_commentary, get_live_matches
+    get_win_probability   — Latiyal matchProbHistory / liveMatch prediction
+                            (ignores junk favourite like "The Draw")
+    get_toss_prediction   — toss done? else historical toss form
+    project_score, project_next_overs
+    calculate_required_rate  — pure arithmetic from question numbers
+
+  ARCHIVE (Cricsheet, only if AI_HISTORY_ENABLED=true)
+    get_player_history    — findPeople + optional event/year/format/gender
+                            aliases: Rohit→RG Sharma, Virat→V Kohli, SKY→SA Yadav
+    get_event_results, get_event_leaders, get_event_standings, …
+    get_head_to_head, get_venue_history, get_team_phase_stats
+
+  If history is OFF and the question looks like IPL/WC/career → short message
+  that AI_HISTORY_ENABLED must be on.
+
+
+--------------------------------------------------------------------------------
+5. ANSWER COMPOSITION (composeAskAnswer)
+--------------------------------------------------------------------------------
+
+  Reads tool JSON results + original question language.
+
+  Examples of templates:
+    - Chase RRR from get_match.current
+    - Win chance: team % list; never "Favourite: The Draw"
+    - Next wicket: "Cannot predict when…" + live score
+    - Player + World Cup: runs + hundreds (hundreds-first only if user asked
+      for hundreds/centuries); includes year when planned
+    - Always note Cricsheet archive ≠ official career totals for history tools
+
+
+--------------------------------------------------------------------------------
+6. RESPONSE BACK TO APP
+--------------------------------------------------------------------------------
+
+  HTTP 200 envelope (success path):
+    answer, language, sources[], mocked, disclaimer, generatedAt
+
+  Errors (examples):
+    AI_DISABLED, AI_NOT_CONFIGURED, AI_QUOTA_EXCEEDED,
+    AI_BUDGET_EXHAUSTED, AI_BUSY, AI_TIMEOUT, AI_PROVIDER_ERROR
+
+
+--------------------------------------------------------------------------------
+7. SIDE FLOWS (not Ask, but related)
+--------------------------------------------------------------------------------
+
+  GET /ai/status          — show/hide Ask UI
+  GET /ai/suggestions     — chip questions (format + innings aware with matchId)
+
+  Admin:
+    GET /admin/ai/overview
+    GET /admin/ai/training-questions   — when AI_LOG_QUESTIONS=true
+
+
+--------------------------------------------------------------------------------
+8. ENV THAT CHANGES THIS FLOW
+--------------------------------------------------------------------------------
+
+  AI_ENABLED=true
+  LLM_PROVIDER=mock              ← no Groq; tools + templates only
+  AI_HISTORY_ENABLED=true        ← Cricsheet player / tournament tools
+  AI_LOG_QUESTIONS=true          ← save Ask text for training review
+  AI_REQUESTS_PER_DEVICE_PER_*   ← raise for team drills
+
+
+--------------------------------------------------------------------------------
+9. ONE-LINE SUMMARY
+--------------------------------------------------------------------------------
+
+  Ask → quota/gates → planAskTools (keyword/Hinglish intent) → run tools
+  (Latiyal live and/or Cricsheet) → compose short answer → optional training log.
+
+  Understanding = deterministic planner + tools, not "training" a neural model.
+  Improving answers = better patterns, aliases, tools, and reviewing logged
+  questions in Admin → AI → Training questions.
+
+
+================================================================================
+  Key source files
+================================================================================
+
+  backend/src/ai/ai.controller.ts          POST /ai/ask
+  backend/src/ai/ai.service.ts             gates, quota, training log hook
+  backend/src/ai/ai-gateway.ts             plan → offline or LLM loop
+  backend/src/ai/llm/mock-llm.provider.ts  planAskTools, composeAskAnswer
+  backend/src/ai/tools/*.ts                live / history / prediction tools
+  backend/src/ai/ai-training.service.ts    optional question log
+  docs/AI_FRONTEND_API.txt                 mobile/API contract
+
+================================================================================

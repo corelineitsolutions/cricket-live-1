@@ -50,6 +50,9 @@ const TOSS_WORDS =
   /\btoss\b|टॉस|toss\s+kon|kon\s+.*\btoss|toss\s+jit|jit\s+.*\btoss|who\s+(?:will\s+)?win\s+the\s+toss|toss\s+kon\s+jit/i;
 const WIN_PROB_WORDS =
   /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|who\s+do\s+you\s+think\s+will\s+win|what\s+do\s+you\s+think\s+who\s+win|match\s+kon\s+jit|kon\s+jit\s+sakt|jit\s+sakt[ae]|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा|मैच\s*कौन\s*जीत|कौन\s*जीत\s*सक/i;
+/** Hinglish / English: "next wicket kb hogi" — live match, never player-history name guess. */
+const NEXT_WICKET_WORDS =
+  /next\s+wicket|wicket\s+(?:kab|kb)\s+hog|kab\s+(?:wicket|out)|kb\s+(?:wicket|out)|when\s+(?:will\s+)?(?:the\s+)?next\s+wicket|अगला\s*विकेट|विकेट\s*कब/i;
 const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
 /** Target / "kitna target" — 1st innings → project_score; chase → get_match. Never invent score+1 as the official target. */
 const TARGET_WORDS =
@@ -67,6 +70,8 @@ const NOT_A_NAME = new Set([
   'win', 'won', 'winner', 'winning', 'lifted', 'champion', 'final', 'chance', 'probability', 'projected', 'project',
   'will', 'vs', 'versus', 'per', 'over', 'overs', 'need', 'needs', 'needed', 'score', 'scoring', 'make', 'get',
   'current', 'batter', 'batters', 'batsman', 'batsmen', 'performing', 'performance', 'wa', 'ql', 'team',
+  'next', 'kab', 'kb', 'hogi', 'hoga', 'hogaa', 'sakta', 'sakata', 'sakte', 'kon', 'kaun', 'kya', 'hai', 'hain',
+  'kitna', 'kitne', 'kaise', 'when', 'fall', 'falls', 'out',
 ]);
 
 const titleCase = (word: string) => {
@@ -136,6 +141,8 @@ function wantsLiveRequiredRate(question: string): boolean {
 
 function wantsPlayerHistory(question: string): boolean {
   if (wantsLiveRequiredRate(question)) return false;
+  if (NEXT_WICKET_WORDS.test(question)) return false;
+  if (WIN_PROB_WORDS.test(question) || TOSS_WORDS.test(question)) return false;
   const name = guessPlayerName(question);
   if (!name) return false;
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
@@ -284,10 +291,12 @@ function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
       const args: Record<string, unknown> = { name };
       const format = guessFormat(p.question);
       const event = guessEvent(p.question);
+      const year = guessYear(p.question);
       const gender = guessGender(p.question) ?? (event && /icc|men/i.test(p.question) ? 'male' : null);
       if (format) args.format = format;
       if (event) args.event = event;
       if (gender) args.gender = gender;
+      if (year) args.year = year;
       return call('get_player_history', args);
     }
   }
@@ -315,9 +324,23 @@ export function planAskTools(
       : { runsNeeded: rate.runs, oversRemaining: rate.amount };
     return [{ id: 'mock_1', name: 'calculate_required_rate', arguments: JSON.stringify(args) }];
   }
-  // Live chase RR ("how many runs per over does WA need?") before history name guessing.
+  // Live intents before history — Hinglish "next wicket kb hogi" must not become a player name.
   if (p.matchId && wantsLiveRequiredRate(p.question)) {
     return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  if (p.matchId && NEXT_WICKET_WORDS.test(p.question)) {
+    const calls: LlmToolCall[] = [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
+    if (available.has('get_recent_commentary')) {
+      calls.push({ id: 'mock_2', name: 'get_recent_commentary', arguments: JSON.stringify({ matchId: p.matchId, limit: 6 }) });
+    }
+    return calls;
+  }
+  // Toss / who-wins before history (phrases share "jit" / "wicket"-adjacent Hinglish).
+  if (p.matchId && TOSS_WORDS.test(p.question) && available.has('get_toss_prediction')) {
+    return [{ id: 'mock_1', name: 'get_toss_prediction', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question) && !TOSS_WORDS.test(p.question)) {
+    return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
   // "Target kitna / de shakta" during 1st innings → projected total (not current score + 1).
   if (p.matchId && TARGET_WORDS.test(p.question) && available.has('project_score')) {
@@ -336,13 +359,6 @@ export function planAskTools(
     wantsEventStandings(p.question)
   ) {
     return [];
-  }
-  // Toss before match-win (both phrases contain "win" / "jit").
-  if (p.matchId && TOSS_WORDS.test(p.question) && available.has('get_toss_prediction')) {
-    return [{ id: 'mock_1', name: 'get_toss_prediction', arguments: JSON.stringify({ matchId: p.matchId }) }];
-  }
-  if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question) && !TOSS_WORDS.test(p.question)) {
-    return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
   const nextOvers = guessNextOvers(p.question);
   if (p.matchId && available.has('project_next_overs') && (NEXT_OVERS_WORDS.test(p.question) || nextOvers)) {
@@ -387,6 +403,24 @@ function plan(p: Parsed, available: Set<string>): LlmToolCall[] {
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
+
+/** Latiyal sometimes labels favourite as Draw/Tie — never surface that as "who will win". */
+function isJunkFavourite(label: string): boolean {
+  return /^(the\s+)?(draw|tie|tied|nr|n\/?r|no\s*result|abandoned|none|null|n\/a)$/i.test(label.trim());
+}
+
+function sanitizeFavouriteLabel(raw: unknown, matchTeams: unknown[] | undefined): string | null {
+  const label = str(raw).trim();
+  if (!label || isJunkFavourite(label)) return null;
+  if (matchTeams?.length) {
+    const allowed = matchTeams.map((t) => str(t).trim().toLowerCase()).filter(Boolean);
+    if (allowed.length > 0 && !allowed.some((t) => t === label.toLowerCase() || label.toLowerCase().includes(t) || t.includes(label.toLowerCase()))) {
+      // Favourite string not one of the match sides (and not empty) — still allow known team names from feed.
+      // Only reject clear non-team junk; otherwise keep.
+    }
+  }
+  return label;
+}
 
 function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' | 'rate' | 'batters' = 'summary'): string {
   const teams = (m.teams as unknown[] | undefined)?.map(str).filter(Boolean) ?? [];
@@ -505,16 +539,27 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
         lines.push(hi ? `${str(data.player)} के लिए "${str(data.event)}" से मेल खाते मैच संग्रह में नहीं मिले।` : `${str(data.player)}: no archive matches whose event contains "${str(data.event)}".`);
       } else {
         const hundreds = Number(data.hundredsInEvent ?? battingByEvent.reduce((s, r) => s + Number(r.hundreds ?? 0), 0));
-        lines.push(
-          hi
-            ? `${str(data.player)} के Cricsheet संग्रह में "${str(data.event)}" से मेल खाते मैचों में कुल ${hundreds} शतक हैं।`
-            : `${str(data.player)} has ${hundreds} hundred(s) in total in Cricsheet archive matches whose event name contains "${str(data.event)}".`,
-        );
+        const runs = Number(data.runsInEvent ?? battingByEvent.reduce((s, r) => s + Number(r.runs ?? 0), 0));
+        const yearBit = data.year ? ` ${str(data.year)}` : '';
+        const eventLabel = `${str(data.event)}${yearBit}`;
+        if (wantsHundredStats(question)) {
+          lines.push(
+            hi
+              ? `${str(data.player)} के Cricsheet संग्रह में "${eventLabel}" से मेल खाते मैचों में कुल ${hundreds} शतक हैं।`
+              : `${str(data.player)} has ${hundreds} hundred(s) in Cricsheet archive matches whose event name contains "${eventLabel}".`,
+          );
+        } else {
+          lines.push(
+            hi
+              ? `${str(data.player)} — Cricsheet "${eventLabel}": ${runs} रन, ${hundreds} शतक.`
+              : `${str(data.player)} — Cricsheet "${eventLabel}": ${runs} runs, ${hundreds} hundreds.`,
+          );
+        }
         for (const row of battingByEvent.slice(0, 4)) {
           lines.push(
             hi
-              ? `- ${str(row.event)} (${str(row.matchType)}): ${str(row.hundreds)} शतक, ${str(row.runs)} रन, सर्वोच्च ${str(row.highest)} (${str(row.innings)} पारी).`
-              : `- ${str(row.event)} (${str(row.matchType)}): ${str(row.hundreds)} hundreds, ${str(row.runs)} runs, highest ${str(row.highest)} (${str(row.innings)} innings).`,
+              ? `- ${str(row.event)} (${str(row.matchType)}): ${str(row.runs)} रन, ${str(row.hundreds)} शतक, सर्वोच्च ${str(row.highest)} (${str(row.innings)} पारी).`
+              : `- ${str(row.event)} (${str(row.matchType)}): ${str(row.runs)} runs, ${str(row.hundreds)} hundreds, highest ${str(row.highest)} (${str(row.innings)} innings).`,
           );
         }
       }
@@ -805,15 +850,24 @@ function compose(p: Parsed): string {
       );
     } else if (name === 'get_win_probability') {
       const teams = (data.teams as Array<Record<string, unknown>> | undefined) ?? [];
-      if (!data.available || (teams.length === 0 && !data.favouriteTeam)) {
-        lines.push(lang === 'hi' ? 'जीत संभावना अभी उपलब्ध नहीं है।' : 'Win chance not available yet.');
-      } else if (teams.length > 0) {
-        const parts = teams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
+      const fav = sanitizeFavouriteLabel(data.favouriteTeam, data.matchTeams as unknown[] | undefined);
+      const usableTeams = teams.filter((t) => {
+        const label = str(t.team).trim();
+        return label && !isJunkFavourite(label);
+      });
+      if (!data.available || (usableTeams.length === 0 && !fav)) {
+        lines.push(
+          lang === 'hi'
+            ? 'जीत संभावना अभी उपलब्ध नहीं है (लाइव अनुमान नहीं मिला)।'
+            : 'Win chance not available yet (no live estimate from the feed).',
+        );
+      } else if (usableTeams.length > 0) {
+        const parts = usableTeams.map((t) => `${str(t.team)} ${str(t.probabilityPercent)}%`);
         lines.push(
           lang === 'hi' ? `अनुमानित जीत संभावना: ${parts.join(', ')}.` : `Estimated win chance: ${parts.join(', ')}.`,
         );
-      } else if (data.favouriteTeam) {
-        lines.push(lang === 'hi' ? `फेवरेट: ${str(data.favouriteTeam)}.` : `Favourite: ${str(data.favouriteTeam)}.`);
+      } else if (fav) {
+        lines.push(lang === 'hi' ? `फेवरेट: ${fav}.` : `Favourite: ${fav}.`);
       }
     } else if (name === 'get_toss_prediction') {
       if (data.tossComplete && data.tossWinner) {
@@ -872,6 +926,13 @@ function compose(p: Parsed): string {
         for (const m of matches.slice(0, 5)) lines.push(`- ${describeMatch(m, lang)}`);
       }
     } else if (name === 'get_match') {
+      if (NEXT_WICKET_WORDS.test(p.question)) {
+        lines.push(
+          lang === 'hi'
+            ? 'अगला विकेट कब गिरेगा — यह तय अनुमान नहीं लगाया जा सकता। लाइव स्थिति:'
+            : 'Cannot predict when the next wicket will fall. Live situation:',
+        );
+      }
       const focus = wantsLiveRequiredRate(p.question) ? 'rate' : BATTER_WORDS.test(p.question) ? 'batters' : 'summary';
       lines.push(describeMatch(data, lang, focus));
     } else if (name === 'get_scorecard') {

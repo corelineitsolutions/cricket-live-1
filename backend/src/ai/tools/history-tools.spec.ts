@@ -148,8 +148,10 @@ describe('AI history tools', () => {
     expect(guessYear('who win IPL 2026')).toBe(2026);
     expect(guessGender("icc men's world cup")).toBe('male');
     expect(guessPlayerName('How many runs per over does WA need?')).toBeNull();
+    expect(guessPlayerName('next wicket kb hogi')).toBeNull();
     expect(normalizePlayerQuery('rohit sharam')).toBe('Rohit Sharma');
     expect(normalizePlayerQuery('virat kohili')).toBe('Virat Kohli');
+    expect(guessYear('suryakumar yadav icc world cup 2023')).toBe(2023);
   });
 
   it('auto-picks Rohit Sharma among Sharma candidates when IPL runs dominate', async () => {

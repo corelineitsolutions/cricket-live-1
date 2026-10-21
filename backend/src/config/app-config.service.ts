@@ -204,4 +204,33 @@ export class AppConfigService {
     const value = this.config.get<boolean | string>('AI_LOG_QUESTIONS') ?? false;
     return value === true || value === 'true';
   }
+
+  /** Local Qwen/llama.cpp intent classifier (not used for cricket facts). */
+  get aiIntentClassifierEnabled(): boolean {
+    return (this.config.get<string>('AI_INTENT_CLASSIFIER') ?? 'off') === 'local';
+  }
+
+  get aiLocalModelUrl(): string {
+    return this.config.get<string>('AI_LOCAL_MODEL_URL') ?? '';
+  }
+
+  get aiLocalModelName(): string {
+    return this.config.get<string>('AI_LOCAL_MODEL_NAME') ?? '';
+  }
+
+  get aiLocalModelTimeoutMs(): number {
+    return Number(this.config.getOrThrow('AI_LOCAL_MODEL_TIMEOUT_MS'));
+  }
+
+  get aiIntentMinConfidence(): number {
+    return Number(this.config.getOrThrow('AI_INTENT_MIN_CONFIDENCE'));
+  }
+
+  get aiIntentMaxOutputTokens(): number {
+    return Number(this.config.getOrThrow('AI_INTENT_MAX_OUTPUT_TOKENS'));
+  }
+
+  get aiIntentMaxConcurrent(): number {
+    return Number(this.config.getOrThrow('AI_INTENT_MAX_CONCURRENT'));
+  }
 }

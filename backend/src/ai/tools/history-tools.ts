@@ -50,6 +50,8 @@ export function normalizePlayerQuery(name: string): string {
     'jasprit bumrah': 'Jasprit Bumrah',
     'hardik pandya': 'Hardik Pandya',
     'suryakumar yadav': 'Suryakumar Yadav',
+    'surya kumar yadav': 'Suryakumar Yadav',
+    sky: 'Suryakumar Yadav',
     'kl rahul': 'KL Rahul',
   };
   const key = value.toLowerCase();
@@ -59,6 +61,20 @@ export function normalizePlayerQuery(name: string): string {
     .replace(/\bsharam\b/gi, 'Sharma')
     .replace(/\bshrama\b/gi, 'Sharma');
   return value;
+}
+
+/** Extra Cricsheet spellings to try when the app name does not hit hist_person_names directly. */
+export function cricsheetNameFallbacks(name: string): string[] {
+  const key = normalizePlayerQuery(name).toLowerCase();
+  const map: Record<string, string[]> = {
+    'rohit sharma': ['RG Sharma', 'Rohit Sharma'],
+    'virat kohli': ['V Kohli', 'Virat Kohli'],
+    'suryakumar yadav': ['SA Yadav', 'S Yadav', 'Suryakumar Yadav'],
+    'ms dhoni': ['MS Dhoni', 'Mahendra Singh Dhoni'],
+    'jasprit bumrah': ['JJ Bumrah', 'Jasprit Bumrah'],
+    'kl rahul': ['KL Rahul', 'K Rahul'],
+  };
+  return map[key] ?? [];
 }
 
 export function createHistoryTools(history: HistoryQueryService, identity: IdentityService, matches: MatchesService): AiTool[] {
@@ -94,6 +110,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
     format: HistoryFormat | null;
     event: string | null;
     gender: 'male' | 'female' | null;
+    year: number | null;
   }> = {
     definition: {
       name: 'get_player_history',
@@ -101,7 +118,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         'Historical batting and bowling figures of one player from the Cricsheet archive (not official career totals). ' +
         'Give the player name as it appears in the app; if several players match, the result lists them with personId to choose from. ' +
         'For a tournament (e.g. World Cup centuries or wickets), pass event so totals are limited to matches with that event name. ' +
-        'Pass format (ODI/T20/Test) and gender when the user specifies them. ' +
+        'Pass year (e.g. 2023) to limit to that season. Pass format (ODI/T20/Test) and gender when the user specifies them. ' +
         'The result includes both battingByEvent and bowlingByEvent when event is set.',
       parameters: {
         type: 'object',
@@ -111,6 +128,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
           format: formatSchema,
           event: { type: 'string', description: 'Optional tournament/event fragment, e.g. "World Cup" or "Asia Cup".' },
           gender: { type: 'string', enum: ['male', 'female'], description: 'Optional; use male for ICC men\'s events.' },
+          year: { type: 'integer', description: 'Optional season year, e.g. 2023 for World Cup 2023.' },
         },
         additionalProperties: false,
       },
@@ -129,25 +147,38 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       }
       const gender = parseGender(raw.gender);
       if (gender === 'invalid') return 'gender must be male or female';
-      return { name, personId, format, event, gender };
+      const yearRaw = raw.year === undefined || raw.year === null || raw.year === '' ? null : Number(raw.year);
+      const year =
+        yearRaw === null ? null : Number.isInteger(yearRaw) && yearRaw >= 1877 && yearRaw <= 2100 ? yearRaw : ('invalid' as const);
+      if (year === 'invalid') return 'year must be an integer between 1877 and 2100';
+      return { name, personId, format, event, gender, year };
     },
-    run: async ({ name, personId, format, event, gender }) => {
+    run: async ({ name, personId, format, event, gender, year }) => {
       let id = personId;
       let resolvedFrom = name;
       if (!id) {
         const query = normalizePlayerQuery(name!);
         resolvedFrom = query;
-        let people = await history.findPeople(query);
-        if (people.length === 0 && query !== name) people = await history.findPeople(name!);
+        const byId = new Map<string, { personId: string; name: string }>();
+        const addPeople = async (q: string) => {
+          for (const p of await history.findPeople(q)) byId.set(p.personId, p);
+        };
+        await addPeople(query);
+        if (query !== name) await addPeople(name!);
+        for (const alt of cricsheetNameFallbacks(query)) await addPeople(alt);
+        const people = [...byId.values()];
         if (people.length === 0) return unavailable(`"${name}"`);
         if (people.length > 1) {
-          // Ambiguous surnames (e.g. many "Sharma"): pick the clear archive leader for this event / T20 club.
+          // Ambiguous surnames (e.g. many "Sharma"): pick the clear archive leader for this event / format.
           const eventFormat = event ? defaultEventFormat(event, format) : format ?? 'T20';
           const shortlist = people.slice(0, 5);
           const scored = await Promise.all(
             shortlist.map(async (p) => {
               if (event) {
-                const rows = await history.playerBattingByEvent(p.personId, event, eventFormat, gender);
+                let rows = await history.playerBattingByEvent(p.personId, event, eventFormat, gender, year);
+                if (rows.length === 0 && (eventFormat || gender || year)) {
+                  rows = await history.playerBattingByEvent(p.personId, event, null, null, null);
+                }
                 return {
                   ...p,
                   runs: rows.reduce((s, r) => s + r.runs, 0),
@@ -196,12 +227,25 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
           coverage: HISTORY_COVERAGE_NOTE,
         };
       }
-      const [battingByEvent, bowlingByEvent] = await Promise.all([
-        history.playerBattingByEvent(id, event, eventFormat, gender),
-        history.playerBowlingByEvent(id, event, eventFormat, gender),
-      ]);
+      const loadEvent = (fmt: HistoryFormat | null, g: 'male' | 'female' | null, y: number | null) =>
+        Promise.all([
+          history.playerBattingByEvent(id!, event, fmt, g, y),
+          history.playerBowlingByEvent(id!, event, fmt, g, y),
+        ]);
+      let [battingByEvent, bowlingByEvent] = await loadEvent(eventFormat, gender, year);
+      // Broaden if filters were too tight (common for WC name/format mismatches).
+      if (battingByEvent.length === 0 && bowlingByEvent.length === 0 && (eventFormat || gender || year)) {
+        [battingByEvent, bowlingByEvent] = await loadEvent(eventFormat, gender, null);
+      }
+      if (battingByEvent.length === 0 && bowlingByEvent.length === 0 && (eventFormat || gender)) {
+        [battingByEvent, bowlingByEvent] = await loadEvent(null, gender ?? 'male', year);
+      }
+      if (battingByEvent.length === 0 && bowlingByEvent.length === 0) {
+        [battingByEvent, bowlingByEvent] = await loadEvent(null, null, null);
+      }
       const hundredsInEvent = battingByEvent.reduce((sum, row) => sum + row.hundreds, 0);
       const wicketsInEvent = bowlingByEvent.reduce((sum, row) => sum + row.wickets, 0);
+      const runsInEvent = battingByEvent.reduce((sum, row) => sum + row.runs, 0);
       return {
         player: displayName,
         personId: id,
@@ -209,8 +253,10 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         format: eventFormat ?? format ?? 'all',
         gender: gender ?? 'any',
         event,
+        year: year ?? null,
         hundredsInEvent,
         wicketsInEvent,
+        runsInEvent,
         battingByEvent,
         bowlingByEvent,
         // Keep old key for older mock builds; prefer battingByEvent.
@@ -220,11 +266,12 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
         note:
           battingByEvent.length === 0 && bowlingByEvent.length === 0
             ? `No matches in the archive whose event name contains "${event}".`
-            : `Event filter matches Cricsheet event_name containing "${event}" (archive only; not official career totals).`,
+            : `Event filter matches Cricsheet event_name containing "${event}"${year ? ` (year ${year})` : ''} (archive only; not official career totals).`,
         coverage: HISTORY_COVERAGE_NOTE,
       };
     },
-    label: ({ name, personId, event }) => `Cricsheet archive: ${name ?? personId}${event ? ` (${event})` : ''}`,
+    label: ({ name, personId, event, year }) =>
+      `Cricsheet archive: ${name ?? personId}${event ? ` (${event}${year ? ` ${year}` : ''})` : ''}`,
   };
 
   const eventResults: AiTool<{

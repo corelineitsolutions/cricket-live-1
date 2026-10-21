@@ -1,4 +1,5 @@
 import { AiGateway, buildSystemPrompt, MAX_MODEL_CALLS } from './ai-gateway';
+import type { AiIntentClassifier } from './intent/ai-intent-classifier';
 import { LlmChatRequest, LlmProvider, LlmProviderError } from './llm/llm.types';
 import { MOCK_NOTE, MockLlmProvider, planAskTools } from './llm/mock-llm.provider';
 import { OpenAiCompatibleProvider, validateLlmBaseUrl } from './llm/openai-compatible.provider';
@@ -155,6 +156,36 @@ describe('AiGateway', () => {
     expect(result.answer).toMatch(/India/i);
     expect(result.answer).toMatch(/120\/2|14\.0/i);
   });
+
+  it('refuses non-cricket questions when the local classifier says out_of_domain', async () => {
+    const chat = vi.fn();
+    const provider: LlmProvider = { name: 'mock', model: 'mock', mocked: true, chat };
+    const classifier = {
+      enabled: true,
+      classify: async () => ({
+        ok: true,
+        latencyMs: 5,
+        result: {
+          domain: 'other',
+          intent: 'out_of_domain',
+          parameters: {},
+          needsMatch: false,
+          confidence: 0.99,
+        },
+      }),
+    } as unknown as AiIntentClassifier;
+    const gateway = new AiGateway(provider, new AiToolRegistry([]), classifier);
+    const result = await gateway.answer({
+      question: 'What is the weather in Paris?',
+      language: 'en',
+      matchId: null,
+      maxOutputTokens: 100,
+      signal: signal(),
+    });
+    expect(chat).not.toHaveBeenCalled();
+    expect(result.toolsUsed).toEqual([]);
+    expect(result.answer).toMatch(/cricket/i);
+  });
 });
 
 describe('planAskTools', () => {
@@ -185,9 +216,30 @@ describe('planAskTools', () => {
     expect(planAskTools('match kon jit sakta', '14193', available, { strict: true })[0]?.name).toBe(
       'get_win_probability',
     );
+    expect(planAskTools('match kon jit sakata', '14193', available, { strict: true })[0]?.name).toBe(
+      'get_win_probability',
+    );
     expect(planAskTools('what do you think who win', '14193', available, { strict: true })[0]?.name).toBe(
       'get_win_probability',
     );
+  });
+
+  it('routes next-wicket Hinglish to live match, not player history', () => {
+    const live = new Set(['get_match', 'get_recent_commentary', 'get_player_history', 'get_win_probability']);
+    const calls = planAskTools('next wicket kb hogi', '14193', live, { strict: true });
+    expect(calls.map((c) => c.name)).toEqual(['get_match', 'get_recent_commentary']);
+    expect(planAskTools('next wicket kb hogi', '14193', live, { strict: true })[0]?.name).not.toBe('get_player_history');
+  });
+
+  it('passes year on World Cup player questions', () => {
+    const calls = planAskTools('suryakumar yadav icc world cup 2023', null, available, { strict: true });
+    expect(calls[0]?.name).toBe('get_player_history');
+    expect(JSON.parse(calls[0].arguments)).toMatchObject({
+      name: 'Suryakumar Yadav',
+      event: 'World Cup',
+      year: 2023,
+      format: 'ODI',
+    });
   });
 });
 
