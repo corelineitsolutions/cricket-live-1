@@ -37,6 +37,10 @@ export function oversLimitFor(matchType: string | null): number | null {
   const format = formatOf(matchType);
   if (format === 'T20') return 20;
   if (format === 'ODI') return 50;
+  const raw = (matchType ?? '').toLowerCase();
+  // Latiyal / feed variants not covered by formatOf.
+  if (/\b50\b|one[\s-]?day|\bodi\b|list\s*a/.test(raw)) return 50;
+  if (/\b20\b|t20|it20|t10/.test(raw)) return /t10/.test(raw) ? 10 : 20;
   return null;
 }
 
@@ -83,6 +87,7 @@ export function projectInningsScore(input: {
     };
   }
   const projected = Math.round(score + (rate * ballsLeft) / 6);
+  const early = ballsBowled < 30; // fewer than 5 overs — RR is unstable
   return {
     available: true as const,
     team: input.team,
@@ -93,7 +98,10 @@ export function projectInningsScore(input: {
     runRate: rate,
     oversRemaining: `${Math.floor(ballsLeft / 6)}.${ballsLeft % 6}`,
     oversLimit: input.oversLimit,
-    note: `${ESTIMATE_NOTE} Projected from current run rate × overs remaining (six-ball overs).`,
+    earlyInnings: early,
+    note: early
+      ? `${ESTIMATE_NOTE} Very early innings — projection from current RR is unstable.`
+      : `${ESTIMATE_NOTE} Projected from current run rate × overs remaining (six-ball overs).`,
   };
 }
 
@@ -870,14 +878,24 @@ export function createPredictionTools(
     run: async ({ matchId }) => {
       const match = await matches.getMatch(matchId);
       const summary = summarizeMatch(match);
-      const limit = oversLimitFor(match.matchType);
+      const current = summary.current;
+      // Prefer live innings fields from summary when top-level match score/RR is briefly null.
+      const score = match.score ?? current?.score ?? null;
+      const overs = match.overs ?? current?.overs ?? null;
+      const runRate = match.runRate ?? current?.runRate ?? null;
+      const wickets = match.wickets ?? current?.wickets ?? null;
+      let limit = oversLimitFor(match.matchType);
+      // Unknown format strings still get a limited-overs projection (prefer 50 unless clearly T20).
+      if (limit === null) {
+        limit = /t20|it20|t10/i.test(match.matchType ?? '') ? 20 : 50;
+      }
       const projection = projectInningsScore({
-        team: summary.current?.battingTeam ?? teamName(match, match.battingTeamSportmonksId),
-        score: match.score,
-        overs: match.overs,
-        runRate: match.runRate,
+        team: current?.battingTeam ?? teamName(match, match.battingTeamSportmonksId),
+        score: typeof score === 'number' ? score : null,
+        overs: typeof overs === 'number' ? overs : null,
+        runRate: typeof runRate === 'number' ? runRate : null,
         oversLimit: limit,
-        wickets: match.wickets,
+        wickets: typeof wickets === 'number' ? wickets : null,
       });
       const chasing = (match.currentInning ?? 0) >= 2 && match.target != null;
       const projected =

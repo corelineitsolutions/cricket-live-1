@@ -28,9 +28,10 @@ describe('shouldPreferIntentClassifier', () => {
     expect(shouldPreferIntentClassifier('We need 100 runs in 6 overs')).toBe(false);
   });
 
-  it('prefers classifier for chase / short Hinglish', () => {
-    expect(shouldPreferIntentClassifier('Can they chase this?')).toBe(true);
-    expect(shouldPreferIntentClassifier('Ab kitne run per over chahiye?')).toBe(true);
+  it('skips classifier for clear live patterns; still prefers it for vague short asks', () => {
+    expect(shouldPreferIntentClassifier('Can they chase this?')).toBe(false);
+    expect(shouldPreferIntentClassifier('Ab kitne run per over chahiye?')).toBe(false);
+    expect(shouldPreferIntentClassifier('explain this please')).toBe(true);
   });
 });
 
@@ -50,27 +51,42 @@ describe('resolveAskPlan', () => {
     expect(classify).not.toHaveBeenCalled();
   });
 
-  it('uses classifier for chase questions before wrong tools', async () => {
+  it('keeps projected-score asks on live tools even if classifier returns player_history', async () => {
+    const plan = await resolveAskPlan({
+      question: 'What is the projected score for BAN?',
+      language: 'en',
+      matchId: '15292',
+      available,
+      signal: signal(),
+      classifier: mockClassifier(async () => ({
+        ok: true,
+        latencyMs: 10,
+        result: {
+          domain: 'cricket',
+          intent: 'player_history',
+          parameters: { playerName: 'Might BAN Reach' },
+          needsMatch: false,
+          confidence: 0.9,
+        },
+      })),
+    });
+    expect(plan.calls[0]?.name).toBe('project_score');
+    expect(plan.source).toBe('deterministic');
+  });
+
+  it('routes chase questions to live win_probability without waiting on the classifier', async () => {
+    const classify = vi.fn();
     const plan = await resolveAskPlan({
       question: 'Can they chase this?',
       language: 'en',
       matchId: '14193',
       available,
       signal: signal(),
-      classifier: mockClassifier(async () => ({
-        ok: true,
-        latencyMs: 12,
-        result: {
-          domain: 'cricket',
-          intent: 'win_probability',
-          parameters: {},
-          needsMatch: true,
-          confidence: 0.9,
-        },
-      })),
+      classifier: mockClassifier(classify),
     });
-    expect(plan.source).toBe('classifier');
+    expect(plan.source).toBe('deterministic');
     expect(plan.calls[0]?.name).toBe('get_win_probability');
+    expect(classify).not.toHaveBeenCalled();
   });
 
   it('maps Hinglish required rate via classifier', async () => {

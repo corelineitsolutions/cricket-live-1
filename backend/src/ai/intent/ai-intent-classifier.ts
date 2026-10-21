@@ -15,10 +15,11 @@ Rules:
 - needs_match=true for live match questions: RRR, chase chance, win chance, target, next overs, commentary, scorecard, batters, next wicket.
 - required_run_rate = only "required run rate / RRR / kitne run per over chahiye" math from the live chase.
 - win_probability = who wins / can they chase / likely to win / jit sakta (NOT required_run_rate).
-- project_next_overs = runs in next N overs; set parameters.overs when N is given; needs_match=true.
-- project_score = projected final total / what is the target (estimate).
+- project_next_overs = runs in next N overs; set parameters.overs; needs_match=true.
+- project_score = projected final total / target they might set / score in 50 overs (LIVE). needs_match=true. Never player_history.
+- When match_selected=yes, prefer live intents; do not use player_history for projected score, target, or "reach in N overs".
 - next_wicket = when next wicket might fall (agla wicket / kb hogi).
-- player_history = named player career / World Cup / IPL / hundreds / runs scored in a tournament. Put playerName + event/year/format in parameters. needs_match=false.
+- player_history = named player career / World Cup / IPL / hundreds. Put playerName + event/year/format. needs_match=false.
 - head_to_head = head to head / h2h between teams.
 - Do NOT invent match ids, player ids, scores, or statistics.
 - parameters may include only: playerName, event, year, format (T20|ODI|Test), gender (male|female), leaderKind, team1, team2, overs (1-20), runsNeeded, oversRemaining, ballsRemaining.

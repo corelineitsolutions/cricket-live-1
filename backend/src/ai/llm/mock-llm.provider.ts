@@ -49,15 +49,32 @@ const EVENT_PHASE_WORDS =
 const TOSS_WORDS =
   /\btoss\b|टॉस|toss\s+kon|kon\s+.*\btoss|toss\s+jit|jit\s+.*\btoss|who\s+(?:will\s+)?win\s+the\s+toss|toss\s+kon\s+jit/i;
 const WIN_PROB_WORDS =
-  /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|who\s+do\s+you\s+think\s+will\s+win|what\s+do\s+you\s+think\s+who\s+win|match\s+kon\s+jit|kon\s+jit\s+sakt|jit\s+sakt[ae]|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा|मैच\s*कौन\s*जीत|कौन\s*जीत\s*सक/i;
+  /win\s*chance|win\s*prob|probability|who\s+will\s+win|who\s+wins|who\s+do\s+you\s+think\s+will\s+win|what\s+do\s+you\s+think\s+who\s+win|can they chase|chase this|likely to win|match\s+kon\s+jit|kon\s+jit\s+sakt|jit\s+sakt[ae]|favourites?|जीत(?:ने)?\s*की\s*संभावना|कौन\s*जीतेगा|मैच\s*कौन\s*जीत|कौन\s*जीत\s*सक/i;
 /** Hinglish / English: "next wicket kb hogi" — live match, never player-history name guess. */
 const NEXT_WICKET_WORDS =
   /next\s+wicket|wicket\s+(?:kab|kb)\s+hog|kab\s+(?:wicket|out)|kb\s+(?:wicket|out)|when\s+(?:will\s+)?(?:the\s+)?next\s+wicket|अगला\s*विकेट|विकेट\s*कब/i;
-const PROJECT_SCORE_WORDS = /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|अनुमानित\s*स्कोर/i;
+const PROJECT_SCORE_WORDS =
+  /project(?:ed)?\s*score|projected\s*total|final\s*score\s*predict|innings\s*total|what\s+score\s+might|score\s+might|reach\s+in\s+\d+\s*overs?|in\s+(?:the\s+)?(?:full\s+)?(?:50|20)\s*overs?|अनुमानित\s*स्कोर|कितना\s*स्कोर/i;
 /** Target / "kitna target" — 1st innings → project_score; chase → get_match. Never invent score+1 as the official target. */
 const TARGET_WORDS =
-  /\btarget\b|लक्ष्य|kitn[ae]\s+(?:ka\s+)?target|target\s+kitn|de\s+shakt|दे\s*सक|जीतने\s*के\s*लिए|jeetne\s*ke\s*liye/i;
-const NEXT_OVERS_WORDS = /(?:next|coming|next)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?(?:next\s+)?\d+\s*overs?|अगले\s*\d+\s*ओवर/i;
+  /\btarget\b|लक्ष्य|kitn[ae]\s+(?:ka\s+)?target|target\s+kitn|target\s+might|might\s+.+\s+set|set\s+(?:a\s+)?target|mil\s+sakat|de\s+shakt|दे\s*सक|जीतने\s*के\s*लिए|jeetne\s*ke\s*liye/i;
+const NEXT_OVERS_WORDS =
+  /(?:next|coming)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?(?:next\s+)?\d+\s*overs?|how\s+many\s+runs?\s+in\s+(?:the\s+)?next|अगले\s*\d+\s*ओवर/i;
+
+/** Live match questions that must never fall through to Cricsheet archive when matchId is set. */
+export function isLiveMatchQuestion(question: string): boolean {
+  return (
+    wantsLiveRequiredRate(question) ||
+    NEXT_WICKET_WORDS.test(question) ||
+    TOSS_WORDS.test(question) ||
+    WIN_PROB_WORDS.test(question) ||
+    TARGET_WORDS.test(question) ||
+    PROJECT_SCORE_WORDS.test(question) ||
+    NEXT_OVERS_WORDS.test(question) ||
+    PROJECT_SCORE_WORDS.test(question) ||
+    /next\s+wicket|projected|project_score|run\s*rate|\brrr\b/i.test(question)
+  );
+}
 const TEAMS_VS = /([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})\s+(?:vs\.?|v|versus|बनाम)\s+([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})/;
 const NAME_PARTICLES = new Set(['de', 'van', 'du', 'der', 'la', 'le', 'da']);
 const NOT_A_NAME = new Set([
@@ -71,7 +88,10 @@ const NOT_A_NAME = new Set([
   'will', 'vs', 'versus', 'per', 'over', 'overs', 'need', 'needs', 'needed', 'score', 'scoring', 'make', 'get',
   'current', 'batter', 'batters', 'batsman', 'batsmen', 'performing', 'performance', 'wa', 'ql', 'team',
   'next', 'kab', 'kb', 'hogi', 'hoga', 'hogaa', 'sakta', 'sakata', 'sakte', 'kon', 'kaun', 'kya', 'hai', 'hain',
-  'kitna', 'kitne', 'kaise', 'when', 'fall', 'falls', 'out',
+  'kitna', 'kitne', 'kaise', 'when', 'fall', 'falls', 'out', 'might', 'reach', 'set', 'mil', 'sakat', 'total',
+  // Common team codes / short names — never treat as player names in live asks.
+  'ban', 'afg', 'ind', 'aus', 'eng', 'nz', 'pak', 'sl', 'sa', 'wi', 'uae', 'ned', 'ire', 'sco', 'usa',
+  'bangladesh', 'afghanistan', 'india', 'australia', 'england', 'pakistan',
 ]);
 
 const titleCase = (word: string) => {
@@ -143,6 +163,7 @@ function wantsPlayerHistory(question: string): boolean {
   if (wantsLiveRequiredRate(question)) return false;
   if (NEXT_WICKET_WORDS.test(question)) return false;
   if (WIN_PROB_WORDS.test(question) || TOSS_WORDS.test(question)) return false;
+  if (TARGET_WORDS.test(question) || PROJECT_SCORE_WORDS.test(question) || NEXT_OVERS_WORDS.test(question)) return false;
   const name = guessPlayerName(question);
   if (!name) return false;
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
@@ -342,24 +363,7 @@ export function planAskTools(
   if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question) && !TOSS_WORDS.test(p.question)) {
     return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
-  // "Target kitna / de shakta" during 1st innings → projected total (not current score + 1).
-  if (p.matchId && TARGET_WORDS.test(p.question) && available.has('project_score')) {
-    return [{ id: 'mock_1', name: 'project_score', arguments: JSON.stringify({ matchId: p.matchId }) }];
-  }
-  if (p.matchId && TARGET_WORDS.test(p.question) && available.has('get_match')) {
-    return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
-  }
-  const history = planHistory(p, available);
-  if (history.length > 0) return history;
-  // Do not fall back to the live match for archive player / tournament questions.
-  if (
-    wantsPlayerHistory(p.question) ||
-    wantsEventResults(p.question) ||
-    wantsEventLeaders(p.question) ||
-    wantsEventStandings(p.question)
-  ) {
-    return [];
-  }
+  // Live projections / target BEFORE archive — never treat "BAN reach" as a player name.
   const nextOvers = guessNextOvers(p.question);
   if (p.matchId && available.has('project_next_overs') && (NEXT_OVERS_WORDS.test(p.question) || nextOvers)) {
     return [
@@ -370,8 +374,30 @@ export function planAskTools(
       },
     ];
   }
-  if (p.matchId && available.has('project_score') && PROJECT_SCORE_WORDS.test(p.question)) {
+  // "Target kitna / projected score / reach in 50 overs" → live project_score.
+  if (
+    p.matchId &&
+    available.has('project_score') &&
+    (TARGET_WORDS.test(p.question) || PROJECT_SCORE_WORDS.test(p.question))
+  ) {
     return [{ id: 'mock_1', name: 'project_score', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  if (p.matchId && TARGET_WORDS.test(p.question) && available.has('get_match')) {
+    return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
+  // Archive only when this is clearly historical (and not a live projection ask).
+  if (!(p.matchId && isLiveMatchQuestion(p.question))) {
+    const history = planHistory(p, available);
+    if (history.length > 0) return history;
+  }
+  // Do not fall back to the live match for archive player / tournament questions.
+  if (
+    wantsPlayerHistory(p.question) ||
+    wantsEventResults(p.question) ||
+    wantsEventLeaders(p.question) ||
+    wantsEventStandings(p.question)
+  ) {
+    return [];
   }
   if (p.matchId) {
     if (opts.strict) {
@@ -887,7 +913,11 @@ function compose(p: Parsed): string {
       }
     } else if (name === 'project_score') {
       if (!data.available) {
-        lines.push(lang === 'hi' ? 'अनुमानित स्कोर नहीं मिल सका।' : 'Could not project a score.');
+        lines.push(
+          lang === 'hi'
+            ? `अनुमानित स्कोर नहीं मिल सका${data.note ? ` (${str(data.note)})` : ''}.`
+            : `Could not project a score${data.note ? ` (${str(data.note)})` : ''}.`,
+        );
       } else if (data.chaseActive) {
         lines.push(
           lang === 'hi'
@@ -906,6 +936,13 @@ function compose(p: Parsed): string {
           lang === 'hi'
             ? `अनुमानित स्कोर लगभग ${str(data.projectedScore)} (अभी ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`
             : `Projected score about ${str(data.projectedScore)} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`,
+        );
+      }
+      if (data.earlyInnings && data.available) {
+        lines.push(
+          lang === 'hi'
+            ? 'पारी बहुत शुरुआती है — यह अनुमान अभी बदल सकता है।'
+            : 'Very early innings — this projection can change quickly.',
         );
       }
     } else if (name === 'project_next_overs') {

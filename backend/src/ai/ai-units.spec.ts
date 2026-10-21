@@ -231,6 +231,22 @@ describe('planAskTools', () => {
     expect(planAskTools('next wicket kb hogi', '14193', live, { strict: true })[0]?.name).not.toBe('get_player_history');
   });
 
+  it('routes projected score / target / 50-over asks to live project_score, not archive', () => {
+    const tools = new Set(['project_score', 'get_player_history', 'get_win_probability', 'project_next_overs']);
+    for (const q of [
+      'What is the projected score for BAN?',
+      'What score might BAN reach in 50 overs?',
+      'What target might BAN set?',
+      'kitna target mil sakata hai',
+    ]) {
+      const calls = planAskTools(q, '15292', tools, { strict: true });
+      expect(calls[0]?.name, q).toBe('project_score');
+    }
+    expect(planAskTools('How many runs in the next 6 overs?', '15292', tools, { strict: true })[0]?.name).toBe(
+      'project_next_overs',
+    );
+  });
+
   it('passes year on World Cup player questions', () => {
     const calls = planAskTools('suryakumar yadav icc world cup 2023', null, available, { strict: true });
     expect(calls[0]?.name).toBe('get_player_history');

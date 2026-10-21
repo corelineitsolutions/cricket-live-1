@@ -1246,8 +1246,48 @@ export class HistoryQueryService {
 
   /** Cricsheet teams with exactly this name (case-insensitive in MySQL). */
   async teamsByName(name: string): Promise<number[]> {
-    const rows = await this.prisma.histTeam.findMany({ where: { name: { equals: name.trim() } }, select: { id: true }, take: 4 });
-    return rows.map((r) => r.id);
+    const trimmed = name.trim();
+    if (!trimmed) return [];
+    const aliases: Record<string, string[]> = {
+      afg: ['Afghanistan'],
+      afghanistan: ['Afghanistan'],
+      ban: ['Bangladesh'],
+      bangladesh: ['Bangladesh'],
+      ind: ['India'],
+      india: ['India'],
+      aus: ['Australia'],
+      australia: ['Australia'],
+      eng: ['England'],
+      england: ['England'],
+      pak: ['Pakistan'],
+      pakistan: ['Pakistan'],
+      nz: ['New Zealand'],
+      'new zealand': ['New Zealand'],
+      sl: ['Sri Lanka'],
+      'sri lanka': ['Sri Lanka'],
+      sa: ['South Africa'],
+      'south africa': ['South Africa'],
+      wi: ['West Indies'],
+      'west indies': ['West Indies'],
+    };
+    const candidates = [...new Set([trimmed, ...(aliases[trimmed.toLowerCase()] ?? [])])];
+    for (const candidate of candidates) {
+      const exact = await this.prisma.histTeam.findMany({
+        where: { name: { equals: candidate } },
+        select: { id: true },
+        take: 4,
+      });
+      if (exact.length > 0) return exact.map((r) => r.id);
+    }
+    // Soft fallback: surname-style contains (international sides only when possible).
+    const soft = await this.prisma.histTeam.findMany({
+      where: { name: { contains: candidates[0] } },
+      select: { id: true, name: true },
+      take: 8,
+    });
+    const international = soft.filter((r) => !/\b(xi|under|u19|women)\b/i.test(r.name));
+    const pick = international.length > 0 ? international : soft;
+    return pick.slice(0, 4).map((r) => r.id);
   }
 
   async headToHead(a: HistTeamSide, b: HistTeamSide, format: HistoryFormat | null) {
