@@ -288,7 +288,7 @@ Response (`200`):
 
 ### AI assistant (`/ai`)
 
-Answers cricket questions in English or Hindi using live match data (scores, scorecard, recent commentary) and a run-rate calculator. Questions and answers are **not stored**; the backend keeps only daily counters.
+Answers cricket questions in English or Hindi using live match data (scores, scorecard, recent commentary) and a run-rate calculator. By default questions and answers are **not stored** (daily counters only). When `AI_LOG_QUESTIONS=true`, Ask text is saved to `ai_training_questions` for admin review (`GET /admin/ai/training-questions`).
 
 `GET /ai/status` — call before showing the AI entry point:
 

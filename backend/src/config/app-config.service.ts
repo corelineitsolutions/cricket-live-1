@@ -198,4 +198,10 @@ export class AppConfigService {
     const value = this.config.get<boolean | string>('AI_HISTORY_ENABLED') ?? false;
     return value === true || value === 'true';
   }
+
+  /** Store Ask questions for Hinglish/routing training. Keep false in public production unless intentional. */
+  get aiLogQuestions(): boolean {
+    const value = this.config.get<boolean | string>('AI_LOG_QUESTIONS') ?? false;
+    return value === true || value === 'true';
+  }
 }

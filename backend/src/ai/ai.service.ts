@@ -13,6 +13,7 @@ import { RedisService } from '../redis/redis.service';
 import { generalSuggestions, matchSuggestions } from './ai-suggestions';
 import { AI_DISCLAIMER, AiErrorCode, LLM_PROVIDER } from './ai.constants';
 import { AiGateway } from './ai-gateway';
+import { AiTrainingService } from './ai-training.service';
 import { AiUsageService, UsageIncrements, utcDay } from './ai-usage.service';
 import { AI_LANGUAGES, AI_QUESTION_MAX_LENGTH, AiStatusDto, AskDto, AskResultDto, SuggestionsResultDto } from './dto/ask.dto';
 import { LlmProvider, LlmProviderError } from './llm/llm.types';
@@ -56,6 +57,7 @@ export class AiService {
     private readonly config: AppConfigService,
     private readonly redis: RedisService,
     private readonly usage: AiUsageService,
+    private readonly training: AiTrainingService,
     matches: MatchesService,
     details: MatchDetailService,
     history: HistoryQueryService,
@@ -117,6 +119,12 @@ export class AiService {
     const base: UsageIncrements = { requests: 1, [language === 'hi' ? 'languageHi' : 'languageEn']: 1 };
     const refuse = async (field: keyof UsageIncrements, error: HttpException, reason: string): Promise<never> => {
       await this.usage.record(this.providerName, this.modelName, { ...base, [field]: 1 });
+      await this.training.logAsk({
+        question: dto.question,
+        language,
+        matchId: dto.matchId,
+        outcome: `refused_${reason}`,
+      });
       logEvent(this.logger, 'log', 'ai-ask', { outcome: 'refused', reason, language });
       throw error;
     };
@@ -188,6 +196,14 @@ export class AiService {
         latencyMsTotal: latencyMs,
         costMicros,
       });
+      await this.training.logAsk({
+        question: dto.question,
+        language,
+        matchId: dto.matchId,
+        outcome: 'answered',
+        toolsUsed: result.toolsUsed,
+        answer: result.answer,
+      });
       logEvent(this.logger, 'log', 'ai-ask', {
         outcome: 'answered',
         provider: this.providerName,
@@ -211,6 +227,12 @@ export class AiService {
       const timedOut = controller.signal.aborted || (error instanceof LlmProviderError && error.kind === 'timeout');
       const rateLimited = error instanceof LlmProviderError && error.status === 429;
       await this.usage.record(this.providerName, this.modelName, { ...base, [timedOut ? 'timeouts' : 'errors']: 1 });
+      await this.training.logAsk({
+        question: dto.question,
+        language,
+        matchId: dto.matchId,
+        outcome: timedOut ? 'timeout' : rateLimited ? 'rate_limited' : 'error',
+      });
       logEvent(this.logger, 'warn', 'ai-ask', {
         outcome: timedOut ? 'timeout' : rateLimited ? 'rate_limited' : 'error',
         provider: this.providerName,

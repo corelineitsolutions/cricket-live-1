@@ -44,6 +44,7 @@ interface AiOverview {
     provider: string;
     model: string;
     mocked: boolean;
+    logQuestions?: boolean;
     dailyTokenBudget: number;
     tokensUsedToday: number | null;
     costPer1kInputTokens: number;
@@ -59,6 +60,25 @@ interface AiOverview {
   };
   today: Array<{ provider: string; model: string; counters: UsageCounters; estimatedCost: number }> | null;
   history: UsageRow[] | null;
+}
+
+interface TrainingQuestion {
+  id: string;
+  question: string;
+  language: string;
+  matchId: string | null;
+  outcome: string;
+  toolsUsed: string[] | unknown;
+  answerPreview: string | null;
+  needsReview: boolean;
+  createdAt: string;
+}
+
+interface TrainingList {
+  loggingEnabled: boolean;
+  total: number;
+  needsReview: number;
+  items: TrainingQuestion[];
 }
 
 const refused = (c: UsageCounters) => c.refusedDisabled + c.refusedQuota + c.refusedBudget + c.refusedBusy;
@@ -77,8 +97,36 @@ const COLUMNS: Column<UsageRow>[] = [
   { key: 'cost', header: 'Est. cost', render: (r) => r.estimatedCost.toFixed(4), className: 'text-right' },
 ];
 
+const TRAINING_COLUMNS: Column<TrainingQuestion>[] = [
+  {
+    key: 'createdAt',
+    header: 'When',
+    render: (r) => new Date(r.createdAt).toLocaleString(),
+  },
+  { key: 'language', header: 'Lang', render: (r) => r.language },
+  { key: 'question', header: 'Question', render: (r) => r.question },
+  {
+    key: 'tools',
+    header: 'Tools',
+    render: (r) => (Array.isArray(r.toolsUsed) ? r.toolsUsed.join(', ') : '—'),
+  },
+  {
+    key: 'review',
+    header: 'Review',
+    render: (r) => (
+      <StatusBadge tone={r.needsReview ? 'warning' : 'success'}>{r.needsReview ? 'Needs review' : 'OK'}</StatusBadge>
+    ),
+  },
+  {
+    key: 'answer',
+    header: 'Answer preview',
+    render: (r) => r.answerPreview ?? '—',
+  },
+];
+
 export default function AiPage() {
   const { data, error, loading, refreshing, reload } = useApi<AiOverview>('/admin/ai/overview', { pollMs: REFRESH_MS });
+  const training = useApi<TrainingList>('/admin/ai/training-questions?limit=100', { pollMs: REFRESH_MS });
 
   if (loading) return <LoadingState label="Loading AI assistant…" />;
   if (!data) {
@@ -102,9 +150,21 @@ export default function AiPage() {
     <>
       <PageHeader
         title="AI assistant"
-        description="Aggregate counters only. Questions, answers, device ids and IP addresses are never stored."
+        description={
+          status.logQuestions
+            ? 'Usage counters plus opt-in training questions (AI_LOG_QUESTIONS). Device ids and IPs are never stored.'
+            : 'Aggregate counters only. Question text is stored only when AI_LOG_QUESTIONS=true.'
+        }
         actions={
-          <Button variant="secondary" size="sm" onClick={reload} loading={refreshing}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              reload();
+              training.reload();
+            }}
+            loading={refreshing || training.refreshing}
+          >
             Refresh
           </Button>
         }
@@ -122,7 +182,15 @@ export default function AiPage() {
       )}
       {status.mocked && status.enabled && (
         <div className="mb-4">
-          <InlineNotice tone="info">Demo mode: answers come from templates over live data, without an AI model (no cost).</InlineNotice>
+          <InlineNotice tone="info">Mock mode (no Groq): answers from tools + templates. Safe for team question drills.</InlineNotice>
+        </div>
+      )}
+      {status.logQuestions && (
+        <div className="mb-4">
+          <InlineNotice tone="info">
+            Question logging is on. Team Ask text is saved for routing training
+            {training.data ? ` (${formatNumber(training.data.total)} total, ${formatNumber(training.data.needsReview)} need review)` : ''}.
+          </InlineNotice>
         </div>
       )}
 
@@ -191,6 +259,31 @@ export default function AiPage() {
             <DataTable columns={COLUMNS} rows={data.history} rowKey={(r) => `${r.day}-${r.provider}-${r.model}`} busy={refreshing} />
           ) : (
             <EmptyState title="No usage yet" description={data.history === null ? 'Usage history is unavailable (MySQL or Redis down).' : 'Counters appear after the first question.'} />
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6">
+        <Panel
+          title="Training questions"
+          description="Hinglish / routing drills. Requires AI_LOG_QUESTIONS=true and the ai_training_questions migration."
+        >
+          {!status.logQuestions ? (
+            <EmptyState
+              title="Logging is off"
+              description="Set AI_LOG_QUESTIONS=true on the API, run the migration, and restart. Then every Ask is listed here."
+            />
+          ) : training.error && !training.data ? (
+            <ErrorState title="Could not load training questions" error={training.error} onRetry={training.reload} />
+          ) : training.data && training.data.items.length > 0 ? (
+            <DataTable
+              columns={TRAINING_COLUMNS}
+              rows={training.data.items}
+              rowKey={(r) => r.id}
+              busy={training.refreshing}
+            />
+          ) : (
+            <EmptyState title="No questions yet" description="Ask from the app or admin match AI. Weak or unmatched answers are flagged Needs review." />
           )}
         </Panel>
       </div>

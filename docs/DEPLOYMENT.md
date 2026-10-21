@@ -419,7 +419,7 @@ Off until `AI_ENABLED=true`. Three ways to run it:
   registered and label numbers as estimates.
 - Limits: 5 questions per device per minute, 50 per day, 20 per IP per minute, `AI_MAX_CONCURRENT` per API
   instance, and the shared daily token budget.
-- Questions, answers, device ids and IP addresses are never stored or logged. Only daily counters are kept
+- By default questions, answers, device ids and IP addresses are never stored. Only daily counters are kept. For team training set `AI_LOG_QUESTIONS=true` (stores Ask text in `ai_training_questions`; view in admin AI → Training questions). Keep Groq off: `LLM_PROVIDER=mock`
   (Redis, flushed to `ai_usage_daily` every 5 minutes) and shown on the admin **AI assistant** page.
 - Changing these settings needs an API restart (`pm2 reload live-score-api`); the worker is not affected.
   Confirm `mocked: false` on the admin Match AI panel after switching to a real provider.

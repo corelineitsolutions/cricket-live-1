@@ -54,6 +54,8 @@ export const envValidationSchema = Joi.object({
   // Below nginx proxy_read_timeout (30 s in deploy/nginx), so clients get AI_TIMEOUT rather than a 504 page.
   AI_REQUEST_TIMEOUT_MS: Joi.number().integer().min(2000).max(300000).default(25000),
   AI_HISTORY_ENABLED: Joi.boolean().default(false),
+  /** When true, store Ask question text for team training (admin list). Off by default for privacy. */
+  AI_LOG_QUESTIONS: Joi.boolean().default(false),
 })
   .unknown(true)
   .prefs({ abortEarly: false, convert: true });

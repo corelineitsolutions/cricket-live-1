@@ -647,6 +647,24 @@ model AiUsageDaily {
   @@map("ai_usage_daily")
 }
 
+/// Opt-in training log (AI_LOG_QUESTIONS=true). Used by the team to improve Hinglish routing.
+/// Turn off in production if you do not want question text stored.
+model AiTrainingQuestion {
+  id         String   @id @default(cuid())
+  question   String   @db.VarChar(500)
+  language   String   @db.VarChar(8)
+  matchId    String?  @map("match_id") @db.VarChar(16)
+  outcome    String   @db.VarChar(32)
+  toolsUsed  Json     @map("tools_used")
+  answerPreview String? @map("answer_preview") @db.VarChar(280)
+  needsReview Boolean @default(false) @map("needs_review")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([needsReview, createdAt])
+  @@map("ai_training_questions")
+}
+
 model HistAggBuild {
   id         Int       @id @default(autoincrement())
   status     String    @db.VarChar(16)
