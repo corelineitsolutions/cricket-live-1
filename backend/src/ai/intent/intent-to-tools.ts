@@ -73,12 +73,17 @@ export function intentToToolCalls(
       if (has('get_recent_commentary')) calls.push(call('intent_2', 'get_recent_commentary', { matchId, limit: 6 }));
       return calls;
     }
-    case 'project_score':
+    case 'project_score': {
+      // Small models sometimes label "next N overs" as project_score but still send overs.
+      if (p.overs != null && matchId && has('project_next_overs')) {
+        return [call('intent_1', 'project_next_overs', { matchId, overs: p.overs })];
+      }
       return matchId && has('project_score')
         ? [call('intent_1', 'project_score', { matchId })]
         : matchId && has('get_match')
           ? [call('intent_1', 'get_match', { matchId })]
           : [];
+    }
     case 'project_next_overs': {
       if (!matchId || !has('project_next_overs')) return [];
       return [call('intent_1', 'project_next_overs', { matchId, overs: p.overs ?? 6 })];

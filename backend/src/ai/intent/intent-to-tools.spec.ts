@@ -81,4 +81,15 @@ describe('intentToToolCalls', () => {
   it('returns no tools for out_of_domain', () => {
     expect(intentToToolCalls(base('out_of_domain', { domain: 'other' }), 'weather?', null, ALL)).toEqual([]);
   });
+
+  it('treats project_score + overs as project_next_overs', () => {
+    const calls = intentToToolCalls(
+      base('project_score', { parameters: { overs: 5 }, needsMatch: true }),
+      'runs in next five overs',
+      '14193',
+      ALL,
+    );
+    expect(calls[0]?.name).toBe('project_next_overs');
+    expect(JSON.parse(calls[0].arguments)).toEqual({ matchId: '14193', overs: 5 });
+  });
 });
