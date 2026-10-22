@@ -12,10 +12,12 @@ import {
   parseMatchProbHistory,
   parseTossComparison,
   parseTossResult,
+  powerplayOversFor,
   projectInningsScore,
   projectNextOvers,
   recentOversRunRate,
   strikeRateToRunRate,
+  sumFirstOversRuns,
 } from './prediction-tools';
 
 const match = {
@@ -112,18 +114,37 @@ describe('prediction helpers', () => {
 
   it('parses liveMatch prediction fields when present', () => {
     const parsed = parseLiveMatchPrediction(
-      { fav_team: 'Delhi Royals', team_a_per: 42, team_b_per: 58, projected_score: 175 },
+      { fav_team: 'Delhi Royals', team_a_per: 42, team_b_per: 58, projected_score: 175, next_balls: 14, next_balls_runs: 28 },
       match,
     );
     expect(parsed).toMatchObject({
       available: true,
       favouriteTeam: 'Delhi Royals',
       projectedScore: 175,
+      nextBallsWindow: { balls: 14, runs: 28 },
       teams: [
         { team: 'Delhi Royals', probabilityPercent: 42 },
         { team: 'Mumbai Strikers', probabilityPercent: 58 },
       ],
     });
+  });
+
+  it('sums first N overs from matchOverHistory', () => {
+    expect(powerplayOversFor('T20')).toBe(6);
+    expect(powerplayOversFor('ODI')).toBe(10);
+    const summed = sumFirstOversRuns(
+      [
+        { over: 1, runs: 8 },
+        { over: 2, runs: 12 },
+        { over: 3, runs: 6 },
+        { over: 4, runs: 10 },
+        { over: 5, runs: 9 },
+        { over: 6, runs: 11 },
+        { over: 7, runs: 4 },
+      ],
+      6,
+    );
+    expect(summed).toMatchObject({ available: true, complete: true, runs: 56, oversCounted: 6 });
   });
 
   it('ignores Draw/Tie as a favourite team label', () => {

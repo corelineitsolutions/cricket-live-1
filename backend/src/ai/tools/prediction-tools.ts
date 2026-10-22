@@ -231,8 +231,8 @@ export function projectNextOvers(input: {
   });
 }
 
-/** Average runs in the last few completed overs from Latiyal matchOverHistory (best-effort). */
-export function recentOversRunRate(data: unknown, lastN = 3): number | null {
+/** Flatten over-by-over rows from Latiyal matchOverHistory (best-effort). */
+export function listOverHistoryRows(data: unknown): Array<Record<string, unknown>> {
   const root = asRecord(data);
   const list: unknown[] = Array.isArray(data)
     ? data
@@ -243,17 +243,101 @@ export function recentOversRunRate(data: unknown, lastN = 3): number | null {
         : Array.isArray(root?.history)
           ? (root!.history as unknown[])
           : [];
-  const runs: number[] = [];
-  for (const item of list) {
-    const row = asRecord(item);
-    if (!row) continue;
-    const r = num(row.runs ?? row.total_runs ?? row.run ?? row.score ?? row.over_runs ?? row.runs_scored);
-    if (r !== null && r >= 0 && r <= 36) runs.push(r);
-  }
+  return list.map(asRecord).filter((row): row is Record<string, unknown> => row !== null);
+}
+
+function overNumberOf(row: Record<string, unknown>): number | null {
+  const n = num(row.over ?? row.over_no ?? row.over_number ?? row.ov ?? row.overs ?? row.overNo);
+  if (n === null) return null;
+  // Some feeds use 0-based over index; cricket overs are 1..N.
+  if (n >= 0 && n < 1) return 1;
+  return Math.floor(n);
+}
+
+function overRunsOf(row: Record<string, unknown>): number | null {
+  const r = num(row.runs ?? row.total_runs ?? row.run ?? row.score ?? row.over_runs ?? row.runs_scored);
+  if (r === null || r < 0 || r > 36) return null;
+  return r;
+}
+
+/** Average runs in the last few completed overs from Latiyal matchOverHistory (best-effort). */
+export function recentOversRunRate(data: unknown, lastN = 3): number | null {
+  const runs = listOverHistoryRows(data)
+    .map(overRunsOf)
+    .filter((r): r is number => r !== null);
   if (runs.length === 0) return null;
   const slice = runs.slice(-Math.max(1, lastN));
   const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
   return Math.round(avg * 100) / 100;
+}
+
+/**
+ * Sum runs in overs [1..toOver] from matchOverHistory.
+ * Used for "first 6 overs / powerplay kitne run" on the LIVE innings (not archive).
+ */
+export function sumFirstOversRuns(
+  data: unknown,
+  toOver: number,
+): {
+  available: boolean;
+  runs: number | null;
+  oversCounted: number;
+  oversRequested: number;
+  complete: boolean;
+  perOver: Array<{ over: number; runs: number }>;
+  note: string | null;
+} {
+  const oversRequested = Math.max(1, Math.min(20, Math.floor(toOver)));
+  const rows = listOverHistoryRows(data);
+  const byOver = new Map<number, number>();
+  let sequential = 0;
+  for (const row of rows) {
+    const runs = overRunsOf(row);
+    if (runs === null) continue;
+    const overNo = overNumberOf(row);
+    if (overNo !== null && overNo >= 1 && overNo <= 50) {
+      byOver.set(overNo, (byOver.get(overNo) ?? 0) + runs);
+    } else {
+      sequential += 1;
+      if (sequential <= oversRequested) byOver.set(sequential, (byOver.get(sequential) ?? 0) + runs);
+    }
+  }
+  const perOver: Array<{ over: number; runs: number }> = [];
+  for (let o = 1; o <= oversRequested; o++) {
+    if (byOver.has(o)) perOver.push({ over: o, runs: byOver.get(o)! });
+  }
+  if (perOver.length === 0) {
+    return {
+      available: false,
+      runs: null,
+      oversCounted: 0,
+      oversRequested,
+      complete: false,
+      perOver: [],
+      note: 'Over-by-over history not available yet for this innings.',
+    };
+  }
+  const runs = perOver.reduce((s, x) => s + x.runs, 0);
+  const complete = perOver.length >= oversRequested;
+  return {
+    available: true,
+    runs,
+    oversCounted: perOver.length,
+    oversRequested,
+    complete,
+    perOver,
+    note: complete
+      ? null
+      : `Only ${perOver.length} of ${oversRequested} overs completed so far — this is the live total through those overs, not a finished powerplay.`,
+  };
+}
+
+/** Default powerplay length by format. */
+export function powerplayOversFor(matchType: string | null): number {
+  const limit = oversLimitFor(matchType);
+  if (limit === 50) return 10;
+  if (limit === 10) return 3;
+  return 6; // T20 / default
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -394,6 +478,7 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
   favouriteTeam: string | null;
   teams: Array<{ team: string; probabilityPercent: number }>;
   projectedScore: number | null;
+  nextBallsWindow: { balls: number; runs: number } | null;
   note: string | null;
 } {
   const empty = {
@@ -401,6 +486,7 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
     favouriteTeam: null as string | null,
     teams: [] as Array<{ team: string; probabilityPercent: number }>,
     projectedScore: null as number | null,
+    nextBallsWindow: null as { balls: number; runs: number } | null,
     note: null as string | null,
   };
   const root = asRecord(data);
@@ -433,14 +519,37 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
       { team: match.visitorTeam.name ?? 'Team B', probabilityPercent: Math.round(n2 * 10) / 10 },
     );
   }
-  const projectedScore = num(src.projected_score ?? src.project_score ?? src.predicted_score ?? src.s_score ?? src.exp_score);
+  const projectedScore = num(
+    src.projected_score ??
+      src.project_score ??
+      src.predicted_score ??
+      src.predicted_total ??
+      src.proj_score ??
+      src.s_score ??
+      src.exp_score ??
+      src.expected_score ??
+      src.twenty_over_score ??
+      src.t20_score ??
+      src.score_prediction ??
+      src.s_team_score ??
+      root?.projected_score ??
+      root?.project_score ??
+      root?.predicted_score,
+  );
 
-  if (!favouriteTeam && teams.length === 0 && projectedScore === null) return empty;
+  // Optional session-style markets: "next 14 balls → 28 runs" style pairs when present.
+  const nextBalls = num(src.next_balls ?? src.next_ball ?? src.balls_ahead ?? src.session_balls);
+  const nextBallsRuns = num(
+    src.next_balls_runs ?? src.next_ball_runs ?? src.session_runs ?? src.runs_in_balls ?? src.min_runs ?? src.max_runs,
+  );
+
+  if (!favouriteTeam && teams.length === 0 && projectedScore === null && nextBalls === null) return empty;
   return {
     available: true,
     favouriteTeam,
     teams,
     projectedScore,
+    nextBallsWindow: nextBalls !== null && nextBallsRuns !== null ? { balls: nextBalls, runs: nextBallsRuns } : null,
     note: ESTIMATE_NOTE + ' Source: Latiyal liveMatch prediction fields (when present).',
   };
 }
@@ -870,8 +979,8 @@ export function createPredictionTools(
     definition: {
       name: 'project_score',
       description:
-        'Projected innings total for the batting side from current run rate and overs remaining (limited overs only). ' +
-        'Arithmetic estimate — not a guarantee.',
+        'Projected innings total / estimated target for the batting side. Prefers Latiyal liveMatch projected_score ' +
+        '(20-over / final prediction when the feed sends it), blended with current run-rate arithmetic. Estimate only.',
       parameters: matchIdSchema,
     },
     parse: getWinProbability.parse,
@@ -898,8 +1007,44 @@ export function createPredictionTools(
         wickets: typeof wickets === 'number' ? wickets : null,
       });
       const chasing = (match.currentInning ?? 0) >= 2 && match.target != null;
-      const projected =
+      const crrProjected =
         projection.available && 'projectedScore' in projection ? Number(projection.projectedScore) : null;
+
+      let latiyalProjected: number | null = null;
+      let nextBallsWindow: { balls: number; runs: number } | null = null;
+      try {
+        const live = await feeds.get('liveMatch', { match_id: matchId });
+        const parsed = parseLiveMatchPrediction(live.data, match);
+        if (parsed.projectedScore != null && parsed.projectedScore > 0) latiyalProjected = parsed.projectedScore;
+        if (parsed.nextBallsWindow) nextBallsWindow = parsed.nextBallsWindow;
+      } catch {
+        /* optional feed */
+      }
+
+      let projected = crrProjected;
+      let method: 'current_rr' | 'latiyal_projection' | 'blended_latiyal_and_crr' | 'unavailable' = 'unavailable';
+      if (latiyalProjected != null && crrProjected != null && Number.isFinite(crrProjected)) {
+        projected = Math.round(latiyalProjected * 0.65 + crrProjected * 0.35);
+        method = 'blended_latiyal_and_crr';
+      } else if (latiyalProjected != null) {
+        projected = latiyalProjected;
+        method = 'latiyal_projection';
+      } else if (crrProjected != null && Number.isFinite(crrProjected)) {
+        projected = crrProjected;
+        method = 'current_rr';
+      }
+
+      const methodNote =
+        method === 'blended_latiyal_and_crr'
+          ? `${ESTIMATE_NOTE} Blended Latiyal live projection (${latiyalProjected}) with current RR projection (${crrProjected}).`
+          : method === 'latiyal_projection'
+            ? `${ESTIMATE_NOTE} From Latiyal liveMatch projected score (not only CRR).`
+            : method === 'current_rr'
+              ? projection.available && 'note' in projection
+                ? String(projection.note)
+                : ESTIMATE_NOTE
+              : 'No projection available yet.';
+
       return {
         matchId,
         matchType: match.matchType,
@@ -914,23 +1059,34 @@ export function createPredictionTools(
         estimatedChaseTargetIfFinishNearProjection:
           !chasing && projected != null && Number.isFinite(projected) ? projected + 1 : null,
         ...projection,
+        available: projected != null,
+        projectedScore: projected,
+        crrProjectedScore: crrProjected,
+        latiyalProjectedScore: latiyalProjected,
+        projectionMethod: method,
+        nextBallsWindow,
+        note: methodNote,
       };
     },
     label: ({ matchId }) => `Projected score ${matchId}`,
   };
 
-  const projectNextOversTool: AiTool<{ matchId: string; overs: number }> = {
+  const getFirstOversScore: AiTool<{ matchId: string; overs: number }> = {
     definition: {
-      name: 'project_next_overs',
+      name: 'get_first_overs_score',
       description:
-        'Estimate how many runs the batting side may score in the next N overs (e.g. "how many runs in next 6 overs"). ' +
-        'Blends live run rate, recent overs, batter@venue / bowler economy / batter-vs-bowler from the Cricsheet archive when identity maps exist, ' +
-        'and includes Latiyal live prediction / win% as context. Returns a low–mid–high band. Say it is an estimate, not certain.',
+        'How many runs in the FIRST N overs / powerplay of THIS live innings (e.g. "first 6 overs me kitne run", "powerplay score"). ' +
+        'Uses Latiyal matchOverHistory — not Cricsheet archive, and not "next N overs".',
       parameters: {
         type: 'object',
         properties: {
           matchId: { type: 'string', description: 'Numeric match id.' },
-          overs: { type: 'integer', minimum: 1, maximum: 20, description: 'How many upcoming overs to estimate (default 6).' },
+          overs: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 20,
+            description: 'First N overs (powerplay: T20=6, ODI=10). Default 6.',
+          },
         },
         required: ['matchId'],
         additionalProperties: false,
@@ -947,7 +1103,116 @@ export function createPredictionTools(
       const match = await matches.getMatch(matchId);
       const summary = summarizeMatch(match);
       const team = summary.current?.battingTeam ?? teamName(match, match.battingTeamSportmonksId);
+      const ballsBowled = oversToBalls(match.overs ?? 0) ?? 0;
+      const phaseBalls = overs * 6;
+      let overHistory: unknown = null;
+      let stale = false;
+      try {
+        const feed = await feeds.get('matchOverHistory', { match_id: matchId });
+        overHistory = feed.data;
+        stale = feed.stale;
+      } catch {
+        /* optional */
+      }
+      const summed = sumFirstOversRuns(overHistory, overs);
+      // Fallback: if history missing but we have already completed the phase, use live score.
+      const phaseDone = ballsBowled >= phaseBalls;
+      let runs = summed.runs;
+      let source: 'over_history' | 'live_score' | 'unavailable' = summed.available ? 'over_history' : 'unavailable';
+      if ((!summed.available || runs === null) && phaseDone && typeof match.score === 'number') {
+        runs = match.score;
+        source = 'live_score';
+      }
+      const remainingInPhase = Math.max(0, phaseBalls - ballsBowled);
+      let remainingEstimate: ReturnType<typeof projectNextOvers> | null = null;
+      if (!phaseDone && remainingInPhase > 0 && match.runRate != null && match.runRate > 0) {
+        remainingEstimate = projectNextOvers({
+          team,
+          score: match.score,
+          overs: match.overs,
+          runRate: match.runRate,
+          oversAhead: Math.round((remainingInPhase / 6) * 100) / 100,
+        });
+      }
+      return {
+        matchId,
+        matchType: match.matchType,
+        isLive: match.isLive,
+        team,
+        oversRequested: overs,
+        currentScore: match.score,
+        currentOvers: match.overs,
+        wickets: match.wickets,
+        phaseDone,
+        phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
+        available: runs != null,
+        runsInPhase: runs,
+        oversCounted: summed.oversCounted,
+        complete: summed.complete || phaseDone,
+        perOver: summed.perOver,
+        source,
+        stale,
+        remainingBallsInPhase: remainingInPhase,
+        remainingEstimate: remainingEstimate?.available ? remainingEstimate : null,
+        note:
+          runs != null
+            ? summed.note ??
+              (phaseDone
+                ? `Actual runs in the first ${overs} overs of this innings.`
+                : `Innings still inside the first ${overs} overs — showing runs so far.`)
+            : 'Could not read first-overs totals from live over history yet.',
+      };
+    },
+    label: ({ matchId, overs }) => `First ${overs} overs ${matchId}`,
+  };
+
+  const projectNextOversTool: AiTool<{ matchId: string; overs: number; balls?: number }> = {
+    definition: {
+      name: 'project_next_overs',
+      description:
+        'Estimate how many runs the batting side may score in the next N overs OR next N balls ' +
+        '(e.g. "next 6 overs", "next 14 balls"). Blends live RR, recent overs, and archive signals when mapped. ' +
+        'If Latiyal sends a next-balls session market, include it as context. Estimate only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          matchId: { type: 'string', description: 'Numeric match id.' },
+          overs: { type: 'number', minimum: 0.1, maximum: 20, description: 'Upcoming overs to estimate (default 6).' },
+          balls: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 120,
+            description: 'Optional: upcoming balls instead of overs (e.g. 14). Converted to overs/6.',
+          },
+        },
+        required: ['matchId'],
+        additionalProperties: false,
+      },
+    },
+    parse: (raw) => {
+      const matchId = parseMatchId(raw.matchId);
+      if (!matchId) return 'matchId must be a numeric id';
+      const balls = raw.balls === undefined ? undefined : parseIntInRange(raw.balls, 1, 120);
+      if (raw.balls !== undefined && balls === null) return 'balls must be an integer from 1 to 120';
+      let overs: number;
+      if (balls != null) {
+        overs = Math.round((balls / 6) * 100) / 100;
+      } else if (raw.overs === undefined) {
+        overs = 6;
+      } else {
+        const n = typeof raw.overs === 'number' ? raw.overs : Number(raw.overs);
+        if (!Number.isFinite(n) || n < 0.1 || n > 20) return 'overs must be between 0.1 and 20';
+        overs = Math.round(n * 100) / 100;
+      }
+      return { matchId, overs, ...(balls != null ? { balls } : {}) };
+    },
+    run: async ({ matchId, overs, balls }) => {
+      const match = await matches.getMatch(matchId);
+      const summary = summarizeMatch(match);
+      const team = summary.current?.battingTeam ?? teamName(match, match.battingTeamSportmonksId);
       const { signals, context } = await collectNextOversSignals(match, feeds, matchId, opts);
+      const latiyalWindow = (context.latiyalLivePrediction as { nextBallsWindow?: { balls: number; runs: number } } | undefined)
+        ?.nextBallsWindow;
       const estimate =
         signals.length > 0
           ? blendNextOversEstimate({
@@ -968,12 +1233,15 @@ export function createPredictionTools(
         matchId,
         matchType: match.matchType,
         isLive: match.isLive,
+        ballsAhead: balls ?? null,
+        latiyalNextBallsWindow: latiyalWindow ?? null,
         ...estimate,
         context,
       };
     },
-    label: ({ matchId, overs }) => `Next ${overs} overs ${matchId}`,
+    label: ({ matchId, overs, balls }) =>
+      balls != null ? `Next ${balls} balls ${matchId}` : `Next ${overs} overs ${matchId}`,
   };
 
-  return [getWinProbability, getTossPrediction, projectScore, projectNextOversTool] as AiTool[];
+  return [getWinProbability, getTossPrediction, projectScore, getFirstOversScore, projectNextOversTool] as AiTool[];
 }

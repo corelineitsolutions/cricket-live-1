@@ -84,8 +84,15 @@ export function intentToToolCalls(
           ? [call('intent_1', 'get_match', { matchId })]
           : [];
     }
+    case 'first_overs_score': {
+      if (!matchId || !has('get_first_overs_score')) return [];
+      return [call('intent_1', 'get_first_overs_score', { matchId, overs: p.overs ?? 6 })];
+    }
     case 'project_next_overs': {
       if (!matchId || !has('project_next_overs')) return [];
+      if (p.ballsRemaining != null) {
+        return [call('intent_1', 'project_next_overs', { matchId, balls: p.ballsRemaining })];
+      }
       return [call('intent_1', 'project_next_overs', { matchId, overs: p.overs ?? 6 })];
     }
     case 'match_summary':

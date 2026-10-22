@@ -59,7 +59,12 @@ const PROJECT_SCORE_WORDS =
 const TARGET_WORDS =
   /\btarget\b|लक्ष्य|kitn[ae]\s+(?:ka\s+)?target|target\s+kitn|target\s+might|might\s+.+\s+set|set\s+(?:a\s+)?target|mil\s+sakat|de\s+shakt|दे\s*सक|जीतने\s*के\s*लिए|jeetne\s*ke\s*liye/i;
 const NEXT_OVERS_WORDS =
-  /(?:next|coming)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?(?:next\s+)?\d+\s*overs?|how\s+many\s+runs?\s+in\s+(?:the\s+)?next|अगले\s*\d+\s*ओवर/i;
+  /(?:next|coming|agle|agli)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?next\s+\d+\s*overs?|how\s+many\s+runs?\s+in\s+(?:the\s+)?next|अगले\s*\d+\s*ओवर/i;
+const NEXT_BALLS_WORDS =
+  /(?:next|coming|agle|agli)\s*\d+\s*balls?|runs?\s+in\s+(?:the\s+)?next\s+\d+\s*balls?|अगले\s*\d+\s*गेंद/i;
+/** First N overs / powerplay of THIS innings — live over history, never archive or "next overs". */
+const FIRST_OVERS_WORDS =
+  /(?:first|pehle|starting|opening|initial)\s*\d{0,2}\s*overs?|(?:in\s+)?(?:the\s+)?first\s+(?:power\s*play|powerplay)|power\s*play|powerplay|पहले\s*\d*|पावर\s*प्ले|shuruati\s*\d*\s*over/i;
 
 /** Live match questions that must never fall through to Cricsheet archive when matchId is set. */
 export function isLiveMatchQuestion(question: string): boolean {
@@ -71,7 +76,8 @@ export function isLiveMatchQuestion(question: string): boolean {
     TARGET_WORDS.test(question) ||
     PROJECT_SCORE_WORDS.test(question) ||
     NEXT_OVERS_WORDS.test(question) ||
-    PROJECT_SCORE_WORDS.test(question) ||
+    NEXT_BALLS_WORDS.test(question) ||
+    FIRST_OVERS_WORDS.test(question) ||
     /next\s+wicket|projected|project_score|run\s*rate|\brrr\b/i.test(question)
   );
 }
@@ -202,11 +208,42 @@ function iplArgs(question: string): Record<string, unknown> {
   return args;
 }
 
+/** "Next N overs" only — must NOT match "first 6 overs" / powerplay. */
 function guessNextOvers(question: string): number | null {
-  const m = /(?:next|coming)?\s*(\d{1,2})\s*overs?|अगले\s*(\d{1,2})\s*ओवर/i.exec(question);
+  if (FIRST_OVERS_WORDS.test(question) && !/(?:next|coming|agle|agli|अगले)/i.test(question)) return null;
+  const m =
+    /(?:next|coming|agle|agli)\s*(\d{1,2})\s*overs?|runs?\s+in\s+(?:the\s+)?next\s+(\d{1,2})\s*overs?|अगले\s*(\d{1,2})\s*ओवर/i.exec(
+      question,
+    );
   if (!m) return null;
-  const n = Number(m[1] || m[2]);
+  const n = Number(m[1] || m[2] || m[3]);
   return n >= 1 && n <= 20 ? n : null;
+}
+
+function guessNextBalls(question: string): number | null {
+  const m =
+    /(?:next|coming|agle|agli)\s*(\d{1,2})\s*balls?|runs?\s+in\s+(?:the\s+)?next\s+(\d{1,2})\s*balls?|अगले\s*(\d{1,2})\s*गेंद/i.exec(
+      question,
+    );
+  if (!m) return null;
+  const n = Number(m[1] || m[2] || m[3]);
+  return n >= 1 && n <= 120 ? n : null;
+}
+
+/** First N overs / powerplay length for THIS innings. */
+export function guessFirstOvers(question: string): number | null {
+  if (!FIRST_OVERS_WORDS.test(question)) return null;
+  const numbered =
+    /(?:first|pehle|starting|opening|initial|पहले)\s*(\d{1,2})\s*overs?|(\d{1,2})\s*overs?\s*(?:me|mein|में)?\s*(?:kitn|run)|पहले\s*(\d{1,2})/i.exec(
+      question,
+    );
+  if (numbered) {
+    const n = Number(numbered[1] || numbered[2] || numbered[3]);
+    if (n >= 1 && n <= 20) return n;
+  }
+  // Bare "powerplay" / "first power play" → T20 default 6 (tool may refine via match type).
+  if (/power\s*play|powerplay|पावर/i.test(question)) return 6;
+  return null;
 }
 
 function wantsBowlingStats(question: string): boolean {
@@ -363,7 +400,32 @@ export function planAskTools(
   if (p.matchId && available.has('get_win_probability') && WIN_PROB_WORDS.test(p.question) && !TOSS_WORDS.test(p.question)) {
     return [{ id: 'mock_1', name: 'get_win_probability', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
+  // First N overs / powerplay of THIS innings — before "next overs" (old bug: "first 6" → next 6).
+  const firstOvers = guessFirstOvers(p.question);
+  if (
+    p.matchId &&
+    available.has('get_first_overs_score') &&
+    (FIRST_OVERS_WORDS.test(p.question) || firstOvers != null)
+  ) {
+    return [
+      {
+        id: 'mock_1',
+        name: 'get_first_overs_score',
+        arguments: JSON.stringify({ matchId: p.matchId, overs: firstOvers ?? 6 }),
+      },
+    ];
+  }
   // Live projections / target BEFORE archive — never treat "BAN reach" as a player name.
+  const nextBalls = guessNextBalls(p.question);
+  if (p.matchId && available.has('project_next_overs') && (NEXT_BALLS_WORDS.test(p.question) || nextBalls)) {
+    return [
+      {
+        id: 'mock_1',
+        name: 'project_next_overs',
+        arguments: JSON.stringify({ matchId: p.matchId, balls: nextBalls ?? 12 }),
+      },
+    ];
+  }
   const nextOvers = guessNextOvers(p.question);
   if (p.matchId && available.has('project_next_overs') && (NEXT_OVERS_WORDS.test(p.question) || nextOvers)) {
     return [
@@ -446,6 +508,49 @@ function sanitizeFavouriteLabel(raw: unknown, matchTeams: unknown[] | undefined)
     }
   }
   return label;
+}
+
+/** Soft AllCric-style outlook — never invents an exact over for the next wicket. */
+function describeNextWicketOutlook(m: Record<string, unknown>, lang: Lang): string[] {
+  const current = m.current as Record<string, unknown> | null;
+  const batsmen = (m.batsmen as Array<Record<string, unknown>> | undefined) ?? [];
+  const bowler = m.bowler as Record<string, unknown> | null | undefined;
+  const team = str(current?.battingTeam);
+  const scoreLine = `${str(current?.score)}/${str(current?.wickets)} (${str(current?.overs)})`;
+  const names = batsmen
+    .slice(0, 2)
+    .map((b) => str(b.name))
+    .filter(Boolean);
+  const crease = names.length ? names.join(lang === 'hi' ? ' aur ' : ' and ') : null;
+  const lines: string[] = [];
+  if (lang === 'hi') {
+    lines.push(
+      crease
+        ? `Abhi ${team} ki batting theek chal rahi hai — crease par ${crease} hain, score ${scoreLine}.`
+        : `Abhi score ${team} ${scoreLine}. Agli wicket ka exact time predict nahi kar sakte.`,
+    );
+    if (bowler?.name) {
+      lines.push(
+        `Halanki bowler ${str(bowler.name)} pressure bana sakta hai — aggressive shot pe wicket ka chance badh jata hai, lekin ye guarantee nahi.`,
+      );
+    } else {
+      lines.push('Exact over predict nahi kar sakte; sirf live situation dekh ke soft outlook hai.');
+    }
+  } else {
+    lines.push(
+      crease
+        ? `${team} are batting well with ${crease} at the crease (${scoreLine}).`
+        : `Score: ${team} ${scoreLine}. Exact timing of the next wicket cannot be predicted.`,
+    );
+    if (bowler?.name) {
+      lines.push(
+        `${str(bowler.name)} could create pressure — a wicket is more likely on an aggressive shot, but that is not a guarantee.`,
+      );
+    } else {
+      lines.push('Cannot name an exact over; this is a soft outlook from the live situation only.');
+    }
+  }
+  return lines;
 }
 
 function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' | 'rate' | 'batters' = 'summary'): string {
@@ -926,33 +1031,103 @@ function compose(p: Parsed): string {
         );
       } else if (TARGET_WORDS.test(p.question)) {
         const estTarget = data.estimatedChaseTargetIfFinishNearProjection ?? data.projectedScore;
+        const method = str(data.projectionMethod);
+        const how =
+          method === 'blended_latiyal_and_crr'
+            ? lang === 'hi'
+              ? ` (Latiyal prediction ${str(data.latiyalProjectedScore)} + current RR ${str(data.crrProjectedScore)})`
+              : ` (Latiyal prediction ${str(data.latiyalProjectedScore)} + current RR ${str(data.crrProjectedScore)})`
+            : method === 'latiyal_projection'
+              ? lang === 'hi'
+                ? ' (Latiyal live projection)'
+                : ' (Latiyal live projection)'
+              : lang === 'hi'
+                ? ' (current RR × remaining overs)'
+                : ' (current RR × remaining overs)';
         lines.push(
           lang === 'hi'
-            ? `अनुमानित target लगभग ${str(estTarget)} (अभी ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}). केवल अनुमान।`
-            : `Estimated target about ${str(estTarget)} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}). Estimate only.`,
+            ? `Abhi is pace se estimated target around ${str(estTarget)} ho sakta hai${how}. Score abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.overs)} ov, RR ${str(data.runRate)}). Sirf estimate.`
+            : `Estimated target about ${str(estTarget)}${how}. Now ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.overs)} ov, RR ${str(data.runRate)}). Estimate only.`,
         );
       } else {
+        const method = str(data.projectionMethod);
+        const how =
+          method === 'blended_latiyal_and_crr' || method === 'latiyal_projection'
+            ? lang === 'hi'
+              ? ' (Latiyal + RR)'
+              : ' (Latiyal + RR)'
+            : '';
         lines.push(
           lang === 'hi'
-            ? `अनुमानित स्कोर लगभग ${str(data.projectedScore)} (अभी ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`
-            : `Projected score about ${str(data.projectedScore)} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`,
+            ? `Anumanit score lagbhag ${str(data.projectedScore)}${how} — abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}.`
+            : `Projected score about ${str(data.projectedScore)}${how} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`,
+        );
+      }
+      if (data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {
+        const win = data.nextBallsWindow as { balls?: unknown; runs?: unknown };
+        lines.push(
+          lang === 'hi'
+            ? `Feed session tip: agle ${str(win.balls)} balls me ~${str(win.runs)} runs (Latiyal market, estimate).`
+            : `Feed session tip: ~${str(win.runs)} runs in the next ${str(win.balls)} balls (Latiyal market, estimate).`,
         );
       }
       if (data.earlyInnings && data.available) {
         lines.push(
           lang === 'hi'
-            ? 'पारी बहुत शुरुआती है — यह अनुमान अभी बदल सकता है।'
+            ? 'Pari bahut shuruati hai — ye projection jaldi change ho sakta hai.'
             : 'Very early innings — this projection can change quickly.',
         );
+      }
+    } else if (name === 'get_first_overs_score') {
+      if (!data.available) {
+        lines.push(
+          lang === 'hi'
+            ? `Pehle ${str(data.oversRequested)} overs ke runs abhi live over-history se nahi mil sake.`
+            : `Could not read runs for the first ${str(data.oversRequested)} overs from live over history yet.`,
+        );
+      } else if (data.complete || data.phaseDone) {
+        lines.push(
+          lang === 'hi'
+            ? `${str(data.team)} ne pehle ${str(data.oversRequested)} overs (powerplay/phase) me ${str(data.runsInPhase)} runs banaye.`
+            : `${str(data.team)} scored ${str(data.runsInPhase)} runs in the first ${str(data.oversRequested)} overs.`,
+        );
+      } else {
+        lines.push(
+          lang === 'hi'
+            ? `Abhi pehle ${str(data.oversRequested)} overs chal rahe hain — ${str(data.team)} ke ${str(data.runsInPhase)} runs ho chuke hain (${str(data.currentOvers)} ov).`
+            : `Still inside the first ${str(data.oversRequested)} overs — ${str(data.team)} have ${str(data.runsInPhase)} so far (${str(data.currentOvers)} ov).`,
+        );
+        const rem = data.remainingEstimate as Record<string, unknown> | null | undefined;
+        if (rem?.available) {
+          lines.push(
+            lang === 'hi'
+              ? `Is phase ke bache overs me ~${str(rem.rangeText)} runs aur aa sakte hain (estimate).`
+              : `About ${str(rem.rangeText)} more runs possible in the rest of this phase (estimate).`,
+          );
+        }
       }
     } else if (name === 'project_next_overs') {
       if (!data.available) {
         lines.push(lang === 'hi' ? 'अगले ओवरों का अनुमान नहीं बन सका।' : 'Could not estimate the next overs.');
+      } else if (data.ballsAhead != null) {
+        lines.push(
+          lang === 'hi'
+            ? `Agle ${str(data.ballsAhead)} balls me roughly ${str(data.rangeText)} runs (mid ${str(data.estimatedRunsMid)}, RR ~${str(data.blendedRunRate)}).`
+            : `About ${str(data.rangeText)} runs in the next ${str(data.ballsAhead)} balls (mid ${str(data.estimatedRunsMid)}, RR ~${str(data.blendedRunRate)}).`,
+        );
       } else {
         lines.push(
           lang === 'hi'
-            ? `अगले ${str(data.oversAhead)} ओवर में लगभग ${str(data.rangeText)} रन (मध्य ${str(data.estimatedRunsMid)}).`
+            ? `Agle ${str(data.oversAhead)} overs me roughly ${str(data.rangeText)} runs aa sakte hain (mid ${str(data.estimatedRunsMid)}).`
             : `About ${str(data.rangeText)} runs in the next ${str(data.oversAhead)} overs (mid ${str(data.estimatedRunsMid)}).`,
+        );
+      }
+      const feedWin = data.latiyalNextBallsWindow as { balls?: unknown; runs?: unknown } | null | undefined;
+      if (feedWin?.balls != null && feedWin?.runs != null) {
+        lines.push(
+          lang === 'hi'
+            ? `Latiyal session: next ${str(feedWin.balls)} balls ~${str(feedWin.runs)} runs.`
+            : `Latiyal session: next ${str(feedWin.balls)} balls ~${str(feedWin.runs)} runs.`,
         );
       }
     } else if (name === 'get_live_matches') {
@@ -964,14 +1139,11 @@ function compose(p: Parsed): string {
       }
     } else if (name === 'get_match') {
       if (NEXT_WICKET_WORDS.test(p.question)) {
-        lines.push(
-          lang === 'hi'
-            ? 'अगला विकेट कब गिरेगा — यह तय अनुमान नहीं लगाया जा सकता। लाइव स्थिति:'
-            : 'Cannot predict when the next wicket will fall. Live situation:',
-        );
+        lines.push(...describeNextWicketOutlook(data, lang));
+      } else {
+        const focus = wantsLiveRequiredRate(p.question) ? 'rate' : BATTER_WORDS.test(p.question) ? 'batters' : 'summary';
+        lines.push(describeMatch(data, lang, focus));
       }
-      const focus = wantsLiveRequiredRate(p.question) ? 'rate' : BATTER_WORDS.test(p.question) ? 'batters' : 'summary';
-      lines.push(describeMatch(data, lang, focus));
     } else if (name === 'get_scorecard') {
       if (BATTER_WORDS.test(p.question)) {
         // Prefer not-out batters from the latest innings for "current batter" questions.
@@ -1002,10 +1174,14 @@ function compose(p: Parsed): string {
         }
       }
     } else if (name === 'get_recent_commentary') {
-      const items = (data.items as Array<Record<string, unknown>> | undefined) ?? [];
-      if (items.length > 0) {
-        lines.push(lang === 'hi' ? 'हाल की गेंदें:' : 'Recent balls:');
-        for (const item of items.slice(0, 6)) lines.push(`- ${str(item.over)}: ${str(item.text)}`);
+      // Next-wicket answers already weave pace/aggressive shots from the live situation;
+      // skip dumping raw ball list unless the user asked for commentary.
+      if (!NEXT_WICKET_WORDS.test(p.question)) {
+        const items = (data.items as Array<Record<string, unknown>> | undefined) ?? [];
+        if (items.length > 0) {
+          lines.push(lang === 'hi' ? 'हाल की गेंदें:' : 'Recent balls:');
+          for (const item of items.slice(0, 6)) lines.push(`- ${str(item.over)}: ${str(item.text)}`);
+        }
       }
     } else if (HISTORY_TOOLS.has(name)) {
       usedHistory = true;

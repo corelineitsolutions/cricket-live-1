@@ -10,6 +10,7 @@ export const AI_INTENTS = [
   'next_wicket',
   'project_score',
   'project_next_overs',
+  'first_overs_score',
   'match_summary',
   'scorecard',
   'current_batters',

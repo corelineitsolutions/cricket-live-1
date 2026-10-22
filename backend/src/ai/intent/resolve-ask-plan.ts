@@ -20,6 +20,7 @@ const LIVE_TOOL_NAMES = new Set([
   'get_recent_commentary',
   'project_score',
   'project_next_overs',
+  'get_first_overs_score',
   'get_win_probability',
   'get_toss_prediction',
 ]);

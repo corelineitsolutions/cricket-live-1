@@ -232,7 +232,13 @@ describe('planAskTools', () => {
   });
 
   it('routes projected score / target / 50-over asks to live project_score, not archive', () => {
-    const tools = new Set(['project_score', 'get_player_history', 'get_win_probability', 'project_next_overs']);
+    const tools = new Set([
+      'project_score',
+      'get_player_history',
+      'get_win_probability',
+      'project_next_overs',
+      'get_first_overs_score',
+    ]);
     for (const q of [
       'What is the projected score for BAN?',
       'What score might BAN reach in 50 overs?',
@@ -243,6 +249,23 @@ describe('planAskTools', () => {
       expect(calls[0]?.name, q).toBe('project_score');
     }
     expect(planAskTools('How many runs in the next 6 overs?', '15292', tools, { strict: true })[0]?.name).toBe(
+      'project_next_overs',
+    );
+  });
+
+  it('routes first overs / powerplay to live get_first_overs_score, not next-overs or archive', () => {
+    const tools = new Set(['get_first_overs_score', 'project_next_overs', 'get_player_history', 'get_event_phase_stats']);
+    for (const q of [
+      'in first 6 over how many run nz hit',
+      'in first power play how many run nz hit',
+      'powerplay me kitne run',
+      'pehle 6 over me kitne run',
+    ]) {
+      const calls = planAskTools(q, '15131', tools, { strict: true });
+      expect(calls[0]?.name, q).toBe('get_first_overs_score');
+      expect(JSON.parse(calls[0]!.arguments).overs).toBe(6);
+    }
+    expect(planAskTools('How many runs in the next 6 overs?', '15131', tools, { strict: true })[0]?.name).toBe(
       'project_next_overs',
     );
   });

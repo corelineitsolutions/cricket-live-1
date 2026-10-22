@@ -11,6 +11,7 @@ const ALL = new Set([
   'get_toss_prediction',
   'project_score',
   'project_next_overs',
+  'get_first_overs_score',
   'get_player_history',
   'get_event_results',
   'get_event_leaders',

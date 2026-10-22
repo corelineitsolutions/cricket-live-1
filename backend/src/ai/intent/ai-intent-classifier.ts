@@ -15,9 +15,10 @@ Rules:
 - needs_match=true for live match questions: RRR, chase chance, win chance, target, next overs, commentary, scorecard, batters, next wicket.
 - required_run_rate = only "required run rate / RRR / kitne run per over chahiye" math from the live chase.
 - win_probability = who wins / can they chase / likely to win / jit sakta (NOT required_run_rate).
-- project_next_overs = runs in next N overs; set parameters.overs; needs_match=true.
+- project_next_overs = runs in NEXT N overs or NEXT N balls; set parameters.overs or ballsRemaining; needs_match=true. NOT "first 6 overs".
+- first_overs_score = runs in FIRST N overs / powerplay of this live innings ("pehle 6 over", "powerplay kitne run"). set parameters.overs (T20 powerplay=6). needs_match=true. Never player_history / archive.
 - project_score = projected final total / target they might set / score in 50 overs (LIVE). needs_match=true. Never player_history.
-- When match_selected=yes, prefer live intents; do not use player_history for projected score, target, or "reach in N overs".
+- When match_selected=yes, prefer live intents; do not use player_history for projected score, target, first overs, or "reach in N overs".
 - next_wicket = when next wicket might fall (agla wicket / kb hogi).
 - player_history = named player career / World Cup / IPL / hundreds. Put playerName + event/year/format. needs_match=false.
 - head_to_head = head to head / h2h between teams.
@@ -29,6 +30,8 @@ Q: Can they chase this? → {"domain":"cricket","intent":"win_probability","para
 Q: Ab kitne run per over chahiye? → {"domain":"cricket","intent":"required_run_rate","parameters":{},"needs_match":true,"confidence":0.9}
 Q: What did Virat Kohli score in the World Cup? → {"domain":"cricket","intent":"player_history","parameters":{"playerName":"Virat Kohli","event":"World Cup","format":"ODI"},"needs_match":false,"confidence":0.9}
 Q: How many runs in the next five overs? → {"domain":"cricket","intent":"project_next_overs","parameters":{"overs":5},"needs_match":true,"confidence":0.9}
+Q: in first 6 over how many run nz hit → {"domain":"cricket","intent":"first_overs_score","parameters":{"overs":6},"needs_match":true,"confidence":0.9}
+Q: powerplay me kitne run → {"domain":"cricket","intent":"first_overs_score","parameters":{"overs":6},"needs_match":true,"confidence":0.9}
 Q: What is the weather in Paris? → {"domain":"other","intent":"out_of_domain","parameters":{},"needs_match":false,"confidence":0.95}`;
 
 @Injectable()
