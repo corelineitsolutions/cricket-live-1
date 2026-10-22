@@ -1094,11 +1094,9 @@ function compose(p: Parsed): string {
       } else {
         const method = str(data.projectionMethod);
         const how =
-          method === 'latiyal_powerplay'
-            ? ' (Latiyal prediction)'
-            : method === 'blended_latiyal_and_rr'
-              ? ' (Latiyal + live RR)'
-              : ' (live RR)';
+          method === 'latiyal_session' || method === 'latiyal_projected_score'
+            ? ' (Latiyal live prediction)'
+            : ' (live RR fallback)';
         lines.push(
           lang === 'hi'
             ? `Pehle ${str(data.oversRequested)} overs / powerplay me roughly ${str(data.rangeText)} runs nikal sakte hain (mid ${str(data.estimatedPhaseTotalMid)})${how}. Abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`

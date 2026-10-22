@@ -9,6 +9,7 @@ import {
   createPredictionTools,
   extractLiveProjectionHints,
   oversLimitFor,
+  parseLatiyalLiveProjections,
   parseLiveMatchPrediction,
   parseMatchProbHistory,
   parseTossComparison,
@@ -115,14 +116,29 @@ describe('prediction helpers', () => {
 
   it('parses liveMatch prediction fields when present', () => {
     const parsed = parseLiveMatchPrediction(
-      { fav_team: 'Delhi Royals', team_a_per: 42, team_b_per: 58, projected_score: 175, next_balls: 14, next_balls_runs: 28 },
+      {
+        fav_team: 'Delhi Royals',
+        team_a_per: 42,
+        team_b_per: 58,
+        projected_score: [{ over: 20, cur_rate_score: 175 }],
+        powerplay: '1',
+        s_ovr: '6',
+        s_min: '75',
+        s_max: '76',
+        s_run: 40,
+        s_ball: 18,
+      },
       match,
     );
     expect(parsed).toMatchObject({
       available: true,
       favouriteTeam: 'Delhi Royals',
       projectedScore: 175,
-      nextBallsWindow: { balls: 14, runs: 28 },
+      powerplayProjectedRuns: 76,
+      sessionMin: 75,
+      sessionMax: 76,
+      sessionOvers: 6,
+      nextBallsWindow: { balls: 18, runs: 36 },
       teams: [
         { team: 'Delhi Royals', probabilityPercent: 42 },
         { team: 'Mumbai Strikers', probabilityPercent: 58 },
@@ -148,14 +164,39 @@ describe('prediction helpers', () => {
     expect(summed).toMatchObject({ available: true, complete: true, runs: 56, oversCounted: 6 });
   });
 
-  it('extracts projected / powerplay / next-balls hints from nested live payloads', () => {
-    const hints = extractLiveProjectionHints({
-      prediction: { projected_score: 185, powerplay_runs: 52 },
-      markets: [{ next_balls: 14, session_runs: 28, label: 'session market' }],
+  it('parses Latiyal s_min/s_max/s_ovr + projected_score[] from liveMatch', () => {
+    const parsed = parseLatiyalLiveProjections({
+      powerplay: '1',
+      s_ovr: '6',
+      s_min: '75',
+      s_max: '76',
+      s_run: 42,
+      s_ball: 15,
+      projected_score: [
+        { over: 5, cur_rate_score: 75, cur_rate_1_score: 74, cur_rate_2_score: 76, cur_rate_3_score: 78 },
+        { over: 20, cur_rate_score: 220, cur_rate_1_score: 210, cur_rate_2_score: 230, cur_rate_3_score: 240 },
+      ],
     });
-    expect(hints.projectedScore).toBe(185);
-    expect(hints.powerplayRuns).toBe(52);
-    expect(hints.nextBallsWindow).toEqual({ balls: 14, runs: 28 });
+    expect(parsed).toMatchObject({
+      inPowerplay: true,
+      sessionOvers: 6,
+      sessionMin: 75,
+      sessionMax: 76,
+      sessionMid: 76,
+      sessionRunsSoFar: 42,
+      sessionBallsSoFar: 15,
+      projectedFinal: 220,
+    });
+    expect(parsed.nextBallsWindow).toEqual({ balls: 21, runs: 34 });
+    const hints = extractLiveProjectionHints({
+      powerplay: '1',
+      s_ovr: '6',
+      s_min: '75',
+      s_max: '76',
+      projected_score: [{ over: 20, cur_rate_score: 220 }],
+    });
+    expect(hints.powerplayRuns).toBe(76);
+    expect(hints.projectedScore).toBe(220);
   });
 
   it('ignores Draw/Tie as a favourite team label', () => {

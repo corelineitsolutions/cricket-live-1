@@ -479,6 +479,9 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
   teams: Array<{ team: string; probabilityPercent: number }>;
   projectedScore: number | null;
   powerplayProjectedRuns: number | null;
+  sessionMin: number | null;
+  sessionMax: number | null;
+  sessionOvers: number | null;
   nextBallsWindow: { balls: number; runs: number } | null;
   note: string | null;
 } {
@@ -488,6 +491,9 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
     teams: [] as Array<{ team: string; probabilityPercent: number }>,
     projectedScore: null as number | null,
     powerplayProjectedRuns: null as number | null,
+    sessionMin: null as number | null,
+    sessionMax: null as number | null,
+    sessionOvers: null as number | null,
     nextBallsWindow: null as { balls: number; runs: number } | null,
     note: null as string | null,
   };
@@ -539,85 +545,149 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
       root?.predicted_score,
   );
 
-  // Optional session-style markets: "next 14 balls → 28 runs" style pairs when present.
-  const hints = extractLiveProjectionHints(data);
-  const nextBalls =
-    hints.nextBallsWindow?.balls ?? num(src.next_balls ?? src.next_ball ?? src.balls_ahead ?? src.session_balls);
-  const nextBallsRuns =
-    hints.nextBallsWindow?.runs ??
-    num(src.next_balls_runs ?? src.next_ball_runs ?? src.session_runs ?? src.runs_in_balls ?? src.min_runs ?? src.max_runs);
-  const projected = projectedScore ?? hints.projectedScore;
+  const liveProj = parseLatiyalLiveProjections(data);
+  const projected = projectedScore ?? liveProj.projectedFinal;
+  const powerplayProjectedRuns =
+    liveProj.sessionMid != null && (liveProj.inPowerplay || (liveProj.sessionOvers != null && liveProj.sessionOvers <= 10))
+      ? liveProj.sessionMid
+      : null;
+  const nextBallsWindow = liveProj.nextBallsWindow;
 
-  if (!favouriteTeam && teams.length === 0 && projected === null && nextBalls === null) return empty;
+  if (!favouriteTeam && teams.length === 0 && projected === null && powerplayProjectedRuns === null && !nextBallsWindow) {
+    return empty;
+  }
   return {
     available: true,
     favouriteTeam,
     teams,
     projectedScore: projected,
-    powerplayProjectedRuns: hints.powerplayRuns,
-    nextBallsWindow: nextBalls !== null && nextBallsRuns !== null ? { balls: nextBalls, runs: nextBallsRuns } : null,
-    note: ESTIMATE_NOTE + ' Source: Latiyal liveMatch prediction fields (when present).',
+    powerplayProjectedRuns,
+    sessionMin: liveProj.sessionMin,
+    sessionMax: liveProj.sessionMax,
+    sessionOvers: liveProj.sessionOvers,
+    nextBallsWindow,
+    note: ESTIMATE_NOTE + ' Source: Latiyal liveMatch s_min/s_max + projected_score (when present).',
   };
 }
 
 /**
- * Best-effort deep scan of liveMatch / tracker payloads for projected score,
- * powerplay runs, and "next N balls → runs" session markets. Field names vary by plan.
+ * Latiyal liveMatch session + projected_score shape (confirmed on live feeds):
+ *   s_ovr / s_min / s_max  → current session (often powerplay 6) predicted band
+ *   s_run / s_ball         → runs/balls already in that session
+ *   powerplay              → "1" while inside powerplay
+ *   projected_score[]      → [{ over, cur_rate_score, cur_rate_1_score, ... }]
+ *   s_ball (with s_run) can also act as a "next N balls" style window when paired
  */
+export function parseLatiyalLiveProjections(data: unknown): {
+  sessionOvers: number | null;
+  sessionMin: number | null;
+  sessionMax: number | null;
+  sessionMid: number | null;
+  sessionRunsSoFar: number | null;
+  sessionBallsSoFar: number | null;
+  inPowerplay: boolean;
+  /** Final / at-overs projections from projected_score[] */
+  projectedByOver: Array<{ over: number; mid: number; low: number; high: number }>;
+  projectedFinal: number | null;
+  nextBallsWindow: { balls: number; runs: number } | null;
+} {
+  const empty = {
+    sessionOvers: null as number | null,
+    sessionMin: null as number | null,
+    sessionMax: null as number | null,
+    sessionMid: null as number | null,
+    sessionRunsSoFar: null as number | null,
+    sessionBallsSoFar: null as number | null,
+    inPowerplay: false,
+    projectedByOver: [] as Array<{ over: number; mid: number; low: number; high: number }>,
+    projectedFinal: null as number | null,
+    nextBallsWindow: null as { balls: number; runs: number } | null,
+  };
+  const root = asRecord(data);
+  if (!root) return empty;
+
+  const sessionOvers = num(root.s_ovr ?? root.s_over ?? root.session_over);
+  const sessionMin = num(root.s_min ?? root.s_o_min);
+  const sessionMax = num(root.s_max ?? root.s_o_max);
+  const sessionRunsSoFar = num(root.s_run ?? root.s_runs);
+  const sessionBallsSoFar = num(root.s_ball ?? root.s_balls);
+  const inPowerplay = root.powerplay === 1 || root.powerplay === '1' || root.powerplay === true;
+  const sessionMid =
+    sessionMin != null && sessionMax != null
+      ? Math.round((sessionMin + sessionMax) / 2)
+      : sessionMin ?? sessionMax;
+
+  const projectedByOver: Array<{ over: number; mid: number; low: number; high: number }> = [];
+  const projList = Array.isArray(root.projected_score)
+    ? root.projected_score
+    : Array.isArray(root.projectedScore)
+      ? root.projectedScore
+      : [];
+  for (const item of projList) {
+    const row = asRecord(item);
+    if (!row) continue;
+    const over = num(row.over ?? row.overs);
+    const mid = num(row.cur_rate_score ?? row.cur_rate_score_mid ?? row.score);
+    const low = num(row.cur_rate_1_score ?? row.min_score ?? row.low) ?? mid;
+    const high = num(row.cur_rate_3_score ?? row.cur_rate_2_score ?? row.max_score ?? row.high) ?? mid;
+    if (over == null || mid == null) continue;
+    projectedByOver.push({
+      over: Math.round(over),
+      mid: Math.round(mid),
+      low: Math.round(low!),
+      high: Math.round(high!),
+    });
+  }
+  projectedByOver.sort((a, b) => a.over - b.over);
+  const projectedFinal = projectedByOver.length ? projectedByOver[projectedByOver.length - 1]!.mid : null;
+
+  // s_run/s_ball = progress in session; if balls remaining in session is useful as a window tip
+  let nextBallsWindow: { balls: number; runs: number } | null = null;
+  if (sessionOvers != null && sessionBallsSoFar != null && sessionMid != null && sessionRunsSoFar != null) {
+    const ballsLeft = Math.max(0, sessionOvers * 6 - sessionBallsSoFar);
+    const runsLeft = Math.max(0, sessionMid - sessionRunsSoFar);
+    if (ballsLeft > 0 && runsLeft > 0) {
+      nextBallsWindow = { balls: ballsLeft, runs: runsLeft };
+    }
+  }
+
+  return {
+    sessionOvers: sessionOvers != null ? Math.round(sessionOvers) : null,
+    sessionMin: sessionMin != null ? Math.round(sessionMin) : null,
+    sessionMax: sessionMax != null ? Math.round(sessionMax) : null,
+    sessionMid: sessionMid != null ? Math.round(sessionMid) : null,
+    sessionRunsSoFar: sessionRunsSoFar != null ? Math.round(sessionRunsSoFar) : null,
+    sessionBallsSoFar: sessionBallsSoFar != null ? Math.round(sessionBallsSoFar) : null,
+    inPowerplay,
+    projectedByOver,
+    projectedFinal,
+    nextBallsWindow,
+  };
+}
+
+/** @deprecated use parseLatiyalLiveProjections — kept for older call sites / tests */
 export function extractLiveProjectionHints(data: unknown): {
   projectedScore: number | null;
   powerplayRuns: number | null;
   nextBallsWindow: { balls: number; runs: number } | null;
 } {
-  const out = {
-    projectedScore: null as number | null,
-    powerplayRuns: null as number | null,
-    nextBallsWindow: null as { balls: number; runs: number } | null,
+  const p = parseLatiyalLiveProjections(data);
+  const powerplayRuns =
+    p.sessionOvers != null && p.sessionOvers <= 6 && p.sessionMid != null
+      ? p.sessionMid
+      : p.inPowerplay && p.sessionMid != null
+        ? p.sessionMid
+        : null;
+  // Prefer projected_score row near powerplay end (over 5 or 6).
+  const ppRow =
+    p.projectedByOver.find((r) => r.over === 6) ??
+    p.projectedByOver.find((r) => r.over === 5) ??
+    null;
+  return {
+    projectedScore: p.projectedFinal,
+    powerplayRuns: powerplayRuns ?? ppRow?.mid ?? null,
+    nextBallsWindow: p.nextBallsWindow,
   };
-  const visit = (node: unknown, depth: number) => {
-    if (depth > 5 || node == null) return;
-    if (Array.isArray(node)) {
-      for (const item of node.slice(0, 40)) visit(item, depth + 1);
-      return;
-    }
-    const row = asRecord(node);
-    if (!row) return;
-    for (const [key, value] of Object.entries(row)) {
-      const k = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const n = num(value);
-      if (n !== null && n > 20 && n < 400) {
-        if (
-          out.projectedScore === null &&
-          /(projectedscore|projectscore|predictedscore|predictedtotal|expscore|sscore|twentyover|t20score|scoreprediction)/.test(k)
-        ) {
-          out.projectedScore = Math.round(n);
-        }
-        if (out.powerplayRuns === null && /(powerplay|ppruns|ppscore|first6|firstsix|pppredict)/.test(k) && n <= 120) {
-          out.powerplayRuns = Math.round(n);
-        }
-      }
-      // Pair style: { next_balls: 14, runs: 28 } / session market rows.
-      if (!out.nextBallsWindow) {
-        const balls = num(row.next_balls ?? row.next_ball ?? row.session_balls ?? row.balls);
-        const runs = num(row.next_balls_runs ?? row.session_runs ?? row.min_runs ?? row.max_runs ?? row.runs);
-        const keys = Object.keys(row).join(' ').toLowerCase();
-        if (
-          balls != null &&
-          runs != null &&
-          balls >= 1 &&
-          balls <= 120 &&
-          runs >= 0 &&
-          runs <= 200 &&
-          /(next.?ball|session|fancy|market|predict)/.test(keys)
-        ) {
-          out.nextBallsWindow = { balls: Math.round(balls), runs: Math.round(runs) };
-        }
-      }
-      if (typeof value === 'object' && value !== null) visit(value, depth + 1);
-    }
-  };
-  visit(data, 0);
-  return out;
 }
 
 function pickTeamLabel(row: Record<string, unknown>, match: MatchDto): string | null {
@@ -1078,19 +1148,34 @@ export function createPredictionTools(
 
       let latiyalProjected: number | null = null;
       let nextBallsWindow: { balls: number; runs: number } | null = null;
+      let latiyalSession: ReturnType<typeof parseLatiyalLiveProjections> | null = null;
       try {
         const live = await feeds.get('liveMatch', { match_id: matchId });
+        const liveProj = parseLatiyalLiveProjections(live.data);
+        latiyalSession = liveProj;
+        // Prefer projected_score[] final over (20 / match limit), else any projected_score field.
+        const limitOver = limit ?? 20;
+        const atLimit =
+          liveProj.projectedByOver.find((r) => r.over === limitOver) ??
+          liveProj.projectedByOver.find((r) => r.over === 20) ??
+          liveProj.projectedByOver[liveProj.projectedByOver.length - 1];
+        if (atLimit) latiyalProjected = atLimit.mid;
+        else if (liveProj.projectedFinal != null) latiyalProjected = liveProj.projectedFinal;
         const parsed = parseLiveMatchPrediction(live.data, match);
-        if (parsed.projectedScore != null && parsed.projectedScore > 0) latiyalProjected = parsed.projectedScore;
+        if (latiyalProjected == null && parsed.projectedScore != null && parsed.projectedScore > 0) {
+          latiyalProjected = parsed.projectedScore;
+        }
         if (parsed.nextBallsWindow) nextBallsWindow = parsed.nextBallsWindow;
+        else if (liveProj.nextBallsWindow) nextBallsWindow = liveProj.nextBallsWindow;
       } catch {
         /* optional feed */
       }
 
       let projected = crrProjected;
       let method: 'current_rr' | 'latiyal_projection' | 'blended_latiyal_and_crr' | 'unavailable' = 'unavailable';
+      // Prefer Latiyal projected_score strongly when present (user sees that on the live line).
       if (latiyalProjected != null && crrProjected != null && Number.isFinite(crrProjected)) {
-        projected = Math.round(latiyalProjected * 0.65 + crrProjected * 0.35);
+        projected = Math.round(latiyalProjected * 0.8 + crrProjected * 0.2);
         method = 'blended_latiyal_and_crr';
       } else if (latiyalProjected != null) {
         projected = latiyalProjected;
@@ -1129,6 +1214,14 @@ export function createPredictionTools(
         projectedScore: projected,
         crrProjectedScore: crrProjected,
         latiyalProjectedScore: latiyalProjected,
+        latiyalSession: latiyalSession
+          ? {
+              overs: latiyalSession.sessionOvers,
+              min: latiyalSession.sessionMin,
+              max: latiyalSession.sessionMax,
+              mid: latiyalSession.sessionMid,
+            }
+          : null,
         projectionMethod: method,
         nextBallsWindow,
         note: methodNote,
@@ -1197,31 +1290,30 @@ export function createPredictionTools(
         runsSoFar = match.score;
       }
 
-      // Latiyal live prediction / powerplay / session markets (preferred when present).
-      let latiyalProjected: number | null = null;
-      let latiyalPowerplay: number | null = null;
+      // Latiyal liveMatch: s_min/s_max/s_ovr + projected_score[] (authoritative when present).
+      let liveProj = parseLatiyalLiveProjections(null);
       let nextBallsWindow: { balls: number; runs: number } | null = null;
       try {
         const live = await feeds.get('liveMatch', { match_id: matchId });
-        const parsed = parseLiveMatchPrediction(live.data, match);
-        const hints = extractLiveProjectionHints(live.data);
-        latiyalProjected = parsed.projectedScore ?? hints.projectedScore;
-        latiyalPowerplay = parsed.powerplayProjectedRuns ?? hints.powerplayRuns;
-        nextBallsWindow = parsed.nextBallsWindow ?? hints.nextBallsWindow;
+        liveProj = parseLatiyalLiveProjections(live.data);
+        nextBallsWindow = liveProj.nextBallsWindow;
         stale = stale || live.stale;
       } catch {
         /* optional */
       }
-      try {
-        const tracker = await feeds.get('trackerByMatchId', { match_id: matchId });
-        const hints = extractLiveProjectionHints(tracker.data);
-        if (latiyalPowerplay == null && hints.powerplayRuns != null) latiyalPowerplay = hints.powerplayRuns;
-        if (latiyalProjected == null && hints.projectedScore != null) latiyalProjected = hints.projectedScore;
-        if (!nextBallsWindow && hints.nextBallsWindow) nextBallsWindow = hints.nextBallsWindow;
-        stale = stale || tracker.stale;
-      } catch {
-        /* optional — tracker may be empty on some plans */
-      }
+      const latiyalProjected = liveProj.projectedFinal;
+      // Session band for this powerplay / first-N ask: prefer s_min/s_max when s_ovr matches.
+      const sessionMatchesAsk =
+        liveProj.sessionMin != null &&
+        liveProj.sessionMax != null &&
+        (liveProj.sessionOvers === overs ||
+          liveProj.inPowerplay ||
+          (liveProj.sessionOvers != null && Math.abs(liveProj.sessionOvers - overs) <= 1));
+      const projRow =
+        liveProj.projectedByOver.find((r) => r.over === overs) ??
+        liveProj.projectedByOver.find((r) => r.over === overs - 1) ??
+        liveProj.projectedByOver.find((r) => r.over === 5 && overs === 6) ??
+        null;
 
       // Finished powerplay → report actual only.
       if (phaseDone) {
@@ -1246,69 +1338,59 @@ export function createPredictionTools(
           rangeText: actual != null ? String(actual) : null,
           perOver: summed.perOver,
           latiyalProjectedScore: latiyalProjected,
-          latiyalPowerplayRuns: latiyalPowerplay,
+          latiyalSession: {
+            overs: liveProj.sessionOvers,
+            min: liveProj.sessionMin,
+            max: liveProj.sessionMax,
+            mid: liveProj.sessionMid,
+          },
           nextBallsWindow,
           stale,
           note: actual != null ? `Actual runs in the first ${overs} overs of this innings.` : 'Phase finished but total not available.',
         };
       }
 
-      // Still in (or before) powerplay → PREDICT remaining + total for the phase.
-      const { signals, context } = await collectNextOversSignals(match, feeds, matchId, opts);
-      const oversAhead = remainingOvers > 0 ? remainingOvers : overs;
-      const estimate =
-        signals.length > 0
-          ? blendNextOversEstimate({
-              team,
-              score: match.score,
-              overs: match.overs,
-              oversAhead,
-              signals,
-            })
-          : projectNextOvers({
-              team,
-              score: match.score,
-              overs: match.overs,
-              runRate: match.runRate,
-              oversAhead,
-            });
-
+      // Still in powerplay → prefer Latiyal s_min/s_max (or projected_score row), NOT raw RR extrapolation.
       let mid: number | null = null;
       let low: number | null = null;
       let high: number | null = null;
-      let method: 'latiyal_powerplay' | 'blended_latiyal_and_rr' | 'live_rr' | 'unavailable' = 'unavailable';
+      let method: 'latiyal_session' | 'latiyal_projected_score' | 'live_rr' | 'unavailable' = 'unavailable';
 
-      if (latiyalPowerplay != null && latiyalPowerplay > 0) {
-        // Provider gave an explicit powerplay projection — prefer it, light blend with RR total if we have one.
-        const rrTotal =
-          estimate.available && 'estimatedRunsMid' in estimate
-            ? currentScore + Number(estimate.estimatedRunsMid)
-            : null;
-        if (rrTotal != null && Number.isFinite(rrTotal)) {
-          mid = Math.round(latiyalPowerplay * 0.7 + rrTotal * 0.3);
-          method = 'blended_latiyal_and_rr';
-        } else {
-          mid = latiyalPowerplay;
-          method = 'latiyal_powerplay';
-        }
-        const spread = 0.12;
-        low = Math.max(currentScore, Math.round(mid * (1 - spread)));
-        high = Math.round(mid * (1 + spread));
-      } else if (estimate.available && 'estimatedRunsMid' in estimate) {
-        const remMid = Number(estimate.estimatedRunsMid);
-        const remLow = Number(estimate.estimatedRunsLow);
-        const remHigh = Number(estimate.estimatedRunsHigh);
-        mid = Math.round(currentScore + remMid);
-        low = Math.round(currentScore + remLow);
-        high = Math.round(currentScore + remHigh);
-        method = 'live_rr';
-        // If Latiyal has a full-innings projected score, nudge the powerplay share (~30% of T20 total is rough).
-        if (latiyalProjected != null && latiyalProjected > currentScore && overs === powerplayOversFor(match.matchType)) {
-          const share = Math.round(latiyalProjected * (overs / (oversLimitFor(match.matchType) ?? 20)));
-          mid = Math.round(mid * 0.75 + share * 0.25);
-          low = Math.max(currentScore, Math.round(mid * 0.88));
-          high = Math.round(mid * 1.12);
-          method = 'blended_latiyal_and_rr';
+      if (sessionMatchesAsk && liveProj.sessionMin != null && liveProj.sessionMax != null) {
+        low = liveProj.sessionMin;
+        high = liveProj.sessionMax;
+        mid = liveProj.sessionMid;
+        method = 'latiyal_session';
+      } else if (projRow) {
+        low = projRow.low;
+        high = projRow.high;
+        mid = projRow.mid;
+        method = 'latiyal_projected_score';
+      } else {
+        // Fallback only when Latiyal session/projected fields are missing.
+        const { signals } = await collectNextOversSignals(match, feeds, matchId, opts);
+        const oversAhead = remainingOvers > 0 ? remainingOvers : overs;
+        const estimate =
+          signals.length > 0
+            ? blendNextOversEstimate({
+                team,
+                score: match.score,
+                overs: match.overs,
+                oversAhead,
+                signals,
+              })
+            : projectNextOvers({
+                team,
+                score: match.score,
+                overs: match.overs,
+                runRate: match.runRate,
+                oversAhead,
+              });
+        if (estimate.available && 'estimatedRunsMid' in estimate) {
+          mid = Math.round(currentScore + Number(estimate.estimatedRunsMid));
+          low = Math.round(currentScore + Number(estimate.estimatedRunsLow));
+          high = Math.round(currentScore + Number(estimate.estimatedRunsHigh));
+          method = 'live_rr';
         }
       }
 
@@ -1325,10 +1407,9 @@ export function createPredictionTools(
         phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
         mode: 'prediction',
         available: mid != null,
-        runsSoFar,
+        runsSoFar: runsSoFar ?? liveProj.sessionRunsSoFar,
         remainingBallsInPhase: remainingBalls,
         remainingOvers,
-        remainingEstimate: estimate.available ? estimate : null,
         estimatedPhaseTotalMid: mid,
         estimatedPhaseTotalLow: low,
         estimatedPhaseTotalHigh: high,
@@ -1336,18 +1417,25 @@ export function createPredictionTools(
         projectionMethod: method,
         perOver: summed.perOver,
         latiyalProjectedScore: latiyalProjected,
-        latiyalPowerplayRuns: latiyalPowerplay,
+        latiyalSession: {
+          overs: liveProj.sessionOvers,
+          min: liveProj.sessionMin,
+          max: liveProj.sessionMax,
+          mid: liveProj.sessionMid,
+          runsSoFar: liveProj.sessionRunsSoFar,
+          ballsSoFar: liveProj.sessionBallsSoFar,
+          inPowerplay: liveProj.inPowerplay,
+        },
         nextBallsWindow,
-        context,
         stale,
         note:
           mid != null
-            ? method === 'latiyal_powerplay'
-              ? `${ESTIMATE_NOTE} From Latiyal powerplay/session prediction.`
-              : method === 'blended_latiyal_and_rr'
-                ? `${ESTIMATE_NOTE} Blended Latiyal live prediction with current RR for the rest of the powerplay.`
-                : `${ESTIMATE_NOTE} Projected from live RR for remaining powerplay balls (plus runs already scored).`
-            : 'Need live run rate or Latiyal prediction fields to estimate powerplay runs.',
+            ? method === 'latiyal_session'
+              ? `${ESTIMATE_NOTE} From Latiyal liveMatch session market (s_min–s_max for ${liveProj.sessionOvers ?? overs} overs).`
+              : method === 'latiyal_projected_score'
+                ? `${ESTIMATE_NOTE} From Latiyal liveMatch projected_score row.`
+                : `${ESTIMATE_NOTE} Latiyal session fields missing — fallback live RR only.`
+            : 'Need Latiyal s_min/s_max or live RR to estimate powerplay runs.',
       };
     },
     label: ({ matchId, overs }) => `First ${overs} overs ${matchId}`,
