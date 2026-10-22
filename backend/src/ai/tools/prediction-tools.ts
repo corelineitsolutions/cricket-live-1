@@ -1180,8 +1180,11 @@ export function createPredictionTools(
         if (latiyalProjected == null && parsed.projectedScore != null && parsed.projectedScore > 0) {
           latiyalProjected = parsed.projectedScore;
         }
-        if (parsed.nextBallsWindow) nextBallsWindow = parsed.nextBallsWindow;
-        else if (liveProj.nextBallsWindow) nextBallsWindow = liveProj.nextBallsWindow;
+        // Session tip is for batting-first fancy markets — never attach during a chase.
+        if (!chasing) {
+          if (parsed.nextBallsWindow) nextBallsWindow = parsed.nextBallsWindow;
+          else if (liveProj.nextBallsWindow) nextBallsWindow = liveProj.nextBallsWindow;
+        }
       } catch {
         /* optional feed */
       }
@@ -1220,6 +1223,7 @@ export function createPredictionTools(
         // Official chase target only; never currentScore+1 during the 1st innings.
         target: chasing ? match.target : null,
         runsRequired: chasing ? match.runsRequired : null,
+        ballsRemaining: chasing ? match.ballsRemaining : null,
         // If still batting first: estimated final total, and what the chase target *would be* if they finish near that.
         estimatedFinalTotal: !chasing && projected != null ? projected : null,
         estimatedChaseTargetIfFinishNearProjection:

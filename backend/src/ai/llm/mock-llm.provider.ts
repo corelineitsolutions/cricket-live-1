@@ -58,6 +58,9 @@ const PROJECT_SCORE_WORDS =
 /** Target / "kitna target" — 1st innings → project_score; chase → get_match. Never invent score+1 as the official target. */
 const TARGET_WORDS =
   /\btarget\b|लक्ष्य|kitn[ae]\s+(?:ka\s+)?target|target\s+kitn|target\s+might|might\s+.+\s+set|set\s+(?:a\s+)?target|mil\s+sakat|de\s+shakt|दे\s*सक|जीतने\s*के\s*लिए|jeetne\s*ke\s*liye/i;
+/** "Kitane over me target complete" — chase finish timing from ballsRemaining, not Latiyal session tip. */
+const CHASE_FINISH_WORDS =
+  /(?:kitn[ae]|kab|kb|how\s+many|kitni)\s+overs?\s+me\s+target|target\s+(?:compl[ea]te|complate|pura|finish|ho\s+sakat)|chase\s+(?:compl[ea]te|complate|finish)|over\s+me\s+(?:chase|target)\s+(?:compl[ea]te|complate|pura)|jitn[ae]\s+over.*target|target.*(?:kitn[ae]|over).*?(?:compl[ea]te|complate|pura|ho)|kab\s+chase|when\s+(?:will\s+)?(?:they\s+)?(?:chase|finish|complete)\s+(?:the\s+)?target/i;
 const NEXT_OVERS_WORDS =
   /(?:next|coming|agle|agli)\s*\d+\s*overs?|runs?\s+in\s+(?:the\s+)?next\s+\d+\s*overs?|how\s+many\s+runs?\s+in\s+(?:the\s+)?next|अगले\s*\d+\s*ओवर/i;
 const NEXT_BALLS_WORDS =
@@ -74,6 +77,7 @@ export function isLiveMatchQuestion(question: string): boolean {
     TOSS_WORDS.test(question) ||
     WIN_PROB_WORDS.test(question) ||
     TARGET_WORDS.test(question) ||
+    CHASE_FINISH_WORDS.test(question) ||
     PROJECT_SCORE_WORDS.test(question) ||
     NEXT_OVERS_WORDS.test(question) ||
     NEXT_BALLS_WORDS.test(question) ||
@@ -169,7 +173,14 @@ function wantsPlayerHistory(question: string): boolean {
   if (wantsLiveRequiredRate(question)) return false;
   if (NEXT_WICKET_WORDS.test(question)) return false;
   if (WIN_PROB_WORDS.test(question) || TOSS_WORDS.test(question)) return false;
-  if (TARGET_WORDS.test(question) || PROJECT_SCORE_WORDS.test(question) || NEXT_OVERS_WORDS.test(question)) return false;
+  if (
+    TARGET_WORDS.test(question) ||
+    CHASE_FINISH_WORDS.test(question) ||
+    PROJECT_SCORE_WORDS.test(question) ||
+    NEXT_OVERS_WORDS.test(question)
+  ) {
+    return false;
+  }
   const name = guessPlayerName(question);
   if (!name) return false;
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
@@ -386,6 +397,10 @@ export function planAskTools(
   if (p.matchId && wantsLiveRequiredRate(p.question)) {
     return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
   }
+  // "Kitane over me target complete" → live chase ballsRemaining (not project_score session tip).
+  if (p.matchId && CHASE_FINISH_WORDS.test(p.question) && available.has('get_match')) {
+    return [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
+  }
   if (p.matchId && NEXT_WICKET_WORDS.test(p.question)) {
     const calls: LlmToolCall[] = [{ id: 'mock_1', name: 'get_match', arguments: JSON.stringify({ matchId: p.matchId }) }];
     if (available.has('get_recent_commentary')) {
@@ -508,6 +523,79 @@ function sanitizeFavouriteLabel(raw: unknown, matchTeams: unknown[] | undefined)
     }
   }
   return label;
+}
+
+function isChaseContext(m: Record<string, unknown>): boolean {
+  const current = m.current as Record<string, unknown> | null | undefined;
+  return m.chaseActive === true || (current?.runsRequired != null && current?.ballsRemaining != null);
+}
+
+/** Chase: official target + balls left + optional overs-to-finish at current RR. */
+function describeChaseTargetAnswer(m: Record<string, unknown>, lang: Lang, question: string): string[] {
+  const current = (m.current as Record<string, unknown> | null | undefined) ?? m;
+  const target = m.target ?? current.target;
+  const score = current.currentScore ?? current.score ?? m.currentScore;
+  const rr = current.runRate ?? m.runRate;
+  const need = current.runsRequired ?? m.runsRequired;
+  const ballsLeft = current.ballsRemaining ?? m.ballsRemaining;
+  const lines: string[] = [];
+
+  const ballsNum = ballsLeft != null ? Number(ballsLeft) : NaN;
+  const needNum = need != null ? Number(need) : NaN;
+  const rrNum = rr != null ? Number(rr) : NaN;
+  const oversLeft =
+    Number.isFinite(ballsNum) && ballsNum >= 0
+      ? `${Math.floor(ballsNum / 6)}.${ballsNum % 6}`
+      : null;
+
+  if (CHASE_FINISH_WORDS.test(question) && Number.isFinite(needNum) && needNum > 0) {
+    // Overs needed if they keep current RR (estimate only).
+    const oversAtCurrentRr =
+      Number.isFinite(rrNum) && rrNum > 0 ? Math.round((needNum / rrNum) * 10) / 10 : null;
+    if (lang === 'hi') {
+      lines.push(
+        `Target ${str(target)}. Abhi ${str(score)}, ${str(need)} runs chahiye` +
+          (oversLeft != null ? ` — ${str(ballsLeft)} balls (${oversLeft} overs) bachi hain` : '') +
+          `.`,
+      );
+      if (oversAtCurrentRr != null) {
+        lines.push(
+          `Is RR (${str(rr)}) par roughly ${oversAtCurrentRr} overs me chase complete ho sakti hai — sirf estimate, wicket/RR change pe badal jayega.`,
+        );
+      }
+    } else {
+      lines.push(
+        `Target ${str(target)}. Now ${str(score)}, need ${str(need)} more` +
+          (oversLeft != null ? ` from ${str(ballsLeft)} balls (${oversLeft} overs)` : '') +
+          `.`,
+      );
+      if (oversAtCurrentRr != null) {
+        lines.push(
+          `At current RR (${str(rr)}) the chase could finish in about ${oversAtCurrentRr} overs — estimate only; wickets/RR changes will move this.`,
+        );
+      }
+    }
+    return lines;
+  }
+
+  if (lang === 'hi') {
+    lines.push(
+      `Target ${str(target)}. Abhi ${str(score)}` +
+        (Number.isFinite(needNum) ? `, ${str(need)} runs chahiye` : '') +
+        (oversLeft != null ? ` — ${str(ballsLeft)} balls (${oversLeft} overs) bachi` : '') +
+        (Number.isFinite(rrNum) ? `, RR ${str(rr)}` : '') +
+        `.`,
+    );
+  } else {
+    lines.push(
+      `Target ${str(target)}. Now ${str(score)}` +
+        (Number.isFinite(needNum) ? `, need ${str(need)} more` : '') +
+        (oversLeft != null ? ` from ${str(ballsLeft)} balls (${oversLeft} overs)` : '') +
+        (Number.isFinite(rrNum) ? ` at RR ${str(rr)}` : '') +
+        `.`,
+    );
+  }
+  return lines;
 }
 
 /** Soft AllCric-style outlook — never invents an exact over for the next wicket. */
@@ -1024,11 +1112,7 @@ function compose(p: Parsed): string {
             : `Could not project a score${data.note ? ` (${str(data.note)})` : ''}.`,
         );
       } else if (data.chaseActive) {
-        lines.push(
-          lang === 'hi'
-            ? `Target ${str(data.target)}. अभी ${str(data.currentScore)}, RR ${str(data.runRate)}.`
-            : `Target ${str(data.target)}. Now ${str(data.currentScore)} at RR ${str(data.runRate)}.`,
-        );
+        lines.push(...describeChaseTargetAnswer(data, lang, p.question));
       } else if (TARGET_WORDS.test(p.question)) {
         const estTarget = data.estimatedChaseTargetIfFinishNearProjection ?? data.projectedScore;
         const method = str(data.projectionMethod);
@@ -1063,15 +1147,20 @@ function compose(p: Parsed): string {
             : `Projected score about ${str(data.projectedScore)}${how} (now ${str(data.currentScore)}/${str(data.wickets ?? '-')}, RR ${str(data.runRate)}).`,
         );
       }
-      if (data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {
+      // Never show Latiyal session "next N balls" during a chase — it is not balls remaining in the innings.
+      if (!data.chaseActive && data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {
         const win = data.nextBallsWindow as { balls?: unknown; runs?: unknown };
-        lines.push(
-          lang === 'hi'
-            ? `Feed session tip: agle ${str(win.balls)} balls me ~${str(win.runs)} runs (Latiyal market, estimate).`
-            : `Feed session tip: ~${str(win.runs)} runs in the next ${str(win.balls)} balls (Latiyal market, estimate).`,
-        );
+        const tipBalls = Number(win.balls);
+        // Ignore absurd session tips (e.g. more balls than a full T20 innings left).
+        if (Number.isFinite(tipBalls) && tipBalls > 0 && tipBalls <= 60) {
+          lines.push(
+            lang === 'hi'
+              ? `Latiyal session tip: agle ${str(win.balls)} balls me ~${str(win.runs)} runs (estimate).`
+              : `Latiyal session tip: ~${str(win.runs)} runs in the next ${str(win.balls)} balls (estimate).`,
+          );
+        }
       }
-      if (data.earlyInnings && data.available) {
+      if (data.earlyInnings && data.available && !data.chaseActive) {
         lines.push(
           lang === 'hi'
             ? 'Pari bahut shuruati hai — ye projection jaldi change ho sakta hai.'
@@ -1157,6 +1246,8 @@ function compose(p: Parsed): string {
     } else if (name === 'get_match') {
       if (NEXT_WICKET_WORDS.test(p.question)) {
         lines.push(...describeNextWicketOutlook(data, lang));
+      } else if (CHASE_FINISH_WORDS.test(p.question) || (TARGET_WORDS.test(p.question) && isChaseContext(data))) {
+        lines.push(...describeChaseTargetAnswer(data, lang, p.question));
       } else {
         const focus = wantsLiveRequiredRate(p.question) ? 'rate' : BATTER_WORDS.test(p.question) ? 'batters' : 'summary';
         lines.push(describeMatch(data, lang, focus));

@@ -253,6 +253,12 @@ describe('planAskTools', () => {
     );
   });
 
+  it('routes chase finish timing to get_match, not project_score session tip', () => {
+    const tools = new Set(['get_match', 'project_score', 'project_next_overs']);
+    const calls = planAskTools('kitane over me target complate ho sakata hai', '15131', tools, { strict: true });
+    expect(calls[0]?.name).toBe('get_match');
+  });
+
   it('routes first overs / powerplay to live get_first_overs_score, not next-overs or archive', () => {
     const tools = new Set(['get_first_overs_score', 'project_next_overs', 'get_player_history', 'get_event_phase_stats']);
     for (const q of [
