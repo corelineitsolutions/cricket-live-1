@@ -75,6 +75,12 @@ export const envValidationSchema = Joi.object({
   R2_BUCKET_ADS: Joi.string().allow('').default('ads'),
   /** Public base URL for objects (r2.dev subdomain or custom domain), no trailing slash. */
   R2_PUBLIC_BASE_URL: Joi.string().allow('').default(''),
+  /** Razorpay Pro checkout. Leave empty to disable order creation (status still works). */
+  RAZORPAY_KEY_ID: Joi.string().allow('').default(''),
+  RAZORPAY_KEY_SECRET: Joi.string().allow('').default(''),
+  /** Razorpay plan ids from the dashboard (plan_…). Stored on the purchase; amounts are fixed in code. */
+  RAZORPAY_PLAN_6M_ID: Joi.string().allow('').default(''),
+  RAZORPAY_PLAN_1Y_ID: Joi.string().allow('').default(''),
 })
   .unknown(true)
   .prefs({ abortEarly: false, convert: true });

@@ -259,6 +259,14 @@ describe('planAskTools', () => {
     expect(calls[0]?.name).toBe('get_match');
   });
 
+  it('routes chase-possible Hinglish to get_match (+ win%), not dry project_score', () => {
+    const tools = new Set(['get_match', 'get_win_probability', 'project_score']);
+    for (const q of ['target chase ho sakata he kya', 'run ho sakate kya', 'chase ho sakta hai kya']) {
+      const calls = planAskTools(q, '15131', tools, { strict: true });
+      expect(calls.map((c) => c.name), q).toEqual(['get_match', 'get_win_probability']);
+    }
+  });
+
   it('routes first overs / powerplay to live get_first_overs_score, not next-overs or archive', () => {
     const tools = new Set(['get_first_overs_score', 'project_next_overs', 'get_player_history', 'get_event_phase_stats']);
     for (const q of [

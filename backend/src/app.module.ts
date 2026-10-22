@@ -6,6 +6,7 @@ import { AdminDashboardModule } from './admin-dashboard/admin-dashboard.module';
 import { AdminMatchesModule } from './admin-matches/admin-matches.module';
 import { AdsModule } from './ads/ads.module';
 import { AiModule } from './ai/ai.module';
+import { BillingModule } from './billing/billing.module';
 import { AppCacheModule } from './cache/cache.module';
 import { HttpThrottlerGuard } from './common/guards/http-throttler.guard';
 import { throttlerOptions } from './common/guards/throttler.config';
@@ -57,6 +58,7 @@ import { WebsocketModule } from './websocket/websocket.module';
     SeasonsModule,
     FcmModule,
     AdsModule,
+    BillingModule,
     AdminDashboardModule,
     AdminMatchesModule,
     AiModule,

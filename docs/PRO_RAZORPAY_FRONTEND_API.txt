@@ -1,0 +1,273 @@
+================================================================================
+  Cricket Live — Pro / Razorpay API (for frontend / mobile)
+================================================================================
+Base URL:  https://<api-host>/api/v1
+Auth:      none (public). Pro follows the phone number (no OTP).
+Content:   application/json
+
+Plans (fixed):
+  SIX_MONTH  → ₹999   / 6 months
+  ONE_YEAR   → ₹1799  / 1 year
+
+Entitlement:
+  - Primary key = phone used at payment.
+  - deviceId is stored so the same install can check status without phone.
+  - New phone: POST /pro/restore with the paid phone + new deviceId (no OTP).
+  - Note: anyone who knows that phone number can restore Pro until OTP is added.
+
+Ads: when GET /pro/status returns isPro=true, the app must show 0 ads
+(do not call /ads for display, or ignore the response). Backend still serves
+ads for free users; entitlement is frontend-enforced for now.
+
+
+--------------------------------------------------------------------------------
+0. PRO SCREEN UI (app)
+--------------------------------------------------------------------------------
+
+1. User opens Pro / remove-ads screen.
+2. Two inputs:
+     - phone   (required)  ← this is the Pro "account"
+     - email   (optional)
+3. Two plan buttons / cards:
+     - ₹999  — 6 months  (planCode = SIX_MONTH)
+     - ₹1799 — 1 year    (planCode = ONE_YEAR)
+4. On plan tap → POST /pro/order → open Razorpay Checkout → POST /pro/verify
+5. On success → save phone locally → hide ads (isPro).
+6. New phone / reinstall: show “Already Pro? Enter phone” → POST /pro/restore
+   → if isPro, save phone + hide ads.
+
+
+--------------------------------------------------------------------------------
+1. LIST PLANS (optional — hardcode the two prices in UI if you prefer)
+--------------------------------------------------------------------------------
+
+GET /api/v1/pro/plans
+
+Success 200:
+{
+  "success": true,
+  "data": {
+    "plans": [
+      {
+        "code": "SIX_MONTH",
+        "label": "6 months",
+        "durationMonths": 6,
+        "amountInr": 999,
+        "amountPaise": 99900,
+        "currency": "INR",
+        "razorpayPlanId": "plan_XXXXXXXX"
+      },
+      {
+        "code": "ONE_YEAR",
+        "label": "1 year",
+        "durationMonths": 12,
+        "amountInr": 1799,
+        "amountPaise": 179900,
+        "currency": "INR",
+        "razorpayPlanId": "plan_YYYYYYYY"
+      }
+    ]
+  }
+}
+
+
+--------------------------------------------------------------------------------
+2. CREATE ORDER (after phone + plan chosen)
+--------------------------------------------------------------------------------
+
+POST /api/v1/pro/order
+Content-Type: application/json
+
+{
+  "deviceId": "6f1c0b3e-8a2d-4c7a-9b11-2d5e7a9c1b04",
+  "phone": "9876543210",
+  "email": "user@example.com",
+  "planCode": "SIX_MONTH"
+}
+
+email may be omitted or null.
+planCode: "SIX_MONTH" | "ONE_YEAR"
+
+Success 200:
+{
+  "success": true,
+  "data": {
+    "razorpayOrderId": "order_MwXYZ...",
+    "razorpayKeyId": "rzp_live_...",
+    "amountPaise": 99900,
+    "currency": "INR",
+    "planCode": "SIX_MONTH",
+    "planLabel": "6 months",
+    "razorpayPlanId": "plan_XXXXXXXX",
+    "purchaseId": "clx...",
+    "prefill": {
+      "contact": "9876543210",
+      "email": "user@example.com"
+    }
+  }
+}
+
+Open Razorpay Checkout / SDK with:
+  key:     data.razorpayKeyId
+  order_id: data.razorpayOrderId
+  amount:  data.amountPaise
+  currency: data.currency
+  prefill: data.prefill
+  name / description: e.g. "Cricket Live Pro — 6 months"
+
+
+--------------------------------------------------------------------------------
+3. VERIFY PAYMENT (Checkout success callback)
+--------------------------------------------------------------------------------
+
+POST /api/v1/pro/verify
+Content-Type: application/json
+
+{
+  "deviceId": "6f1c0b3e-8a2d-4c7a-9b11-2d5e7a9c1b04",
+  "razorpayOrderId": "order_MwXYZ...",
+  "razorpayPaymentId": "pay_MwABC...",
+  "razorpaySignature": "<signature from Razorpay>"
+}
+
+Success 200:
+{
+  "success": true,
+  "data": {
+    "isPro": true,
+    "planCode": "SIX_MONTH",
+    "startsAt": "2026-10-22T12:00:00.000Z",
+    "endsAt": "2027-04-22T12:00:00.000Z",
+    "purchaseId": "clx..."
+  }
+}
+
+Idempotent: calling verify again for the same paid order returns the same window.
+On invalid signature → 400 VALIDATION_ERROR.
+
+
+--------------------------------------------------------------------------------
+4. STATUS (ads / Pro gate — call on app start and after verify)
+--------------------------------------------------------------------------------
+
+Pass phone and/or deviceId (at least one). Phone is preferred when both are sent.
+
+GET /api/v1/pro/status?phone=9876543210
+GET /api/v1/pro/status?deviceId=6f1c0b3e-8a2d-4c7a-9b11-2d5e7a9c1b04
+GET /api/v1/pro/status?phone=9876543210&deviceId=6f1c0b3e-8a2d-4c7a-9b11-2d5e7a9c1b04
+
+Success 200 (paid, still active):
+{
+  "success": true,
+  "data": {
+    "isPro": true,
+    "planCode": "SIX_MONTH",
+    "phone": "9876543210",
+    "startsAt": "2026-10-22T12:00:00.000Z",
+    "endsAt": "2027-04-22T12:00:00.000Z"
+  }
+}
+
+Success 200 (free / expired):
+{
+  "success": true,
+  "data": {
+    "isPro": false,
+    "planCode": null,
+    "phone": null,
+    "startsAt": null,
+    "endsAt": null
+  }
+}
+
+Frontend rule:
+  if (data.isPro) → show 0 ads everywhere; show Pro badge / hide paywall CTA
+  else            → normal ads from GET /api/v1/ads
+  Persist phone locally after pay/restore so cold start can call status?phone=
+
+
+--------------------------------------------------------------------------------
+4b. RESTORE ON NEW PHONE (same paid phone, no OTP)
+--------------------------------------------------------------------------------
+
+POST /api/v1/pro/restore
+Content-Type: application/json
+
+{
+  "deviceId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "phone": "9876543210"
+}
+
+Success 200 (found active Pro for that phone):
+{
+  "success": true,
+  "data": {
+    "isPro": true,
+    "planCode": "SIX_MONTH",
+    "phone": "9876543210",
+    "startsAt": "2026-10-22T12:00:00.000Z",
+    "endsAt": "2027-04-22T12:00:00.000Z"
+  }
+}
+
+Success 200 (no paid Pro for that phone):
+{
+  "success": true,
+  "data": {
+    "isPro": false,
+    "planCode": null,
+    "phone": null,
+    "startsAt": null,
+    "endsAt": null
+  }
+}
+
+After restore, this deviceId is attached to the purchase so later
+GET /pro/status?deviceId=... also returns isPro without phone.
+
+
+--------------------------------------------------------------------------------
+5. ERROR SHAPE (same as rest of API)
+--------------------------------------------------------------------------------
+
+{
+  "success": false,
+  "message": "...",
+  "code": "VALIDATION_ERROR" | "RESOURCE_NOT_FOUND" | "SERVICE_UNAVAILABLE" | ...
+}
+
+SERVICE_UNAVAILABLE: Razorpay keys / plan ids missing on server, or Razorpay API down.
+
+
+--------------------------------------------------------------------------------
+6. SERVER ENV (ops — not for the app)
+--------------------------------------------------------------------------------
+
+RAZORPAY_KEY_ID=rzp_...
+RAZORPAY_KEY_SECRET=...
+RAZORPAY_PLAN_6M_ID=plan_...
+RAZORPAY_PLAN_1Y_ID=plan_...
+
+Then: prisma migrate deploy && restart API.
+
+
+--------------------------------------------------------------------------------
+7. QUICK CURL SMOKE
+--------------------------------------------------------------------------------
+
+BASE=http://127.0.0.1:3000
+DEVICE=device-test-0001
+
+curl -sS "$BASE/api/v1/pro/plans"
+curl -sS "$BASE/api/v1/pro/status?deviceId=$DEVICE"
+curl -sS "$BASE/api/v1/pro/status?phone=9876543210"
+curl -sS -X POST "$BASE/api/v1/pro/restore" -H "Content-Type: application/json" \
+  -d "{\"deviceId\":\"$DEVICE\",\"phone\":\"9876543210\"}"
+
+# Order needs live Razorpay keys:
+curl -sS -X POST "$BASE/api/v1/pro/order" -H "Content-Type: application/json" -d "{
+  \"deviceId\": \"$DEVICE\",
+  \"phone\": \"9876543210\",
+  \"email\": \"test@example.com\",
+  \"planCode\": \"SIX_MONTH\"
+}"

@@ -253,4 +253,26 @@ export class AppConfigService {
   get r2PublicBaseUrl(): string {
     return this.config.get<string>('R2_PUBLIC_BASE_URL') ?? '';
   }
+
+  get razorpayKeyId(): string {
+    return this.config.get<string>('RAZORPAY_KEY_ID') ?? '';
+  }
+
+  get razorpayKeySecret(): string {
+    return this.config.get<string>('RAZORPAY_KEY_SECRET') ?? '';
+  }
+
+  /** Razorpay plan id for ₹999 / 6 months (plan_…). */
+  get razorpayPlan6mId(): string {
+    return this.config.get<string>('RAZORPAY_PLAN_6M_ID') ?? '';
+  }
+
+  /** Razorpay plan id for ₹1799 / 1 year (plan_…). */
+  get razorpayPlan1yId(): string {
+    return this.config.get<string>('RAZORPAY_PLAN_1Y_ID') ?? '';
+  }
+
+  get razorpayConfigured(): boolean {
+    return Boolean(this.razorpayKeyId && this.razorpayKeySecret);
+  }
 }

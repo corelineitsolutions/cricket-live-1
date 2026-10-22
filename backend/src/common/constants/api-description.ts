@@ -24,6 +24,9 @@ Details and payload schemas: GET /api/v1/realtime.
 **Push notifications.** POST /api/v1/devices/register with \`{ deviceId, fcmToken, platform: "android" | "ios", appVersion }\`
 on app start and whenever the FCM token changes. Pushes are for notifications (match start, result); live scores use the WebSocket.
 
+**Pro (Razorpay).** GET /api/v1/pro/plans, POST /pro/order, POST /pro/verify, GET /pro/status?deviceId=.
+When status.isPro is true the app shows 0 ads. Client guide: docs/PRO_RAZORPAY_FRONTEND_API.txt.
+
 **Admin.** Login: POST /api/v1/admin/auth/login (5 failed attempts lock the account for 15 minutes; 429 with Retry-After).
 Admin endpoints are read-only for match data: Latiyal is the source of truth.
 

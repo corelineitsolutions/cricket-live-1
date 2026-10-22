@@ -51,6 +51,12 @@ curl -sS "http://127.0.0.1:3000/api/v1/ads?placement=HOME_BANNER"
 Placements: HOME_BANNER, MATCH_LIST, MATCH_DETAIL, SPLASH, INTERSTITIAL
 
 
+6b. Pro / Razorpay (no login) — full client guide: docs/PRO_RAZORPAY_FRONTEND_API.txt
+curl -sS http://127.0.0.1:3000/api/v1/pro/plans
+curl -sS "http://127.0.0.1:3000/api/v1/pro/status?deviceId=device-test-0001"
+# POST /api/v1/pro/order and /pro/verify need RAZORPAY_* env + migrate for pro_purchases
+
+
 7. Socket contract and a live socket handshake (no login)
 curl -sS http://127.0.0.1:3000/api/v1/realtime
 curl -sS "http://127.0.0.1:3000/socket.io/?EIO=4&transport=polling"

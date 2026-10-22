@@ -38,6 +38,17 @@ enum AdPlacement {
   INFO
 }
 
+enum ProPlanCode {
+  SIX_MONTH
+  ONE_YEAR
+}
+
+enum ProPaymentStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
 model League {
   id           String   @id @default(cuid())
   sportmonksId Int      @unique @map("sportmonks_id")
@@ -173,6 +184,29 @@ model Ad {
 
   @@index([placement, isActive, priority])
   @@map("ads")
+}
+
+/** One Razorpay Pro checkout (6 month / 1 year). Paid rows grant isPro until endsAt. */
+model ProPurchase {
+  id                String           @id @default(cuid())
+  deviceId          String           @map("device_id") @db.VarChar(128)
+  phone             String           @db.VarChar(20)
+  email             String?          @db.VarChar(255)
+  planCode          ProPlanCode      @map("plan_code")
+  razorpayPlanId    String           @map("razorpay_plan_id") @db.VarChar(64)
+  razorpayOrderId   String           @unique @map("razorpay_order_id") @db.VarChar(64)
+  razorpayPaymentId String?          @map("razorpay_payment_id") @db.VarChar(64)
+  amountPaise       Int              @map("amount_paise")
+  currency          String           @default("INR") @db.VarChar(8)
+  status            ProPaymentStatus @default(CREATED)
+  startsAt          DateTime?        @map("starts_at")
+  endsAt            DateTime?        @map("ends_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  @@index([deviceId, status, endsAt])
+  @@index([phone])
+  @@map("pro_purchases")
 }
 
 model Admin {
