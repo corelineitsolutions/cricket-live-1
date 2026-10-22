@@ -21,7 +21,6 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { memoryStorage } from 'multer';
 import { IdParamDto } from '../common/dto/id-param.dto';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { AdminOnly } from '../common/guards/admin-auth.guard';
@@ -33,6 +32,14 @@ import { ListAdsQueryDto } from './dto/list-ads.query.dto';
 import { UpdateAdDto } from './dto/update-ad.dto';
 
 const CACHE_NOTE = 'The public GET /api/v1/ads reflects the change immediately (the Redis cache is invalidated).';
+
+/** Multer in-memory file shape (avoids a hard dependency on @types/multer at build time). */
+type UploadedImageFile = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+};
 
 @ApiTags('Admin ads')
 @AdminOnly()
@@ -67,13 +74,8 @@ export class AdminAdsController {
   })
   @ApiOkResponse({ description: '{ imageUrl, key }' })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
-    }),
-  )
-  async uploadImage(@UploadedFile() file?: Express.Multer.File) {
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  async uploadImage(@UploadedFile() file?: UploadedImageFile) {
     if (!file) throw new BadRequestException('file is required');
     return this.r2Ads.uploadAdImage(file);
   }
