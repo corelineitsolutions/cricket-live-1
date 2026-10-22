@@ -11,7 +11,7 @@ const newAd = (overrides: Record<string, unknown> = {}) => ({
   title: 'Season sponsor',
   imageUrl: 'https://cdn.example.com/banner.png',
   clickUrl: 'https://sponsor.example.com',
-  placement: AdPlacement.HOME_BANNER,
+  placement: AdPlacement.HOME,
   priority: 10,
   isActive: true,
   ...overrides,
@@ -54,7 +54,7 @@ describe('Ads (e2e)', () => {
         .expect(200);
       expect(updated.body.data).toMatchObject({ title: 'Renamed', priority: 50, clickUrl: 'https://sponsor.example.com' });
 
-      const list = await request(api.http).get('/api/v1/admin/ads?placement=HOME_BANNER').set('Authorization', auth).expect(200);
+      const list = await request(api.http).get('/api/v1/admin/ads?placement=HOME').set('Authorization', auth).expect(200);
       expect(list.body.meta.total).toBe(1);
 
       const deleted = await request(api.http).delete(`/api/v1/admin/ads/${id}`).set('Authorization', auth).expect(200);
@@ -64,8 +64,8 @@ describe('Ads (e2e)', () => {
 
     it('lists inactive and expired ads for admins', async () => {
       db.rows.ad.push(
-        adRow('off', AdPlacement.SPLASH, 0, { isActive: false }),
-        adRow('expired', AdPlacement.SPLASH, 0, { isActive: true, endAt: new Date(Date.now() - HOUR) }),
+        adRow('off', AdPlacement.LIVE_SCREEN_1, 0, { isActive: false }),
+        adRow('expired', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true, endAt: new Date(Date.now() - HOUR) }),
       );
       const res = await request(api.http).get('/api/v1/admin/ads').set('Authorization', auth).expect(200);
       const byId = Object.fromEntries(res.body.data.map((ad: { id: string; isVisibleNow: boolean }) => [ad.id, ad.isVisibleNow]));
@@ -115,15 +115,15 @@ describe('Ads (e2e)', () => {
     it('returns only active ads inside their schedule, by priority', async () => {
       const now = Date.now();
       db.rows.ad.push(
-        adRow('home-low', AdPlacement.HOME_BANNER, 1, { isActive: true }),
-        adRow('home-high', AdPlacement.HOME_BANNER, 9, { isActive: true, startAt: new Date(now - HOUR), endAt: new Date(now + HOUR) }),
-        adRow('inactive', AdPlacement.HOME_BANNER, 5, { isActive: false }),
-        adRow('future', AdPlacement.HOME_BANNER, 5, { isActive: true, startAt: new Date(now + HOUR) }),
-        adRow('expired', AdPlacement.HOME_BANNER, 5, { isActive: true, endAt: new Date(now - HOUR) }),
-        adRow('list', AdPlacement.MATCH_LIST, 3, { isActive: true }),
+        adRow('home-low', AdPlacement.HOME, 1, { isActive: true }),
+        adRow('home-high', AdPlacement.HOME, 9, { isActive: true, startAt: new Date(now - HOUR), endAt: new Date(now + HOUR) }),
+        adRow('inactive', AdPlacement.HOME, 5, { isActive: false }),
+        adRow('future', AdPlacement.HOME, 5, { isActive: true, startAt: new Date(now + HOUR) }),
+        adRow('expired', AdPlacement.HOME, 5, { isActive: true, endAt: new Date(now - HOUR) }),
+        adRow('list', AdPlacement.COMMENTARY, 3, { isActive: true }),
       );
 
-      expect(await publicIds('?placement=HOME_BANNER')).toEqual(['home-high', 'home-low']);
+      expect(await publicIds('?placement=HOME')).toEqual(['home-high', 'home-low']);
       expect(await publicIds()).toEqual(['home-high', 'list', 'home-low']);
       await request(api.http).get('/api/v1/ads?placement=NOPE').expect(400);
     });
@@ -154,9 +154,9 @@ describe('Ads (e2e)', () => {
     });
 
     it('serves repeat reads from Redis until an admin change', async () => {
-      db.rows.ad.push(adRow('a', AdPlacement.SPLASH, 0, { isActive: true }));
+      db.rows.ad.push(adRow('a', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true }));
       await publicIds();
-      await publicIds('?placement=SPLASH');
+      await publicIds('?placement=LIVE_SCREEN_1');
       expect(db.ad.findMany).toHaveBeenCalledTimes(1);
 
       await request(api.http).patch('/api/v1/admin/ads/a').set('Authorization', auth).send({ title: 'New title' }).expect(200);

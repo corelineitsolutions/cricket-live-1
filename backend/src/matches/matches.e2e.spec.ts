@@ -45,7 +45,7 @@ function seedDb(db: FakeDb) {
   db.rows.team.push(teamRow(101, 'Mumbai Strikers', 'MUM'));
   db.rows.player.push(playerRow(9002, 'Rohan Mehta'));
   db.rows.league.push(leagueRow(3, 'Premier T20'));
-  db.rows.ad.push(adRow('ad-home', AdPlacement.HOME_BANNER, 10), adRow('ad-list', AdPlacement.MATCH_LIST, 5));
+  db.rows.ad.push(adRow('ad-home', AdPlacement.HOME, 10), adRow('ad-list', AdPlacement.COMMENTARY, 5));
 }
 
 describe('Public REST API (e2e)', () => {
@@ -350,7 +350,7 @@ describe('Public REST API (e2e)', () => {
 
     it('GET /ads returns every active ad, or one placement', async () => {
       const all = await request(api.http).get('/api/v1/ads').expect(200);
-      const home = await request(api.http).get('/api/v1/ads?placement=HOME_BANNER').expect(200);
+      const home = await request(api.http).get('/api/v1/ads?placement=HOME').expect(200);
       await request(api.http).get('/api/v1/ads?placement=NOPE').expect(400);
 
       expect(all.body.data.map((ad: { id: string }) => ad.id)).toEqual(['ad-home', 'ad-list']);

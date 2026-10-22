@@ -15,7 +15,7 @@ export class AdResponseDto {
   @ApiProperty({ example: 'https://example.com/tickets', description: 'Open in the browser when the ad is tapped.' })
   clickUrl!: string;
 
-  @ApiProperty({ enum: AdPlacement, example: AdPlacement.HOME_BANNER, description: 'Where in the app the ad belongs.' })
+  @ApiProperty({ enum: AdPlacement, example: AdPlacement.HOME, description: 'Where in the app the ad belongs.' })
   placement!: AdPlacement;
 
   @ApiProperty({ example: 10, description: 'Higher first. Lists are already sorted by priority.' })

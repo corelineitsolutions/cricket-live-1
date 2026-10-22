@@ -233,4 +233,24 @@ export class AppConfigService {
   get aiIntentMaxConcurrent(): number {
     return Number(this.config.getOrThrow('AI_INTENT_MAX_CONCURRENT'));
   }
+
+  get r2AccountId(): string {
+    return this.config.get<string>('R2_ACCOUNT_ID') ?? '';
+  }
+
+  get r2AccessKeyId(): string {
+    return this.config.get<string>('R2_ACCESS_KEY_ID') ?? '';
+  }
+
+  get r2SecretAccessKey(): string {
+    return this.config.get<string>('R2_SECRET_ACCESS_KEY') ?? '';
+  }
+
+  get r2BucketAds(): string {
+    return this.config.get<string>('R2_BUCKET_ADS') || 'ads';
+  }
+
+  get r2PublicBaseUrl(): string {
+    return this.config.get<string>('R2_PUBLIC_BASE_URL') ?? '';
+  }
 }

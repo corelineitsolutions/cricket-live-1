@@ -12,8 +12,8 @@ import { EmptyState, ErrorState, InlineNotice, LoadingState } from '@/components
 import { StatusBadge, type Tone } from '@/components/ui/status-badge';
 import { adState, type AdState } from '@/lib/ad-form';
 import { ApiError, apiRequest } from '@/lib/api';
-import { formatDateTime, humanize } from '@/lib/format';
-import { AD_PLACEMENTS, type Ad, type AdPlacement } from '@/lib/types';
+import { formatDateTime } from '@/lib/format';
+import { AD_PLACEMENT_LABELS, AD_PLACEMENTS, type Ad, type AdPlacement } from '@/lib/types';
 import { useApi, useNow } from '@/lib/use-api';
 
 const PAGE_SIZE = 20;
@@ -86,7 +86,7 @@ export default function AdsPage() {
         </div>
       ),
     },
-    { key: 'placement', header: 'Placement', render: (ad) => humanize(ad.placement) },
+    { key: 'placement', header: 'Placement', render: (ad) => AD_PLACEMENT_LABELS[ad.placement] ?? ad.placement },
     { key: 'priority', header: 'Priority', className: 'tabular-nums', render: (ad) => ad.priority },
     {
       key: 'schedule',
@@ -149,7 +149,7 @@ export default function AdsPage() {
             <option value="">All placements</option>
             {AD_PLACEMENTS.map((value) => (
               <option key={value} value={value}>
-                {humanize(value)}
+                {AD_PLACEMENT_LABELS[value]}
               </option>
             ))}
           </Select>

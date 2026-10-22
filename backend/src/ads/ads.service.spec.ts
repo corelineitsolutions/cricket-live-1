@@ -20,24 +20,24 @@ describe('AdsService', () => {
     const { db, service } = setup();
     const now = Date.now();
     db.rows.ad.push(
-      adRow('low', AdPlacement.HOME_BANNER, 1, { isActive: true }),
-      adRow('high', AdPlacement.HOME_BANNER, 9, { isActive: true }),
-      adRow('disabled', AdPlacement.HOME_BANNER, 5, { isActive: false }),
-      adRow('future', AdPlacement.HOME_BANNER, 5, { isActive: true, startAt: new Date(now + HOUR) }),
-      adRow('expired', AdPlacement.HOME_BANNER, 5, { isActive: true, endAt: new Date(now - HOUR) }),
-      adRow('splash', AdPlacement.SPLASH, 5, { isActive: true }),
+      adRow('low', AdPlacement.HOME, 1, { isActive: true }),
+      adRow('high', AdPlacement.HOME, 9, { isActive: true }),
+      adRow('disabled', AdPlacement.HOME, 5, { isActive: false }),
+      adRow('future', AdPlacement.HOME, 5, { isActive: true, startAt: new Date(now + HOUR) }),
+      adRow('expired', AdPlacement.HOME, 5, { isActive: true, endAt: new Date(now - HOUR) }),
+      adRow('splash', AdPlacement.LIVE_SCREEN_1, 5, { isActive: true }),
     );
 
-    expect((await service.getActive(AdPlacement.HOME_BANNER)).map((ad) => ad.id)).toEqual(['high', 'low']);
+    expect((await service.getActive(AdPlacement.HOME)).map((ad) => ad.id)).toEqual(['high', 'low']);
     expect((await service.getActive()).map((ad) => ad.id)).toEqual(['high', 'splash', 'low']);
   });
 
   it('answers repeated reads from Redis', async () => {
     const { db, service } = setup();
-    db.rows.ad.push(adRow('a', AdPlacement.SPLASH, 0, { isActive: true }));
+    db.rows.ad.push(adRow('a', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true }));
 
     await service.getActive();
-    await service.getActive(AdPlacement.SPLASH);
+    await service.getActive(AdPlacement.LIVE_SCREEN_1);
 
     expect(db.ad.findMany).toHaveBeenCalledTimes(1);
   });
@@ -48,7 +48,7 @@ describe('AdsService', () => {
       vi.setSystemTime(new Date('2026-10-01T10:00:00.000Z'));
       const { db, service } = setup();
       db.rows.ad.push(
-        adRow('later', AdPlacement.SPLASH, 0, { isActive: true, startAt: new Date('2026-10-01T10:01:00.000Z') }),
+        adRow('later', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true, startAt: new Date('2026-10-01T10:01:00.000Z') }),
       );
       expect(await service.getActive()).toEqual([]);
 
@@ -70,7 +70,7 @@ describe('AdsService', () => {
       title: 'Sponsor',
       imageUrl: 'https://cdn.example.com/ad.png',
       clickUrl: 'https://example.com',
-      placement: AdPlacement.SPLASH,
+      placement: AdPlacement.LIVE_SCREEN_1,
       priority: 0,
       isActive: true,
     });
@@ -91,7 +91,7 @@ describe('AdsService', () => {
 
   it('falls back to MySQL when Redis is down', async () => {
     const { redis, db, service } = setup();
-    db.rows.ad.push(adRow('a', AdPlacement.SPLASH, 0, { isActive: true }));
+    db.rows.ad.push(adRow('a', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true }));
     redis.down = true;
 
     expect((await service.getActive()).map((ad) => ad.id)).toEqual(['a']);
@@ -104,7 +104,7 @@ describe('AdsService', () => {
         title: 'Sponsor',
         imageUrl: 'https://cdn.example.com/ad.png',
         clickUrl: 'https://example.com',
-        placement: AdPlacement.SPLASH,
+        placement: AdPlacement.LIVE_SCREEN_1,
         priority: 0,
         isActive: true,
         startAt: new Date('2026-10-02T00:00:00.000Z'),

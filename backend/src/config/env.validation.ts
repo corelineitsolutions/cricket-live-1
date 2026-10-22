@@ -68,6 +68,13 @@ export const envValidationSchema = Joi.object({
   AI_INTENT_MAX_OUTPUT_TOKENS: Joi.number().integer().min(32).max(256).default(120),
   /** Max concurrent local classifier calls per API process (keep ≤ llama-server -np). */
   AI_INTENT_MAX_CONCURRENT: Joi.number().integer().min(1).max(4).default(2),
+  /** Cloudflare R2 (S3-compatible) for admin ad image uploads. Bucket name defaults to "ads". */
+  R2_ACCOUNT_ID: Joi.string().allow('').default(''),
+  R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),
+  R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+  R2_BUCKET_ADS: Joi.string().allow('').default('ads'),
+  /** Public base URL for objects (r2.dev subdomain or custom domain), no trailing slash. */
+  R2_PUBLIC_BASE_URL: Joi.string().allow('').default(''),
 })
   .unknown(true)
   .prefs({ abortEarly: false, convert: true });

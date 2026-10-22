@@ -81,7 +81,7 @@ All endpoints are public (no login, no JWT) and relative to the base URL. Everyt
 | GET | `/teams/{id}` | Team | `Team` | 400, 404, 429 |
 | GET | `/players/{id}` | Player | `Player` | 400, 404, 429 |
 | GET | `/leagues/{id}` | League | `League` | 400, 404, 429 |
-| GET | `/ads?placement=HOME_BANNER` | Active ads | `Ad[]` | 400, 429 |
+| GET | `/ads?placement=HOME` | Active ads | `Ad[]` | 400, 429 |
 | GET | `/matches?page=1&limit=20&status=COMPLETED` | Stored matches (history), paginated | `Match[]` + `meta` | 400, 429 |
 | GET | `/realtime` | Machine-readable socket contract | object | 429 |
 | GET | `/feeds` | List of every cricket data feed (51 Latiyal endpoints) | `FeedDefinition[]` | 429 |
@@ -98,7 +98,7 @@ All endpoints are public (no login, no JWT) and relative to the base URL. Everyt
 | `/matches/{id}`, `/scorecard`, `/commentary` | `id` (path) | positive integer `matchId` |
 | `/teams/{id}`, `/players/{id}`, `/leagues/{id}` | `id` (path) | positive integer `sportmonksId` |
 | `/matches/{id}/commentary` | `limit` (query, optional) | integer 1–100, default 30 |
-| `/ads` | `placement` (query, optional) | one of `HOME_BANNER`, `MATCH_LIST`, `MATCH_DETAIL`, `SPLASH`, `INTERSTITIAL`. Omit for all active ads |
+| `/ads` | `placement` (query, optional) | one of `HOME`, `LIVE_SCREEN_1`, `LIVE_SCREEN_2`, `COMMENTARY`, `SCORECARD`, `HISTORY`, `FANTASY`, `OVERS`, `TRACKER`, `POINTS_TABLE`, `GRAPHS`, `INFO`. Omit for all active ads |
 | `/matches` | `page`, `limit`, `status` (optional) | `page` ≥ 1, `limit` 1–100, `status` = a `MatchStatus` value |
 | `/devices/register` | JSON body | see [Device registration](#device-registration-push-notifications) |
 | `/devices/deactivate` | JSON body `{ "deviceId": "..." }` | same `deviceId` rules as registration |
@@ -359,7 +359,7 @@ curl "https://<api-host>/api/v1/matches/61521/commentary?limit=20"
 curl https://<api-host>/api/v1/teams/101
 curl https://<api-host>/api/v1/players/9002
 curl https://<api-host>/api/v1/leagues/3
-curl "https://<api-host>/api/v1/ads?placement=HOME_BANNER"
+curl "https://<api-host>/api/v1/ads?placement=HOME"
 curl -X POST https://<api-host>/api/v1/devices/register \
   -H "Content-Type: application/json" \
   -d '{"deviceId":"6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22","fcmToken":"<token>","platform":"android","appVersion":"1.0.0"}'
@@ -580,7 +580,7 @@ Before the match starts: `"innings": []`, `"updatedAt": null`.
 
 `/players/{id}` and `/leagues/{id}` follow the same pattern with the fields listed in [Data models](#team-player-league-ad).
 
-### `GET /ads?placement=HOME_BANNER` — 200
+### `GET /ads?placement=HOME` — 200
 
 ```json
 {
@@ -591,7 +591,7 @@ Before the match starts: `"innings": []`, `"updatedAt": null`.
       "title": "Season tickets on sale",
       "imageUrl": "https://cdn.example.com/ads/banner.png",
       "clickUrl": "https://example.com/tickets",
-      "placement": "HOME_BANNER",
+      "placement": "HOME",
       "priority": 10,
       "isActive": true,
       "startAt": null,

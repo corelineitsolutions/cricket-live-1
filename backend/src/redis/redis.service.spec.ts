@@ -25,9 +25,9 @@ describe('RedisService', () => {
     };
     const service = serviceWith(client);
 
-    await service.setJson('ads:active:HOME_BANNER', [{ id: 'ad-1' }], 60);
-    await expect(service.getJson('ads:active:HOME_BANNER')).resolves.toEqual([{ id: 'ad-1' }]);
-    expect(client.set).toHaveBeenCalledWith('cricket:v1:ads:active:HOME_BANNER', '[{"id":"ad-1"}]', 'EX', 60);
+    await service.setJson('ads:active:HOME', [{ id: 'ad-1' }], 60);
+    await expect(service.getJson('ads:active:HOME')).resolves.toEqual([{ id: 'ad-1' }]);
+    expect(client.set).toHaveBeenCalledWith('cricket:v1:ads:active:HOME', '[{"id":"ad-1"}]', 'EX', 60);
   });
 
   it('stores sub-second TTLs in milliseconds', async () => {

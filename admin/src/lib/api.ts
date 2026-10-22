@@ -115,6 +115,38 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 }
 
+/** Multipart upload (do not set Content-Type — the browser sets the boundary). */
+export async function apiUpload<T>(path: string, formData: FormData, signal?: AbortSignal): Promise<{ data: T; meta?: PaginationMeta }> {
+  if (!API_BASE_URL) {
+    throw new ApiError(0, 'NOT_CONFIGURED', 'NEXT_PUBLIC_API_URL is not set. Rebuild the admin panel with the API URL.');
+  }
+  const session = loadSession();
+  if (!session) {
+    expireSession();
+    throw new ApiError(401, 'UNAUTHORIZED', 'Your session has expired. Please sign in again.');
+  }
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path), {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${session.token}` },
+      body: formData,
+      signal,
+      cache: 'no-store',
+      credentials: 'omit',
+    });
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the API. Check that the NestJS API is running.');
+  }
+  try {
+    return await parseResponse<T>(response);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) expireSession();
+    throw error;
+  }
+}
+
 function expireSession(): void {
   clearSession();
   if (typeof window !== 'undefined') {

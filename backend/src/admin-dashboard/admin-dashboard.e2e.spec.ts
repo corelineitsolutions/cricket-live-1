@@ -37,9 +37,9 @@ describe('Admin dashboard and match monitoring (e2e)', () => {
       { id: 'd3', deviceId: 'device-000003', fcmToken: 'fcm-token-3333333333333333', platform: DevicePlatform.IOS, isActive: false },
     );
     db.rows.ad.push(
-      adRow('visible', AdPlacement.SPLASH, 0, { isActive: true }),
-      adRow('scheduled', AdPlacement.SPLASH, 0, { isActive: true, startAt: new Date(Date.now() + 3_600_000) }),
-      adRow('off', AdPlacement.SPLASH, 0, { isActive: false }),
+      adRow('visible', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true }),
+      adRow('scheduled', AdPlacement.LIVE_SCREEN_1, 0, { isActive: true, startAt: new Date(Date.now() + 3_600_000) }),
+      adRow('off', AdPlacement.LIVE_SCREEN_1, 0, { isActive: false }),
     );
     api = await createApiTestApp({ db, redis });
     auth = await adminAuthHeader(api);

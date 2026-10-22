@@ -134,8 +134,37 @@ export interface AdminDevice {
   updatedAt: string;
 }
 
-export const AD_PLACEMENTS = ['HOME_BANNER', 'MATCH_LIST', 'MATCH_DETAIL', 'SPLASH', 'INTERSTITIAL'] as const;
+export const AD_PLACEMENTS = [
+  'HOME',
+  'LIVE_SCREEN_1',
+  'LIVE_SCREEN_2',
+  'COMMENTARY',
+  'SCORECARD',
+  'HISTORY',
+  'FANTASY',
+  'OVERS',
+  'TRACKER',
+  'POINTS_TABLE',
+  'GRAPHS',
+  'INFO',
+] as const;
 export type AdPlacement = (typeof AD_PLACEMENTS)[number];
+
+/** Friendly labels for the admin placement dropdown. */
+export const AD_PLACEMENT_LABELS: Record<AdPlacement, string> = {
+  HOME: 'Home',
+  LIVE_SCREEN_1: 'Live screen 1',
+  LIVE_SCREEN_2: 'Live screen 2',
+  COMMENTARY: 'Commentary',
+  SCORECARD: 'Scorecard',
+  HISTORY: 'History',
+  FANTASY: 'Fantasy',
+  OVERS: 'Overs',
+  TRACKER: 'Tracker',
+  POINTS_TABLE: 'Points table',
+  GRAPHS: 'Graphs',
+  INFO: 'Info',
+};
 
 export interface Ad {
   id: string;

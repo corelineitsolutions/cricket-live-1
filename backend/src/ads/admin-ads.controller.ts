@@ -1,8 +1,31 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiConsumes,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { IdParamDto } from '../common/dto/id-param.dto';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { AdminOnly } from '../common/guards/admin-auth.guard';
+import { R2AdsService } from '../storage/r2-ads.service';
 import { AdsService } from './ads.service';
 import { AdListResponseDto, AdminAdDetailsResponseDto, DeletedAdEnvelopeDto } from './dto/ad.response.dto';
 import { CreateAdDto } from './dto/create-ad.dto';
@@ -15,7 +38,10 @@ const CACHE_NOTE = 'The public GET /api/v1/ads reflects the change immediately (
 @AdminOnly()
 @Controller({ path: 'admin/ads', version: '1' })
 export class AdminAdsController {
-  constructor(private readonly ads: AdsService) {}
+  constructor(
+    private readonly ads: AdsService,
+    private readonly r2Ads: R2AdsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List ads, including inactive, scheduled and expired ones' })
@@ -24,6 +50,32 @@ export class AdminAdsController {
   async list(@Query() query: ListAdsQueryDto) {
     const result = await this.ads.list(query);
     return { data: result.items, meta: result.meta };
+  }
+
+  @Post('upload-image')
+  @ApiOperation({
+    summary: 'Upload an ad image to the R2 ads bucket',
+    description: 'Returns a public imageUrl to store on the ad. Requires R2_* env. Max 5 MB; JPEG/PNG/WebP/GIF.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiOkResponse({ description: '{ imageUrl, key }' })
+  @ApiBadRequestResponse({ type: ErrorResponseDto })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    }),
+  )
+  async uploadImage(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.r2Ads.uploadAdImage(file);
   }
 
   @Get(':id')

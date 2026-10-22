@@ -4,9 +4,9 @@ import { activeAdsWhere } from './active-ad.query';
 describe('activeAdsWhere', () => {
   it('requires an active placement inside an open-ended schedule', () => {
     const now = new Date('2026-10-01T12:00:00.000Z');
-    expect(activeAdsWhere(AdPlacement.HOME_BANNER, now)).toEqual({
+    expect(activeAdsWhere(AdPlacement.HOME, now)).toEqual({
       isActive: true,
-      placement: AdPlacement.HOME_BANNER,
+      placement: AdPlacement.HOME,
       AND: [
         { OR: [{ startAt: null }, { startAt: { lte: now } }] },
         { OR: [{ endAt: null }, { endAt: { gte: now } }] },

@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { adState, EMPTY_AD_FORM, fromAd, fromLocalInput, isHttpUrl, toAdPayload, toLocalInput, validateAdForm, type AdFormValues } from './ad-form';
+import {
+  adState,
+  applyDurationPreset,
+  EMPTY_AD_FORM,
+  fromAd,
+  fromLocalInput,
+  isHttpUrl,
+  newAdForm,
+  toAdPayload,
+  toLocalInput,
+  validateAdForm,
+  type AdFormValues,
+} from './ad-form';
 import type { Ad } from './types';
 
 const valid: AdFormValues = {
@@ -9,6 +21,7 @@ const valid: AdFormValues = {
   clickUrl: 'https://example.com/offer',
   priority: '10',
   isActive: true,
+  durationPreset: 'custom',
 };
 
 describe('validateAdForm', () => {
@@ -19,7 +32,7 @@ describe('validateAdForm', () => {
   it('requires title and both URLs', () => {
     const errors = validateAdForm({ ...EMPTY_AD_FORM, title: '   ' });
     expect(errors.title).toBe('Title is required.');
-    expect(errors.imageUrl).toBe('URL is required.');
+    expect(errors.imageUrl).toBe('Upload an image or paste an image URL.');
     expect(errors.clickUrl).toBe('URL is required.');
   });
 
@@ -55,7 +68,7 @@ describe('payload conversion', () => {
       title: 'Summer offer',
       imageUrl: 'https://cdn.example.com/banner.png',
       clickUrl: 'https://example.com/offer',
-      placement: 'HOME_BANNER',
+      placement: 'HOME',
       priority: 10,
       isActive: true,
       startAt: null,
@@ -78,7 +91,7 @@ describe('payload conversion', () => {
       title: 'T',
       imageUrl: 'https://i.example.com/a.png',
       clickUrl: 'https://example.com',
-      placement: 'MATCH_LIST',
+      placement: 'COMMENTARY',
       priority: 3,
       isActive: false,
       isVisibleNow: false,
@@ -87,7 +100,34 @@ describe('payload conversion', () => {
       createdAt: '2026-10-01T00:00:00.000Z',
       updatedAt: '2026-10-01T00:00:00.000Z',
     };
-    expect(fromAd(ad)).toEqual({ title: 'T', imageUrl: ad.imageUrl, clickUrl: ad.clickUrl, placement: 'MATCH_LIST', priority: '3', isActive: false, startAt: '', endAt: '' });
+    expect(fromAd(ad)).toEqual({
+      title: 'T',
+      imageUrl: ad.imageUrl,
+      clickUrl: ad.clickUrl,
+      placement: 'COMMENTARY',
+      priority: '3',
+      isActive: false,
+      startAt: '',
+      endAt: '',
+      imageMode: 'url',
+      durationPreset: 'custom',
+    });
+  });
+
+  it('new ad form defaults to 3 hours from now', () => {
+    const form = newAdForm(new Date('2026-10-01T12:00:00'));
+    expect(form.durationPreset).toBe('3');
+    expect(form.isActive).toBe(true);
+    expect(form.startAt).toBeTruthy();
+    expect(form.endAt).toBeTruthy();
+    expect(Date.parse(fromLocalInput(form.endAt!)!) - Date.parse(fromLocalInput(form.startAt!)!)).toBe(3 * 60 * 60 * 1000);
+  });
+
+  it('applyDurationPreset sets start/end for hour presets', () => {
+    const applied = applyDurationPreset('2', new Date('2026-10-01T10:00:00'));
+    expect(applied.durationPreset).toBe('2');
+    expect(applied.startAt).toBeTruthy();
+    expect(applied.endAt).toBeTruthy();
   });
 });
 
