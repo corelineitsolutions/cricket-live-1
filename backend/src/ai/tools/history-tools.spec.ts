@@ -138,11 +138,17 @@ describe('AI history tools', () => {
     expect(guessPlayerName('career stats please')).toBeNull();
     expect(guessEvent("icc men's world cup")).toBe('World Cup');
     expect(guessEvent('who win WC 2019')).toBe('World Cup');
+    expect(guessEvent('who win the 2024 t20 word cup')).toBe('World Cup');
+    expect(guessEvent('T20 विश्व कप 2024 कौन जीता?')).toBe('World Cup');
     expect(guessEvent('who win IPL 2026')).toBe('Indian Premier League');
+    expect(guessEvent('आयपीएल 2025 kon jita')).toBe('Indian Premier League');
+    expect(guessEvent('ip 2026 kon jita da')).toBe('Indian Premier League');
     expect(guessEvent('Orange Cap in IPL 2019')).toBe('Indian Premier League');
     expect(guessFormat("icc men's world cup")).toBe('ODI');
     expect(guessFormat('who win WC 2019')).toBe('ODI');
     expect(guessFormat('t20 world cup')).toBe('T20');
+    expect(guessFormat('who win the 2024 t20 word cup')).toBe('T20');
+    expect(guessFormat('T20 विश्व कप 2024 कौन जीता?')).toBe('T20');
     expect(guessFormat('who win IPL 2026')).toBe('T20');
     expect(guessYear('who win icc odi world cup 2019')).toBe(2019);
     expect(guessYear('who win IPL 2026')).toBe(2026);

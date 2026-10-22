@@ -85,7 +85,8 @@ describe('resolveAskPlan', () => {
       classifier: mockClassifier(classify),
     });
     expect(plan.source).toBe('deterministic');
-    expect(plan.calls[0]?.name).toBe('get_win_probability');
+    // Chase outlook loads match first, then win% when available.
+    expect(plan.calls.map((c) => c.name)).toEqual(['get_match', 'get_win_probability']);
     expect(classify).not.toHaveBeenCalled();
   });
 

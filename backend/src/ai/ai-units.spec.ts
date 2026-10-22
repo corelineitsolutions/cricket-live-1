@@ -189,7 +189,36 @@ describe('AiGateway', () => {
 });
 
 describe('planAskTools', () => {
-  const available = new Set(['get_player_history', 'get_event_leaders', 'get_win_probability', 'get_toss_prediction']);
+  const available = new Set([
+    'get_player_history',
+    'get_event_leaders',
+    'get_event_results',
+    'get_win_probability',
+    'get_toss_prediction',
+  ]);
+
+  it('routes Hindi / typo T20 World Cup and Hinglish IPL winners to get_event_results', () => {
+    for (const q of [
+      'T20 विश्व कप 2024 कौन जीता?',
+      'who win the 2024 t20 word cup',
+      'how win the 2024 t20 word cup',
+      'आयपीएल 2025 kon jita',
+      'ip 2026 kon jita da',
+    ]) {
+      const calls = planAskTools(q, null, available, { strict: true });
+      expect(calls[0]?.name, q).toBe('get_event_results');
+    }
+    expect(JSON.parse(planAskTools('T20 विश्व कप 2024 कौन जीता?', null, available, { strict: true })[0]!.arguments)).toMatchObject({
+      event: 'World Cup',
+      year: 2024,
+      format: 'T20',
+    });
+    expect(JSON.parse(planAskTools('आयपीएल 2025 kon jita', null, available, { strict: true })[0]!.arguments)).toMatchObject({
+      event: 'Indian Premier League',
+      year: 2025,
+      format: 'T20',
+    });
+  });
 
   it('routes IPL hundreds phrasings to get_player_history', () => {
     for (const q of [

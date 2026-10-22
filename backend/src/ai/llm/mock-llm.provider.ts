@@ -23,9 +23,11 @@ const REQUIRED_RATE_LIVE =
   /runs?\s*per\s*over|required\s*(?:run\s*)?rate|\brrr\b|need(?:s)?\s+(?:to\s+)?(?:score|get|make)|how\s+many\s+runs.+\bneed|कितने\s*रन\s*प्रति\s*ओवर/i;
 const PLAYER_HISTORY_WORDS =
   /career|record|stats|statistics|average|strike rate|centur(?:y|ies)|hundreds?|\b100s?\b|\b50s?\b|fifties|wickets?|bowling|economy|how many|करियर|रिकॉर्ड|आंकड़े|औसत|शतक|विकेट|गेंदबाज/i;
-const EVENT_WORDS = /world\s*cup|\bwc\b|asia\s*cup|champions\s*trophy|ashes|ipl|t20\s*world\s*cup/i;
+/** Tournament fragments (Latin + Hindi + common typos like "word cup"). */
+const EVENT_WORDS =
+  /t20\s*wor[ld]d?\s*cup|t20\s*word\s*cup|world\s*t20|world\s*cup|word\s*cup|\bwc\b|asia\s*cup|champions\s*trophy|ashes|\bipl\b|\bip\b(?=\s*\d{4})|आयपीएल|आईपीएल|आई\s*पी\s*एल|विश्व\s*कप|टी\s*20\s*विश्व|टी20\s*विश्व/i;
 const EVENT_WINNER_WORDS =
-  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|ipl\s+\d{4}\s+title|title\b|runner[\s-]?up|जीता|विजेता/i;
+  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|ipl\s+\d{4}\s+title|title\b|runner[\s-]?up|जीता|विजेता|कौन\s*जीत|kon\s+jit[ae]?|kaun\s+jit[ae]?|koun\s+jit[ae]?|jeet[ae]?\s*(?:tha|thi)?|jitaya/i;
 const EVENT_LEADER_RUNS =
   /most\s+runs?|top\s+scorer|highest\s+runs?|orange\s*cap|hit\s+the\s+most\s+run|कौन\s*ने\s*सबसे\s*ज्यादा\s*रन|सर्वाधिक\s*रन/i;
 const EVENT_LEADER_WICKETS =
@@ -139,20 +141,38 @@ export function guessPlayerName(question: string): string | null {
 }
 
 export function guessEvent(question: string): string | null {
-  if (/t20\s*world\s*cup|world\s*t20/i.test(question)) return 'World Cup';
-  if (/world\s*cup|\bwc\b/i.test(question)) return 'World Cup';
-  if (/asia\s*cup/i.test(question)) return 'Asia Cup';
-  if (/champions\s*trophy/i.test(question)) return 'Champions Trophy';
+  // T20 World Cup (English, typo "word cup", Hindi विश्व कप with T20).
+  if (
+    /t20\s*wor[ld]d?\s*cup|t20\s*word\s*cup|world\s*t20|टी\s*20\s*विश्व|टी20\s*विश्व|विश्व\s*कप.{0,12}टी\s*20|टी\s*20.{0,12}विश्व\s*कप/i.test(
+      question,
+    )
+  ) {
+    return 'World Cup';
+  }
+  if (/world\s*cup|word\s*cup|\bwc\b|विश्व\s*कप/i.test(question)) return 'World Cup';
+  if (/asia\s*cup|एशिया\s*कप/i.test(question)) return 'Asia Cup';
+  if (/champions\s*trophy|चैंपियंस\s*ट्रॉफी/i.test(question)) return 'Champions Trophy';
   if (/\bashes\b/i.test(question)) return 'The Ashes';
-  if (/\bipl\b/i.test(question)) return 'Indian Premier League';
+  // IPL + Hindi आयपीएल/आईपीएल + typo "ip 2026".
+  if (/\bipl\b|आयपीएल|आईपीएल|आई\s*पी\s*एल|\bip\b(?=\s*\d{4})/i.test(question)) {
+    return 'Indian Premier League';
+  }
   return null;
 }
 
 export function guessFormat(question: string): 'T20' | 'ODI' | 'Test' | null {
   if (/\btests?\b|ashes/i.test(question)) return 'Test';
-  if (/\bt20\s*world\s*cup|world\s*t20|t20i|\bt20\b|ipl/i.test(question)) return 'T20';
-  // Bare "WC" / "world cup" without T20 → treat as ODI World Cup in demo routing.
-  if (/\bodi\b|one[\s-]?day|world\s*cup|\bwc\b|asia\s*cup|champions\s*trophy/i.test(question)) return 'ODI';
+  if (
+    /t20\s*wor[ld]d?\s*cup|t20\s*word\s*cup|world\s*t20|t20i|\bt20\b|टी\s*20|टी20|\bipl\b|आयपीएल|आईपीएल|\bip\b(?=\s*\d{4})/i.test(
+      question,
+    )
+  ) {
+    return 'T20';
+  }
+  // Bare "WC" / "world cup" / Hindi विश्व कप without T20 → ODI World Cup.
+  if (/\bodi\b|one[\s-]?day|world\s*cup|word\s*cup|\bwc\b|विश्व\s*कप|asia\s*cup|champions\s*trophy/i.test(question)) {
+    return 'ODI';
+  }
   return null;
 }
 

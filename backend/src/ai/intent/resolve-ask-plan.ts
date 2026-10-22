@@ -49,6 +49,14 @@ export function shouldPreferIntentClassifier(question: string): boolean {
   // Clear live projection / target / next-overs with a match open — skip classifier.
   if (isLiveMatchQuestion(q)) return false;
 
+  // Clear archive tournament winner / leaders — keep deterministic (Hindi + typos).
+  if (
+    /who\s+won|who\s+win|जीता|विजेता|kon\s+jit|kaun\s+jit|koun\s+jit|world\s*cup|word\s*cup|विश्व\s*कप|\bipl\b|आयपीएल|आईपीएल|orange\s*cap|purple\s*cap|most\s+wickets?|most\s+runs?/i.test(
+      q,
+    )
+  ) {
+    return false;
+  }
   // Conversational / ambiguous → classifier when enabled.
   if (
     /can they|chase this|what about|explain|simple hindi|likely to win|gir sakta|gir sakti|chahiye|kitne run|ab kitne|last five|last 5|pehle|agle|agli|sakta hai|sakte hai/i.test(
@@ -60,7 +68,10 @@ export function shouldPreferIntentClassifier(question: string): boolean {
   // Very short queries are often ambiguous Hinglish.
   if (q.split(/\s+/).filter(Boolean).length <= 5) return true;
   // Soft / vague live asks without strong keywords.
-  if (/^(what|how|who|when|kya|kaise|kab|kon|kaun)\b/i.test(q) && !/world\s*cup|\bipl\b|hundred|career|rrr|required/i.test(q)) {
+  if (
+    /^(what|how|who|when|kya|kaise|kab|kon|kaun)\b/i.test(q) &&
+    !/world\s*cup|word\s*cup|विश्व|\bipl\b|आयपीएल|आईपीएल|hundred|career|rrr|required/i.test(q)
+  ) {
     return true;
   }
   return false;
