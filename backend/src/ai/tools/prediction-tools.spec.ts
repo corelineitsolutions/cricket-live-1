@@ -7,6 +7,7 @@ import { AiToolRegistry } from './ai-tool.registry';
 import {
   blendNextOversEstimate,
   createPredictionTools,
+  extractLiveProjectionHints,
   oversLimitFor,
   parseLiveMatchPrediction,
   parseMatchProbHistory,
@@ -145,6 +146,16 @@ describe('prediction helpers', () => {
       6,
     );
     expect(summed).toMatchObject({ available: true, complete: true, runs: 56, oversCounted: 6 });
+  });
+
+  it('extracts projected / powerplay / next-balls hints from nested live payloads', () => {
+    const hints = extractLiveProjectionHints({
+      prediction: { projected_score: 185, powerplay_runs: 52 },
+      markets: [{ next_balls: 14, session_runs: 28, label: 'session market' }],
+    });
+    expect(hints.projectedScore).toBe(185);
+    expect(hints.powerplayRuns).toBe(52);
+    expect(hints.nextBallsWindow).toEqual({ balls: 14, runs: 28 });
   });
 
   it('ignores Draw/Tie as a favourite team label', () => {

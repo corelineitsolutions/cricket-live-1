@@ -478,6 +478,7 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
   favouriteTeam: string | null;
   teams: Array<{ team: string; probabilityPercent: number }>;
   projectedScore: number | null;
+  powerplayProjectedRuns: number | null;
   nextBallsWindow: { balls: number; runs: number } | null;
   note: string | null;
 } {
@@ -486,6 +487,7 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
     favouriteTeam: null as string | null,
     teams: [] as Array<{ team: string; probabilityPercent: number }>,
     projectedScore: null as number | null,
+    powerplayProjectedRuns: null as number | null,
     nextBallsWindow: null as { balls: number; runs: number } | null,
     note: null as string | null,
   };
@@ -538,20 +540,84 @@ export function parseLiveMatchPrediction(data: unknown, match: MatchDto): {
   );
 
   // Optional session-style markets: "next 14 balls → 28 runs" style pairs when present.
-  const nextBalls = num(src.next_balls ?? src.next_ball ?? src.balls_ahead ?? src.session_balls);
-  const nextBallsRuns = num(
-    src.next_balls_runs ?? src.next_ball_runs ?? src.session_runs ?? src.runs_in_balls ?? src.min_runs ?? src.max_runs,
-  );
+  const hints = extractLiveProjectionHints(data);
+  const nextBalls =
+    hints.nextBallsWindow?.balls ?? num(src.next_balls ?? src.next_ball ?? src.balls_ahead ?? src.session_balls);
+  const nextBallsRuns =
+    hints.nextBallsWindow?.runs ??
+    num(src.next_balls_runs ?? src.next_ball_runs ?? src.session_runs ?? src.runs_in_balls ?? src.min_runs ?? src.max_runs);
+  const projected = projectedScore ?? hints.projectedScore;
 
-  if (!favouriteTeam && teams.length === 0 && projectedScore === null && nextBalls === null) return empty;
+  if (!favouriteTeam && teams.length === 0 && projected === null && nextBalls === null) return empty;
   return {
     available: true,
     favouriteTeam,
     teams,
-    projectedScore,
+    projectedScore: projected,
+    powerplayProjectedRuns: hints.powerplayRuns,
     nextBallsWindow: nextBalls !== null && nextBallsRuns !== null ? { balls: nextBalls, runs: nextBallsRuns } : null,
     note: ESTIMATE_NOTE + ' Source: Latiyal liveMatch prediction fields (when present).',
   };
+}
+
+/**
+ * Best-effort deep scan of liveMatch / tracker payloads for projected score,
+ * powerplay runs, and "next N balls → runs" session markets. Field names vary by plan.
+ */
+export function extractLiveProjectionHints(data: unknown): {
+  projectedScore: number | null;
+  powerplayRuns: number | null;
+  nextBallsWindow: { balls: number; runs: number } | null;
+} {
+  const out = {
+    projectedScore: null as number | null,
+    powerplayRuns: null as number | null,
+    nextBallsWindow: null as { balls: number; runs: number } | null,
+  };
+  const visit = (node: unknown, depth: number) => {
+    if (depth > 5 || node == null) return;
+    if (Array.isArray(node)) {
+      for (const item of node.slice(0, 40)) visit(item, depth + 1);
+      return;
+    }
+    const row = asRecord(node);
+    if (!row) return;
+    for (const [key, value] of Object.entries(row)) {
+      const k = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const n = num(value);
+      if (n !== null && n > 20 && n < 400) {
+        if (
+          out.projectedScore === null &&
+          /(projectedscore|projectscore|predictedscore|predictedtotal|expscore|sscore|twentyover|t20score|scoreprediction)/.test(k)
+        ) {
+          out.projectedScore = Math.round(n);
+        }
+        if (out.powerplayRuns === null && /(powerplay|ppruns|ppscore|first6|firstsix|pppredict)/.test(k) && n <= 120) {
+          out.powerplayRuns = Math.round(n);
+        }
+      }
+      // Pair style: { next_balls: 14, runs: 28 } / session market rows.
+      if (!out.nextBallsWindow) {
+        const balls = num(row.next_balls ?? row.next_ball ?? row.session_balls ?? row.balls);
+        const runs = num(row.next_balls_runs ?? row.session_runs ?? row.min_runs ?? row.max_runs ?? row.runs);
+        const keys = Object.keys(row).join(' ').toLowerCase();
+        if (
+          balls != null &&
+          runs != null &&
+          balls >= 1 &&
+          balls <= 120 &&
+          runs >= 0 &&
+          runs <= 200 &&
+          /(next.?ball|session|fancy|market|predict)/.test(keys)
+        ) {
+          out.nextBallsWindow = { balls: Math.round(balls), runs: Math.round(runs) };
+        }
+      }
+      if (typeof value === 'object' && value !== null) visit(value, depth + 1);
+    }
+  };
+  visit(data, 0);
+  return out;
 }
 
 function pickTeamLabel(row: Record<string, unknown>, match: MatchDto): string | null {
@@ -1075,8 +1141,10 @@ export function createPredictionTools(
     definition: {
       name: 'get_first_overs_score',
       description:
-        'How many runs in the FIRST N overs / powerplay of THIS live innings (e.g. "first 6 overs me kitne run", "powerplay score"). ' +
-        'Uses Latiyal matchOverHistory — not Cricsheet archive, and not "next N overs".',
+        'PREDICT how many runs the batting side may score in the first N overs / powerplay ' +
+        '("first powerplay me kitane run nikal sakate", "pehle 6 over me kitne run"). ' +
+        'Uses live RR + recent overs + Latiyal liveMatch projected/powerplay/session fields when present. ' +
+        'Not Cricsheet archive. If the phase is already finished, returns the actual total.',
       parameters: {
         type: 'object',
         properties: {
@@ -1105,6 +1173,12 @@ export function createPredictionTools(
       const team = summary.current?.battingTeam ?? teamName(match, match.battingTeamSportmonksId);
       const ballsBowled = oversToBalls(match.overs ?? 0) ?? 0;
       const phaseBalls = overs * 6;
+      const phaseDone = ballsBowled >= phaseBalls;
+      const remainingBalls = Math.max(0, phaseBalls - ballsBowled);
+      const remainingOvers = Math.round((remainingBalls / 6) * 100) / 100;
+      const currentScore = typeof match.score === 'number' ? match.score : 0;
+
+      // Optional: actual overs so far (context only — prediction does not depend on this).
       let overHistory: unknown = null;
       let stale = false;
       try {
@@ -1115,25 +1189,129 @@ export function createPredictionTools(
         /* optional */
       }
       const summed = sumFirstOversRuns(overHistory, overs);
-      // Fallback: if history missing but we have already completed the phase, use live score.
-      const phaseDone = ballsBowled >= phaseBalls;
-      let runs = summed.runs;
-      let source: 'over_history' | 'live_score' | 'unavailable' = summed.available ? 'over_history' : 'unavailable';
-      if ((!summed.available || runs === null) && phaseDone && typeof match.score === 'number') {
-        runs = match.score;
-        source = 'live_score';
+      let runsSoFar: number | null = summed.available ? summed.runs : null;
+      if (runsSoFar == null && typeof match.score === 'number' && !phaseDone) {
+        runsSoFar = match.score; // still inside phase → live score is runs so far
       }
-      const remainingInPhase = Math.max(0, phaseBalls - ballsBowled);
-      let remainingEstimate: ReturnType<typeof projectNextOvers> | null = null;
-      if (!phaseDone && remainingInPhase > 0 && match.runRate != null && match.runRate > 0) {
-        remainingEstimate = projectNextOvers({
+      if (runsSoFar == null && phaseDone && typeof match.score === 'number') {
+        runsSoFar = match.score;
+      }
+
+      // Latiyal live prediction / powerplay / session markets (preferred when present).
+      let latiyalProjected: number | null = null;
+      let latiyalPowerplay: number | null = null;
+      let nextBallsWindow: { balls: number; runs: number } | null = null;
+      try {
+        const live = await feeds.get('liveMatch', { match_id: matchId });
+        const parsed = parseLiveMatchPrediction(live.data, match);
+        const hints = extractLiveProjectionHints(live.data);
+        latiyalProjected = parsed.projectedScore ?? hints.projectedScore;
+        latiyalPowerplay = parsed.powerplayProjectedRuns ?? hints.powerplayRuns;
+        nextBallsWindow = parsed.nextBallsWindow ?? hints.nextBallsWindow;
+        stale = stale || live.stale;
+      } catch {
+        /* optional */
+      }
+      try {
+        const tracker = await feeds.get('trackerByMatchId', { match_id: matchId });
+        const hints = extractLiveProjectionHints(tracker.data);
+        if (latiyalPowerplay == null && hints.powerplayRuns != null) latiyalPowerplay = hints.powerplayRuns;
+        if (latiyalProjected == null && hints.projectedScore != null) latiyalProjected = hints.projectedScore;
+        if (!nextBallsWindow && hints.nextBallsWindow) nextBallsWindow = hints.nextBallsWindow;
+        stale = stale || tracker.stale;
+      } catch {
+        /* optional — tracker may be empty on some plans */
+      }
+
+      // Finished powerplay → report actual only.
+      if (phaseDone) {
+        const actual = runsSoFar ?? (typeof match.score === 'number' ? match.score : null);
+        return {
+          matchId,
+          matchType: match.matchType,
+          isLive: match.isLive,
           team,
-          score: match.score,
-          overs: match.overs,
-          runRate: match.runRate,
-          oversAhead: Math.round((remainingInPhase / 6) * 100) / 100,
-        });
+          oversRequested: overs,
+          currentScore: match.score,
+          currentOvers: match.overs,
+          wickets: match.wickets,
+          phaseDone: true,
+          phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
+          mode: 'actual',
+          available: actual != null,
+          runsSoFar: actual,
+          estimatedPhaseTotalMid: actual,
+          estimatedPhaseTotalLow: actual,
+          estimatedPhaseTotalHigh: actual,
+          rangeText: actual != null ? String(actual) : null,
+          perOver: summed.perOver,
+          latiyalProjectedScore: latiyalProjected,
+          latiyalPowerplayRuns: latiyalPowerplay,
+          nextBallsWindow,
+          stale,
+          note: actual != null ? `Actual runs in the first ${overs} overs of this innings.` : 'Phase finished but total not available.',
+        };
       }
+
+      // Still in (or before) powerplay → PREDICT remaining + total for the phase.
+      const { signals, context } = await collectNextOversSignals(match, feeds, matchId, opts);
+      const oversAhead = remainingOvers > 0 ? remainingOvers : overs;
+      const estimate =
+        signals.length > 0
+          ? blendNextOversEstimate({
+              team,
+              score: match.score,
+              overs: match.overs,
+              oversAhead,
+              signals,
+            })
+          : projectNextOvers({
+              team,
+              score: match.score,
+              overs: match.overs,
+              runRate: match.runRate,
+              oversAhead,
+            });
+
+      let mid: number | null = null;
+      let low: number | null = null;
+      let high: number | null = null;
+      let method: 'latiyal_powerplay' | 'blended_latiyal_and_rr' | 'live_rr' | 'unavailable' = 'unavailable';
+
+      if (latiyalPowerplay != null && latiyalPowerplay > 0) {
+        // Provider gave an explicit powerplay projection — prefer it, light blend with RR total if we have one.
+        const rrTotal =
+          estimate.available && 'estimatedRunsMid' in estimate
+            ? currentScore + Number(estimate.estimatedRunsMid)
+            : null;
+        if (rrTotal != null && Number.isFinite(rrTotal)) {
+          mid = Math.round(latiyalPowerplay * 0.7 + rrTotal * 0.3);
+          method = 'blended_latiyal_and_rr';
+        } else {
+          mid = latiyalPowerplay;
+          method = 'latiyal_powerplay';
+        }
+        const spread = 0.12;
+        low = Math.max(currentScore, Math.round(mid * (1 - spread)));
+        high = Math.round(mid * (1 + spread));
+      } else if (estimate.available && 'estimatedRunsMid' in estimate) {
+        const remMid = Number(estimate.estimatedRunsMid);
+        const remLow = Number(estimate.estimatedRunsLow);
+        const remHigh = Number(estimate.estimatedRunsHigh);
+        mid = Math.round(currentScore + remMid);
+        low = Math.round(currentScore + remLow);
+        high = Math.round(currentScore + remHigh);
+        method = 'live_rr';
+        // If Latiyal has a full-innings projected score, nudge the powerplay share (~30% of T20 total is rough).
+        if (latiyalProjected != null && latiyalProjected > currentScore && overs === powerplayOversFor(match.matchType)) {
+          const share = Math.round(latiyalProjected * (overs / (oversLimitFor(match.matchType) ?? 20)));
+          mid = Math.round(mid * 0.75 + share * 0.25);
+          low = Math.max(currentScore, Math.round(mid * 0.88));
+          high = Math.round(mid * 1.12);
+          method = 'blended_latiyal_and_rr';
+        }
+      }
+
       return {
         matchId,
         matchType: match.matchType,
@@ -1143,24 +1321,33 @@ export function createPredictionTools(
         currentScore: match.score,
         currentOvers: match.overs,
         wickets: match.wickets,
-        phaseDone,
+        phaseDone: false,
         phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
-        available: runs != null,
-        runsInPhase: runs,
-        oversCounted: summed.oversCounted,
-        complete: summed.complete || phaseDone,
+        mode: 'prediction',
+        available: mid != null,
+        runsSoFar,
+        remainingBallsInPhase: remainingBalls,
+        remainingOvers,
+        remainingEstimate: estimate.available ? estimate : null,
+        estimatedPhaseTotalMid: mid,
+        estimatedPhaseTotalLow: low,
+        estimatedPhaseTotalHigh: high,
+        rangeText: low != null && high != null ? `${low}-${high}` : null,
+        projectionMethod: method,
         perOver: summed.perOver,
-        source,
+        latiyalProjectedScore: latiyalProjected,
+        latiyalPowerplayRuns: latiyalPowerplay,
+        nextBallsWindow,
+        context,
         stale,
-        remainingBallsInPhase: remainingInPhase,
-        remainingEstimate: remainingEstimate?.available ? remainingEstimate : null,
         note:
-          runs != null
-            ? summed.note ??
-              (phaseDone
-                ? `Actual runs in the first ${overs} overs of this innings.`
-                : `Innings still inside the first ${overs} overs — showing runs so far.`)
-            : 'Could not read first-overs totals from live over history yet.',
+          mid != null
+            ? method === 'latiyal_powerplay'
+              ? `${ESTIMATE_NOTE} From Latiyal powerplay/session prediction.`
+              : method === 'blended_latiyal_and_rr'
+                ? `${ESTIMATE_NOTE} Blended Latiyal live prediction with current RR for the rest of the powerplay.`
+                : `${ESTIMATE_NOTE} Projected from live RR for remaining powerplay balls (plus runs already scored).`
+            : 'Need live run rate or Latiyal prediction fields to estimate powerplay runs.',
       };
     },
     label: ({ matchId, overs }) => `First ${overs} overs ${matchId}`,

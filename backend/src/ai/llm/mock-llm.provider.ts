@@ -1082,27 +1082,34 @@ function compose(p: Parsed): string {
       if (!data.available) {
         lines.push(
           lang === 'hi'
-            ? `Pehle ${str(data.oversRequested)} overs ke runs abhi live over-history se nahi mil sake.`
-            : `Could not read runs for the first ${str(data.oversRequested)} overs from live over history yet.`,
+            ? `Pehle ${str(data.oversRequested)} overs (powerplay) ka estimate abhi nahi ban saka — live RR / Latiyal prediction missing.`
+            : `Could not estimate first ${str(data.oversRequested)} overs yet — need live RR or Latiyal prediction fields.`,
         );
-      } else if (data.complete || data.phaseDone) {
+      } else if (data.mode === 'actual' || data.phaseDone) {
         lines.push(
           lang === 'hi'
-            ? `${str(data.team)} ne pehle ${str(data.oversRequested)} overs (powerplay/phase) me ${str(data.runsInPhase)} runs banaye.`
-            : `${str(data.team)} scored ${str(data.runsInPhase)} runs in the first ${str(data.oversRequested)} overs.`,
+            ? `${str(data.team)} ne pehle ${str(data.oversRequested)} overs me ${str(data.runsSoFar ?? data.estimatedPhaseTotalMid)} runs banaye.`
+            : `${str(data.team)} scored ${str(data.runsSoFar ?? data.estimatedPhaseTotalMid)} runs in the first ${str(data.oversRequested)} overs.`,
         );
       } else {
+        const method = str(data.projectionMethod);
+        const how =
+          method === 'latiyal_powerplay'
+            ? ' (Latiyal prediction)'
+            : method === 'blended_latiyal_and_rr'
+              ? ' (Latiyal + live RR)'
+              : ' (live RR)';
         lines.push(
           lang === 'hi'
-            ? `Abhi pehle ${str(data.oversRequested)} overs chal rahe hain — ${str(data.team)} ke ${str(data.runsInPhase)} runs ho chuke hain (${str(data.currentOvers)} ov).`
-            : `Still inside the first ${str(data.oversRequested)} overs — ${str(data.team)} have ${str(data.runsInPhase)} so far (${str(data.currentOvers)} ov).`,
+            ? `Pehle ${str(data.oversRequested)} overs / powerplay me roughly ${str(data.rangeText)} runs nikal sakte hain (mid ${str(data.estimatedPhaseTotalMid)})${how}. Abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`
+            : `About ${str(data.rangeText)} runs possible in the first ${str(data.oversRequested)} overs / powerplay (mid ${str(data.estimatedPhaseTotalMid)})${how}. Now ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`,
         );
-        const rem = data.remainingEstimate as Record<string, unknown> | null | undefined;
-        if (rem?.available) {
+        if (data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {
+          const win = data.nextBallsWindow as { balls?: unknown; runs?: unknown };
           lines.push(
             lang === 'hi'
-              ? `Is phase ke bache overs me ~${str(rem.rangeText)} runs aur aa sakte hain (estimate).`
-              : `About ${str(rem.rangeText)} more runs possible in the rest of this phase (estimate).`,
+              ? `Latiyal session: next ${str(win.balls)} balls ~${str(win.runs)} runs.`
+              : `Latiyal session: next ${str(win.balls)} balls ~${str(win.runs)} runs.`,
           );
         }
       }
