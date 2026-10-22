@@ -11,6 +11,7 @@ import {
   oversLimitFor,
   parseLatiyalLiveProjections,
   parseLiveMatchPrediction,
+  pickProjectedScoreRow,
   parseMatchProbHistory,
   parseTossComparison,
   parseTossResult,
@@ -174,6 +175,7 @@ describe('prediction helpers', () => {
       s_ball: 15,
       projected_score: [
         { over: 5, cur_rate_score: 75, cur_rate_1_score: 74, cur_rate_2_score: 76, cur_rate_3_score: 78 },
+        { over: 10, cur_rate_score: 147, cur_rate_1_score: 144, cur_rate_2_score: 151, cur_rate_3_score: 158 },
         { over: 20, cur_rate_score: 220, cur_rate_1_score: 210, cur_rate_2_score: 230, cur_rate_3_score: 240 },
       ],
     });
@@ -188,6 +190,9 @@ describe('prediction helpers', () => {
       projectedFinal: 220,
     });
     expect(parsed.nextBallsWindow).toEqual({ balls: 21, runs: 34 });
+    // first 6 → session or over-5 row; first 10 → over-10 row (NOT the 6-over session)
+    expect(pickProjectedScoreRow(parsed.projectedByOver, 6)?.mid).toBe(75);
+    expect(pickProjectedScoreRow(parsed.projectedByOver, 10)?.mid).toBe(147);
     const hints = extractLiveProjectionHints({
       powerplay: '1',
       s_ovr: '6',

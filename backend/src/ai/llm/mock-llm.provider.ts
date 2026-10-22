@@ -1093,21 +1093,33 @@ function compose(p: Parsed): string {
         );
       } else {
         const method = str(data.projectionMethod);
+        const oversReq = Number(data.oversRequested) || 0;
+        const phaseWord =
+          data.phaseLabel === 'powerplay' || oversReq === 6
+            ? lang === 'hi'
+              ? ' overs / powerplay'
+              : ' overs / powerplay'
+            : lang === 'hi'
+              ? ' overs'
+              : ' overs';
         const how =
-          method === 'latiyal_session' || method === 'latiyal_projected_score'
-            ? ' (Latiyal live prediction)'
-            : ' (live RR fallback)';
+          method === 'latiyal_session'
+            ? ' (Latiyal session s_min–s_max)'
+            : method === 'latiyal_projected_score'
+              ? ' (Latiyal projected_score)'
+              : ' (live RR fallback)';
         lines.push(
           lang === 'hi'
-            ? `Pehle ${str(data.oversRequested)} overs / powerplay me roughly ${str(data.rangeText)} runs nikal sakte hain (mid ${str(data.estimatedPhaseTotalMid)})${how}. Abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`
-            : `About ${str(data.rangeText)} runs possible in the first ${str(data.oversRequested)} overs / powerplay (mid ${str(data.estimatedPhaseTotalMid)})${how}. Now ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`,
+            ? `Pehle ${str(data.oversRequested)}${phaseWord} me roughly ${str(data.rangeText)} runs nikal sakte hain (mid ${str(data.estimatedPhaseTotalMid)})${how}. Abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`
+            : `About ${str(data.rangeText)} runs possible in the first ${str(data.oversRequested)}${phaseWord} (mid ${str(data.estimatedPhaseTotalMid)})${how}. Now ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`,
         );
-        if (data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {
+        // Only show session remaining tip when we actually used that same session market.
+        if (method === 'latiyal_session' && data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {
           const win = data.nextBallsWindow as { balls?: unknown; runs?: unknown };
           lines.push(
             lang === 'hi'
-              ? `Latiyal session: next ${str(win.balls)} balls ~${str(win.runs)} runs.`
-              : `Latiyal session: next ${str(win.balls)} balls ~${str(win.runs)} runs.`,
+              ? `Is ${str(data.oversRequested)}-over session me ~${str(win.balls)} balls bachi, ~${str(win.runs)} runs aur (Latiyal).`
+              : `~${str(win.runs)} more runs in the remaining ~${str(win.balls)} balls of this ${str(data.oversRequested)}-over session (Latiyal).`,
           );
         }
       }

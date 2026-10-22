@@ -665,6 +665,21 @@ export function parseLatiyalLiveProjections(data: unknown): {
   };
 }
 
+/** Pick projected_score[] row for "first N overs" (exact over, else N-1 for powerplay-style labels). */
+export function pickProjectedScoreRow(
+  rows: Array<{ over: number; mid: number; low: number; high: number }>,
+  overs: number,
+): { over: number; mid: number; low: number; high: number } | null {
+  if (!rows.length) return null;
+  return (
+    rows.find((r) => r.over === overs) ??
+    // Latiyal often labels powerplay end as over 5 when asking first 6.
+    (overs === 6 ? rows.find((r) => r.over === 5) : undefined) ??
+    rows.find((r) => r.over === overs - 1) ??
+    null
+  );
+}
+
 /** @deprecated use parseLatiyalLiveProjections — kept for older call sites / tests */
 export function extractLiveProjectionHints(data: unknown): {
   projectedScore: number | null;
@@ -1302,18 +1317,16 @@ export function createPredictionTools(
         /* optional */
       }
       const latiyalProjected = liveProj.projectedFinal;
-      // Session band for this powerplay / first-N ask: prefer s_min/s_max when s_ovr matches.
+      // s_min/s_max are ONLY for the current session length (s_ovr).
+      // Never reuse a 6-over powerplay session for "first 10 overs".
       const sessionMatchesAsk =
         liveProj.sessionMin != null &&
         liveProj.sessionMax != null &&
-        (liveProj.sessionOvers === overs ||
-          liveProj.inPowerplay ||
-          (liveProj.sessionOvers != null && Math.abs(liveProj.sessionOvers - overs) <= 1));
-      const projRow =
-        liveProj.projectedByOver.find((r) => r.over === overs) ??
-        liveProj.projectedByOver.find((r) => r.over === overs - 1) ??
-        liveProj.projectedByOver.find((r) => r.over === 5 && overs === 6) ??
-        null;
+        liveProj.sessionOvers != null &&
+        liveProj.sessionOvers === overs;
+      const projRow = pickProjectedScoreRow(liveProj.projectedByOver, overs);
+      // Session tip only when answering that same session (not when using a different over row).
+      if (!sessionMatchesAsk) nextBallsWindow = null;
 
       // Finished powerplay → report actual only.
       if (phaseDone) {
