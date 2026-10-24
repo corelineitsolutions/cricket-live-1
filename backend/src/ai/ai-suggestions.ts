@@ -40,8 +40,37 @@ export function classifyFormat(matchType: string | null | undefined): Suggestion
   return 'other';
 }
 
+/** Whole overs completed in the current innings (15.2 → 15). */
+export function completedWholeOvers(overs: number | null | undefined): number {
+  if (overs == null || !Number.isFinite(overs) || overs < 0) return 0;
+  return Math.floor(overs);
+}
+
+/**
+ * Next "first N overs" chip for this format.
+ * T20: 6 → 10 → 15 → 20 (never above 20). ODI: 10 → 20 → 30 → 40 → 50.
+ * Returns null when that innings length is already done.
+ */
+export function nextFirstOversTarget(format: SuggestionFormat, oversCompleted: number): number | null {
+  const steps =
+    format === 'T20' ? [6, 10, 15, 20] : format === 'ODI' ? [10, 20, 30, 40, 50] : format === 'Test' ? [6, 10, 15] : [6, 10];
+  for (const n of steps) {
+    if (oversCompleted < n) return n;
+  }
+  return null;
+}
+
 function q(id: string, en: string, hi: string, language: SuggestionLanguage): SuggestionItem {
   return { id, question: language === 'hi' ? hi : en };
+}
+
+function firstOversChip(n: number, language: SuggestionLanguage): SuggestionItem {
+  return q(
+    `m-first-${n}`,
+    `How many runs in the first ${n} overs?`,
+    `पहले ${n} ओवर में कितने रन?`,
+    language,
+  );
 }
 
 /** Chip questions when the user is not on a match screen. */
@@ -65,7 +94,7 @@ export function generalSuggestions(language: SuggestionLanguage): SuggestionsRes
   };
 }
 
-/** Chip questions for a match screen — format + innings phase aware. */
+/** Chip questions for a match screen — format + innings phase + overs-aware. */
 export function matchSuggestions(match: MatchDto, language: SuggestionLanguage): SuggestionsResult {
   const format = classifyFormat(match.matchType);
   const phase = matchPhase(match);
@@ -73,6 +102,8 @@ export function matchSuggestions(match: MatchDto, language: SuggestionLanguage):
   const b = teamLabel(match.visitorTeam);
   const bat = battingLabel(match) ?? a;
   const chase = isChasePhase(match);
+  const oversDone = completedWholeOvers(match.overs);
+  const firstN = nextFirstOversTarget(format, oversDone);
   const questions: SuggestionItem[] = [];
 
   if (phase === 'finished') {
@@ -94,34 +125,31 @@ export function matchSuggestions(match: MatchDto, language: SuggestionLanguage):
     }
     questions.push(
       q('m-win', `What is the win chance for ${a} vs ${b}?`, `${a} बनाम ${b} की जीत संभावना क्या है?`, language),
-      q('m-next', 'How many runs in the next 6 overs?', 'अगले 6 ओवर में कितने रन?', language),
-      q('m-batter', 'How is the current batter performing?', 'मौजूदा बल्लेबाज कैसा खेल रहा है?', language),
     );
+    if (firstN != null) questions.push(firstOversChip(firstN, language));
+    questions.push(q('m-batter', 'How is the current batter performing?', 'मौजूदा बल्लेबाज कैसा खेल रहा है?', language));
   } else if (phase === 'first_innings') {
     questions.push(
       q('m-proj', `What is the projected score for ${bat}?`, `${bat} का अनुमानित स्कोर क्या है?`, language),
-      q(
-        'm-est-target',
-        `What target might ${bat} set?`,
-        `${bat} कितना target दे सकता है?`,
-        language,
-      ),
-      q('m-next', 'How many runs in the next 6 overs?', 'अगले 6 ओवर में कितने रन?', language),
+      q('m-est-target', `What target might ${bat} set?`, `${bat} कितना target दे सकता है?`, language),
+    );
+    if (firstN != null) questions.push(firstOversChip(firstN, language));
+    questions.push(
       q('m-batter', 'How is the current batter performing?', 'मौजूदा बल्लेबाज कैसा खेल रहा है?', language),
       q('m-win', `What is the win chance for ${a} vs ${b}?`, `${a} बनाम ${b} की जीत संभावना क्या है?`, language),
     );
-    if (format === 'ODI') {
+    // Full-innings projection chip — never above format length (T20 ≤ 20, ODI ≤ 50).
+    if (format === 'ODI' && oversDone < 50) {
       questions.push(
         q('m-50', `What score might ${bat} reach in 50 overs?`, `${bat} 50 ओवर में कितना स्कोर कर सकता है?`, language),
       );
     }
-    if (format === 'T20') {
+    if (format === 'T20' && oversDone < 20) {
       questions.push(
         q('m-20', `What score might ${bat} reach in 20 overs?`, `${bat} 20 ओवर में कितना स्कोर कर सकता है?`, language),
       );
     }
   } else {
-    // pre_match / upcoming — prediction chips from Latiyal
     questions.push(
       q('m-toss', `Who might win the toss, ${a} or ${b}?`, `टॉस कौन जीत सकता है, ${a} या ${b}?`, language),
       q('m-win-pre', `Who is favoured to win ${a} vs ${b}?`, `${a} बनाम ${b} में कौन जीत सकता है?`, language),
@@ -135,7 +163,6 @@ export function matchSuggestions(match: MatchDto, language: SuggestionLanguage):
     q('m-scorecard', 'Who is the top scorer on the scorecard?', 'स्कोरकार्ड पर टॉप स्कोरर कौन है?', language),
   );
 
-  // Dedupe by question text while keeping order.
   const seen = new Set<string>();
   const unique = questions.filter((item) => {
     const key = item.question.toLowerCase();

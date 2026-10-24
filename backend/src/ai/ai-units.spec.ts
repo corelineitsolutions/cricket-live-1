@@ -220,6 +220,15 @@ describe('planAskTools', () => {
     });
   });
 
+  it('routes most IPL titles (and tital typo) to get_event_titles', () => {
+    const tools = new Set([...available, 'get_event_titles']);
+    for (const q of ['which player win most ipl title', 'which team has most ipl titles', 'most ipl tital']) {
+      const calls = planAskTools(q, null, tools, { strict: true });
+      expect(calls[0]?.name, q).toBe('get_event_titles');
+      expect(JSON.parse(calls[0]!.arguments)).toMatchObject({ event: 'Indian Premier League', format: 'T20' });
+    }
+  });
+
   it('routes IPL hundreds phrasings to get_player_history', () => {
     for (const q of [
       'ipl hundred of virat kohli',

@@ -156,6 +156,7 @@ describe('AI history tools', () => {
     expect(guessPlayerName('How many runs per over does WA need?')).toBeNull();
     expect(guessPlayerName('next wicket kb hogi')).toBeNull();
     expect(normalizePlayerQuery('rohit sharam')).toBe('Rohit Sharma');
+    expect(normalizePlayerQuery('rohit sharama')).toBe('Rohit Sharma');
     expect(normalizePlayerQuery('virat kohili')).toBe('Virat Kohli');
     expect(guessYear('suryakumar yadav icc world cup 2023')).toBe(2023);
   });

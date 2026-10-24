@@ -394,6 +394,68 @@ export class HistoryQueryService {
   }
 
   /**
+   * Count of Final wins per team for an event (e.g. most IPL titles).
+   * Uses Cricsheet match_number containing "Final" (excludes Semi/Quarter). Team trophies only.
+   */
+  async eventTitles(
+    eventContains: string,
+    opts: { format?: HistoryFormat | null; gender?: 'male' | 'female' | null } = {},
+  ) {
+    const format = opts.format ?? null;
+    const gender = opts.gender ?? null;
+    const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
+    const rows = await this.prisma.histMatch.findMany({
+      where: {
+        eventName: { contains: eventContains },
+        winnerId: { not: null },
+        matchNumber: { contains: 'Final' },
+        NOT: [
+          { matchNumber: { contains: 'Semi' } },
+          { matchNumber: { contains: 'Quarter' } },
+        ],
+        ...(format ? { matchType: { in: FORMAT_MATCH_TYPES[format] } } : {}),
+        ...(gender ? { gender } : {}),
+        ...(tighten
+          ? {
+              AND: [
+                { NOT: { eventName: { contains: 'Under-19' } } },
+                { NOT: { eventName: { contains: 'U19' } } },
+                { NOT: { eventName: { contains: 'Qualifier' } } },
+                { NOT: { eventName: { contains: 'Women' } } },
+              ],
+            }
+          : {}),
+      },
+      include: { winner: { select: { id: true, name: true } } },
+      orderBy: [{ startDate: 'asc' }],
+    });
+    const byTeam = new Map<number, { team: string; titles: number; seasons: string[] }>();
+    for (const m of rows) {
+      if (!m.winnerId || !m.winner) continue;
+      const cur = byTeam.get(m.winnerId) ?? { team: m.winner.name, titles: 0, seasons: [] };
+      cur.titles += 1;
+      const season = m.season?.trim() || (m.startDate ? String(m.startDate.getUTCFullYear()) : '');
+      if (season && !cur.seasons.includes(season)) cur.seasons.push(season);
+      byTeam.set(m.winnerId, cur);
+    }
+    const leaders = [...byTeam.values()]
+      .sort((a, b) => b.titles - a.titles || a.team.localeCompare(b.team))
+      .map((row, i) => ({ rank: i + 1, ...row }));
+    return {
+      event: eventContains,
+      format: format ?? 'all',
+      gender: gender ?? 'any',
+      finalCount: rows.length,
+      top: leaders[0] ?? null,
+      leaders: leaders.slice(0, 12),
+      note:
+        leaders.length === 0
+          ? `No Final winners found in the archive for "${eventContains}".`
+          : 'IPL/tournament titles are team trophies (Final winners in Cricsheet). Not a player award.',
+    };
+  }
+
+  /**
    * Tournament batting / bowling leaders for an event (e.g. most runs or wickets in World Cup 2019).
    * Fixed SQL with bound parameters only — archive totals, not official ICC leaderboards.
    */

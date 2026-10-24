@@ -44,6 +44,7 @@ export function normalizePlayerQuery(name: string): string {
     'virat kohli': 'Virat Kohli',
     'rohit sharam': 'Rohit Sharma',
     'rohit shrama': 'Rohit Sharma',
+    'rohit sharama': 'Rohit Sharma',
     'rohit sharma': 'Rohit Sharma',
     'ms dhoni': 'MS Dhoni',
     'm s dhoni': 'MS Dhoni',
@@ -58,6 +59,7 @@ export function normalizePlayerQuery(name: string): string {
   if (aliases[key]) return aliases[key];
   value = value
     .replace(/\bkohili\b/gi, 'Kohli')
+    .replace(/\bsharama\b/gi, 'Sharma')
     .replace(/\bsharam\b/gi, 'Sharma')
     .replace(/\bshrama\b/gi, 'Sharma');
   return value;
@@ -321,6 +323,45 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
       return { ...result, coverage: HISTORY_COVERAGE_NOTE };
     },
     label: ({ event, year }) => `Cricsheet archive: ${event}${year ? ` ${year}` : ''}`,
+  };
+
+  const eventTitles: AiTool<{
+    event: string;
+    format: HistoryFormat | null;
+    gender: 'male' | 'female' | null;
+  }> = {
+    definition: {
+      name: 'get_event_titles',
+      description:
+        'Which team won the most titles/trophies in a tournament (e.g. most IPL titles). Counts Cricsheet Final winners. ' +
+        'Titles are team trophies — not individual player awards. For IPL use event "Indian Premier League", format T20.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event: { type: 'string', description: 'Event name fragment, e.g. "Indian Premier League".' },
+          format: formatSchema,
+          gender: { type: 'string', enum: ['male', 'female'] },
+        },
+        required: ['event'],
+        additionalProperties: false,
+      },
+    },
+    parse: (raw: ToolArgs) => {
+      const event = text(raw.event, 80);
+      if (!event || !/^[A-Za-z0-9][A-Za-z0-9 '&./-]{1,79}$/.test(event)) {
+        return 'event must be 2-80 characters (letters, digits, spaces)';
+      }
+      const format = parseFormat(raw.format);
+      if (format === 'invalid') return 'format must be T20, ODI or Test';
+      const gender = parseGender(raw.gender);
+      if (gender === 'invalid') return 'gender must be male or female';
+      return { event, format, gender };
+    },
+    run: async ({ event, format, gender }) => {
+      const result = await history.eventTitles(event, { format: defaultEventFormat(event, format), gender });
+      return { ...result, coverage: HISTORY_COVERAGE_NOTE };
+    },
+    label: ({ event }) => `Cricsheet archive: titles ${event}`,
   };
 
   const eventLeaders: AiTool<{
@@ -794,6 +835,7 @@ export function createHistoryTools(history: HistoryQueryService, identity: Ident
   return [
     playerHistory,
     eventResults,
+    eventTitles,
     eventLeaders,
     eventStandings,
     eventAwards,

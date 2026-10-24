@@ -88,7 +88,7 @@ Body fields:
              Controls the answer language (English or Hindi Devanagari)
   matchId    string, optional, digits only (e.g. "14193")
              Pass when the user is on a match screen so "this match",
-             "next 6 overs", "required rate" resolve to that match
+             "first 6 overs", "required rate" resolve to that match
              Omit for general / IPL / player / tournament questions
 
 
@@ -99,7 +99,7 @@ Body fields:
 Use when the user opened Ask from a match detail / live screen.
 
 {
-  "question": "How many runs in the next 6 overs?",
+  "question": "How many runs in the first 6 overs?",
   "language": "en",
   "matchId": "14193",
   "deviceId": "6f1c0b3e-2a7d-4c1e-9b8a-0d5e7f3a1c22"

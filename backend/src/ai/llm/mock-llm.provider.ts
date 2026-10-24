@@ -46,6 +46,9 @@ const EVENT_STANDINGS_WORDS =
   /points?\s*table|league\s*table|standings?|topped\s+the\s+(?:league\s+)?table|how\s+many\s+(?:matches?\s+)?(?:did\s+)?.+\s+win|how\s+many\s+points|net\s*run\s*rate|\bnrr\b|qualify(?:ied)?\s+for\s+(?:the\s+)?playoffs?|पॉइंट(?:्स)?\s*टेबल/i;
 const EVENT_AWARDS_WORDS =
   /player\s+of\s+the\s+(?:match|tournament)|most\s+player\s+of\s+the\s+match|potm|\bpot\b|मैन\s*ऑफ\s*द\s*मैच|प्लेयर\s*ऑफ\s*द\s*टूर्नामेंट/i;
+/** Most IPL / tournament titles (team trophies). Typos: tital, titel. */
+const EVENT_TITLES_WORDS =
+  /most\s+(?:ipl\s+)?(?:titles?|titals?|titels?|troph(?:y|ies))|sabse\s+(?:zyada|jyaada)\s+(?:title|trophy)|सबसे\s*(?:ज्यादा|अधिक)\s*(?:टाइटल|ट्रॉफी)|which\s+(?:team|player)\s+.*(?:most|sabse).*(?:title|tital|trophy)|(?:title|tital|trophy)\s+(?:kitne|kon|kaun)/i;
 const EVENT_PHASE_WORDS =
   /powerplay|death[\s-]?overs?|middle[\s-]?overs?|phase|best\s+(?:batting|bowling)\s+performance|which\s+(?:team|batter|bowler)\s+had\s+the\s+best/i;
 const TOSS_WORDS =
@@ -210,8 +213,18 @@ function wantsPlayerHistory(question: string): boolean {
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
 }
 
+function wantsEventTitles(question: string): boolean {
+  return EVENT_TITLES_WORDS.test(question) && (!!guessEvent(question) || EVENT_WORDS.test(question) || /\bipl\b|आयपीएल|आईपीएल/i.test(question));
+}
+
 function wantsEventResults(question: string): boolean {
-  return EVENT_WINNER_WORDS.test(question) && !!guessEvent(question) && !EVENT_LEADER_RUNS.test(question) && !EVENT_LEADER_WICKETS.test(question);
+  if (wantsEventTitles(question)) return false;
+  return (
+    EVENT_WINNER_WORDS.test(question) &&
+    !!guessEvent(question) &&
+    !EVENT_LEADER_RUNS.test(question) &&
+    !EVENT_LEADER_WICKETS.test(question)
+  );
 }
 
 function wantsEventLeaders(
@@ -363,6 +376,11 @@ function planHistory(p: Parsed, available: Set<string>): LlmToolCall[] {
   if (wantsEventStandings(p.question) && available.has('get_event_standings')) {
     return call('get_event_standings', iplArgs(p.question));
   }
+  if (wantsEventTitles(p.question) && available.has('get_event_titles')) {
+    const args = iplArgs(p.question);
+    if (!args.event) args.event = 'Indian Premier League';
+    return call('get_event_titles', args);
+  }
   if (wantsEventResults(p.question)) {
     const event = guessEvent(p.question);
     if (event) {
@@ -504,6 +522,7 @@ export function planAskTools(
   if (
     wantsPlayerHistory(p.question) ||
     wantsEventResults(p.question) ||
+    wantsEventTitles(p.question) ||
     wantsEventLeaders(p.question) ||
     wantsEventStandings(p.question)
   ) {
@@ -820,6 +839,7 @@ function describeMatch(m: Record<string, unknown>, lang: Lang, focus: 'summary' 
 const HISTORY_TOOLS = new Set([
   'get_player_history',
   'get_event_results',
+  'get_event_titles',
   'get_event_leaders',
   'get_event_standings',
   'get_event_team_matches',
@@ -1118,6 +1138,25 @@ function describeHistory(name: string, data: Record<string, unknown>, lang: Lang
       );
     }
     if (data.note) lines.push(str(data.note));
+  } else if (name === 'get_event_titles') {
+    const top = data.top as Record<string, unknown> | undefined;
+    if (!top) {
+      lines.push(
+        hi
+          ? `"${str(data.event)}" के लिए संग्रह में फ़ाइनल विजेता नहीं मिले।`
+          : `No Final winners found in the archive for "${str(data.event)}".`,
+      );
+    } else {
+      lines.push(
+        hi
+          ? `Cricsheet संग्रह के अनुसार ${str(data.event)} में सबसे अधिक टाइटल: ${str(top.team)} — ${str(top.titles)} (टीम ट्रॉफी; खिलाड़ी अवॉर्ड नहीं).`
+          : `In the Cricsheet archive, most titles in ${str(data.event)}: ${str(top.team)} — ${str(top.titles)} (team trophies from Final winners, not a player award).`,
+      );
+      for (const row of ((data.leaders as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 5)) {
+        lines.push(`- ${str(row.rank)}. ${str(row.team)}: ${str(row.titles)}`);
+      }
+      if (data.note) lines.push(str(data.note));
+    }
   } else if (name === 'get_event_results') {
     if (!data.tournamentWinner && !data.final) {
       lines.push(

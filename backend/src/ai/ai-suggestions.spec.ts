@@ -1,5 +1,11 @@
 import type { MatchDto } from '../matches/dto/match.dto';
-import { classifyFormat, generalSuggestions, matchSuggestions } from './ai-suggestions';
+import {
+  classifyFormat,
+  completedWholeOvers,
+  generalSuggestions,
+  matchSuggestions,
+  nextFirstOversTarget,
+} from './ai-suggestions';
 
 function baseMatch(over: Partial<MatchDto> = {}): MatchDto {
   return {
@@ -52,7 +58,7 @@ describe('ai-suggestions', () => {
   });
 
   it('does not suggest required-rate / target chips in the first innings', () => {
-    const res = matchSuggestions(baseMatch(), 'en');
+    const res = matchSuggestions(baseMatch({ overs: 12.3 }), 'en');
     expect(res.phase).toBe('first_innings');
     expect(res.format).toBe('ODI');
     const text = res.questions.map((q) => q.question).join(' | ');
@@ -60,6 +66,24 @@ describe('ai-suggestions', () => {
     expect(text).toMatch(/target might/i);
     expect(text).not.toMatch(/runs per over.*need/i);
     expect(text).toMatch(/50 overs/i);
+    expect(text).toMatch(/first 20 overs/i);
+    expect(text).not.toMatch(/next 6 overs/i);
+  });
+
+  it('T20 first-overs chips progress 6 → 10 and never above 20', () => {
+    expect(completedWholeOvers(5.4)).toBe(5);
+    expect(nextFirstOversTarget('T20', 0)).toBe(6);
+    expect(nextFirstOversTarget('T20', 6)).toBe(10);
+    expect(nextFirstOversTarget('T20', 10)).toBe(15);
+    expect(nextFirstOversTarget('T20', 19)).toBe(20);
+    expect(nextFirstOversTarget('T20', 20)).toBeNull();
+
+    const early = matchSuggestions(baseMatch({ matchType: 'T20', overs: 3.2, innings: [{ inning: 1, teamSportmonksId: 1, score: 40, wickets: 1, overs: 3.2 }] }), 'en');
+    expect(early.questions.map((q) => q.question).join(' ')).toMatch(/first 6 overs/i);
+    expect(early.questions.map((q) => q.question).join(' ')).not.toMatch(/50 overs|next 6/i);
+
+    const mid = matchSuggestions(baseMatch({ matchType: 'T20', overs: 7.1, innings: [{ inning: 1, teamSportmonksId: 1, score: 70, wickets: 2, overs: 7.1 }] }), 'en');
+    expect(mid.questions.map((q) => q.question).join(' ')).toMatch(/first 10 overs/i);
   });
 
   it('suggests chase chips including required rate in the second innings', () => {
@@ -67,6 +91,7 @@ describe('ai-suggestions', () => {
       baseMatch({
         matchType: 'T20',
         currentInning: 2,
+        overs: 15.2,
         target: 181,
         runsRequired: 61,
         ballsRemaining: 28,
@@ -83,5 +108,7 @@ describe('ai-suggestions', () => {
     const text = res.questions.map((q) => q.question).join(' | ');
     expect(text).toMatch(/runs per over/i);
     expect(text).toMatch(/target/i);
+    expect(text).toMatch(/first 20 overs/i);
+    expect(text).not.toMatch(/next 6 overs/i);
   });
 });

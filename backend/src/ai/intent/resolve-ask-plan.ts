@@ -28,6 +28,7 @@ const LIVE_TOOL_NAMES = new Set([
 const ARCHIVE_TOOL_NAMES = new Set([
   'get_player_history',
   'get_event_results',
+  'get_event_titles',
   'get_event_leaders',
   'get_event_standings',
   'get_event_team_matches',
