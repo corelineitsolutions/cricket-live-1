@@ -1,24 +1,40 @@
 #!/usr/bin/env node
 /**
- * Concurrent load test against POST /api/v1/ai/ask (and optional /ai/status).
+ * Concurrent load test against POST /api/v1/ai/ask.
  *
- * Usage (on the API host or any machine that can reach it):
- *   node scripts/ai-load-test.mjs
- *   AI_BASE=http://127.0.0.1:3000 CCU=20 REQUESTS=100 node scripts/ai-load-test.mjs
- *   AI_BASE=https://api.example.com CCU=50 REQUESTS=200 MATCH_ID=14193 node scripts/ai-load-test.mjs
+ * Your first runs failed for protection limits (not because the LLM crashed):
+ *   503 AI_BUSY            → AI_MAX_CONCURRENT (default 4) — only N asks at once
+ *   429 TOO_MANY_REQUESTS  → HTTP rate limit (RATE_LIMIT_PER_MINUTE, default 600)
+ *                            and/or AI_REQUESTS_PER_IP_PER_MINUTE (default 20)
+ *   429 AI_QUOTA_EXCEEDED  → AI_REQUESTS_PER_DEVICE_PER_MINUTE / _DAY
+ *
+ * Temporary load-test .env on the server (then restart API), then revert:
+ *   AI_MAX_CONCURRENT=32
+ *   AI_REQUESTS_PER_IP_PER_MINUTE=5000
+ *   AI_REQUESTS_PER_DEVICE_PER_MINUTE=200
+ *   AI_REQUESTS_PER_DEVICE_PER_DAY=50000
+ *   RATE_LIMIT_PER_MINUTE=5000
+ *
+ * Usage (from /home/cricket-live-1/backend — do NOT cd backend again):
+ *   npm run ai:load
+ *   CCU=4 REQUESTS=40 node scripts/ai-load-test.mjs
+ *   CCU=8 REQUESTS=80 RAMP_MS=50 node scripts/ai-load-test.mjs
+ *   CCU=8 REQUESTS=80 MATCH_ID=14193 node scripts/ai-load-test.mjs
  *
  * Env:
- *   AI_BASE     API origin (default http://127.0.0.1:3000)
- *   CCU         concurrent in-flight asks (default 10)
- *   REQUESTS    total asks to send (default CCU * 5)
- *   MATCH_ID    optional — attach live questions to this match
- *   TIMEOUT_MS  per-request timeout (default 35000)
+ *   AI_BASE      API origin (default http://127.0.0.1:3000)
+ *   CCU          concurrent in-flight asks (default 4 — matches AI_MAX_CONCURRENT)
+ *   REQUESTS     total asks (default CCU * 10)
+ *   RAMP_MS      delay before starting each extra worker (default 0)
+ *   MATCH_ID     optional live match id
+ *   TIMEOUT_MS   per-request timeout (default 60000 for real LLM)
  */
 const base = (process.env.AI_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
-const ccu = Math.max(1, Number(process.env.CCU || 10) || 10);
-const total = Math.max(ccu, Number(process.env.REQUESTS || ccu * 5) || ccu * 5);
+const ccu = Math.max(1, Number(process.env.CCU || 4) || 4);
+const total = Math.max(ccu, Number(process.env.REQUESTS || ccu * 10) || ccu * 10);
 const matchId = process.env.MATCH_ID?.trim() || '';
-const timeoutMs = Math.max(3000, Number(process.env.TIMEOUT_MS || 35000) || 35000);
+const timeoutMs = Math.max(3000, Number(process.env.TIMEOUT_MS || 60000) || 60000);
+const rampMs = Math.max(0, Number(process.env.RAMP_MS || 0) || 0);
 
 const ARCHIVE = [
   'Who won IPL 2025?',
@@ -50,8 +66,13 @@ function percentile(sorted, p) {
   return sorted[idx];
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function askOnce(i) {
-  const deviceId = `load-test-${String(i % 500).padStart(4, '0')}-${Date.now().toString(36)}`;
+  // Unique device per request so device/minute quota is not the first wall.
+  const deviceId = `load-${Date.now().toString(36)}-${i}-${Math.random().toString(36).slice(2, 8)}`;
   const body = {
     question: pickQuestion(i),
     language: i % 4 === 0 ? 'hi' : 'en',
@@ -103,27 +124,58 @@ async function askOnce(i) {
   }
 }
 
-async function pool(n, worker) {
+async function pool(n, concurrency, worker) {
   const results = new Array(n);
   let next = 0;
-  const runners = Array.from({ length: Math.min(ccu, n) }, async () => {
-    while (true) {
-      const i = next++;
-      if (i >= n) return;
-      results[i] = await worker(i);
-      const done = i + 1;
-      if (done % Math.max(1, Math.floor(n / 10)) === 0 || done === n) {
-        process.stdout.write(`  progress ${done}/${n}\n`);
-      }
-    }
-  });
+  const runners = [];
+  for (let w = 0; w < Math.min(concurrency, n); w++) {
+    if (rampMs > 0 && w > 0) await sleep(rampMs);
+    runners.push(
+      (async () => {
+        while (true) {
+          const i = next++;
+          if (i >= n) return;
+          results[i] = await worker(i);
+          const done = results.filter(Boolean).length;
+          if (done % Math.max(1, Math.floor(n / 10)) === 0 || done === n) {
+            process.stdout.write(`  progress ${done}/${n}\n`);
+          }
+        }
+      })(),
+    );
+  }
   await Promise.all(runners);
   return results;
 }
 
+function explainFailures(byCode) {
+  const hints = [];
+  if (byCode['503:AI_BUSY']) {
+    hints.push(
+      `AI_BUSY (${byCode['503:AI_BUSY']}x): raise AI_MAX_CONCURRENT (default 4) or set CCU ≤ that value.`,
+    );
+  }
+  if (byCode['429:TOO_MANY_REQUESTS']) {
+    hints.push(
+      `TOO_MANY_REQUESTS (${byCode['429:TOO_MANY_REQUESTS']}x): all asks share one IP — raise AI_REQUESTS_PER_IP_PER_MINUTE and RATE_LIMIT_PER_MINUTE, then restart API.`,
+    );
+  }
+  if (byCode['429:AI_QUOTA_EXCEEDED']) {
+    hints.push(
+      `AI_QUOTA_EXCEEDED (${byCode['429:AI_QUOTA_EXCEEDED']}x): raise AI_REQUESTS_PER_DEVICE_PER_MINUTE / _DAY.`,
+    );
+  }
+  return hints;
+}
+
 async function main() {
   console.log(`AI load test → ${base}/api/v1/ai/ask`);
-  console.log(`CCU=${ccu} REQUESTS=${total} MATCH_ID=${matchId || '(none)'} TIMEOUT_MS=${timeoutMs}`);
+  console.log(
+    `CCU=${ccu} REQUESTS=${total} RAMP_MS=${rampMs} MATCH_ID=${matchId || '(none)'} TIMEOUT_MS=${timeoutMs}`,
+  );
+  console.log(
+    'Tip: start with CCU=4 (default AI_MAX_CONCURRENT). For higher CCU, raise limits in .env first.',
+  );
 
   try {
     const statusRes = await fetch(`${base}/api/v1/ai/status`);
@@ -139,7 +191,7 @@ async function main() {
   }
 
   const wallStart = Date.now();
-  const results = await pool(total, askOnce);
+  const results = await pool(total, ccu, askOnce);
   const wallMs = Date.now() - wallStart;
 
   const ok = results.filter((r) => r.ok);
@@ -152,7 +204,9 @@ async function main() {
   }
 
   console.log('\n=== Summary ===');
-  console.log(`ok=${ok.length} fail=${fail.length} wall_s=${(wallMs / 1000).toFixed(1)} rps=${(total / (wallMs / 1000)).toFixed(2)}`);
+  console.log(
+    `ok=${ok.length} fail=${fail.length} wall_s=${(wallMs / 1000).toFixed(1)} rps=${(total / (wallMs / 1000)).toFixed(2)}`,
+  );
   if (latencies.length) {
     console.log(
       `latency_ms p50=${percentile(latencies, 50)} p95=${percentile(latencies, 95)} p99=${percentile(latencies, 99)} max=${latencies[latencies.length - 1]}`,
@@ -160,6 +214,7 @@ async function main() {
   }
   if (Object.keys(byCode).length) {
     console.log('failures:', byCode);
+    for (const line of explainFailures(byCode)) console.log('→', line);
   }
   const sampleFail = fail.slice(0, 5);
   if (sampleFail.length) {
@@ -172,7 +227,9 @@ async function main() {
   if (sampleOk.length) {
     console.log('sample ok:');
     for (const r of sampleOk) {
-      console.log(`  ${r.latencyMs}ms mocked=${r.mocked} tools=${r.tools || '-'} ansLen=${r.answerLen}  ${r.question}`);
+      console.log(
+        `  ${r.latencyMs}ms mocked=${r.mocked} tools=${r.tools || '-'} ansLen=${r.answerLen}  ${r.question}`,
+      );
     }
   }
 
