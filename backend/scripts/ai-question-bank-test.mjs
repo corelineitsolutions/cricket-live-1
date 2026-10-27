@@ -25,8 +25,9 @@
  *   FROM / TO     inclusive question numbers (default 1–300)
  *   SECTION       live|ipl|icc|lang|safety|all
  *   CONCURRENCY   parallel asks (default 1 — sequential is safest for review)
- *   DELAY_MS      pause between asks (default 1500 — avoids AI_BUSY from LLM)
- *   RETRIES       retries on AI_BUSY / 429 (default 3)
+ *   DELAY_MS      pause between asks (default 3000 — Groq free tier needs breathing room)
+ *   RETRIES       retries on AI_BUSY / 429 (default 4)
+ *   BUSY_WAIT_MS  base wait before AI_BUSY retry (default 15000; grows per attempt)
  *   TIMEOUT_MS    per ask (default 60000)
  *   OUT           results jsonl path (default ./tmp/ai-question-bank-results.jsonl)
  *   ONLY_LIVE     1 = only questions that need a match (skip archive)
@@ -44,8 +45,9 @@ const bankPath = resolve(
 );
 const matchId = process.env.MATCH_ID?.trim() || '';
 const concurrency = Math.max(1, Number(process.env.CONCURRENCY || 1) || 1);
-const delayMs = Math.max(0, Number(process.env.DELAY_MS || 1500) || 1500);
-const retries = Math.max(0, Number(process.env.RETRIES || 3) || 3);
+const delayMs = Math.max(0, Number(process.env.DELAY_MS || 3000) || 3000);
+const retries = Math.max(0, Number(process.env.RETRIES || 4) || 4);
+const busyWaitMs = Math.max(1000, Number(process.env.BUSY_WAIT_MS || 15000) || 15000);
 const timeoutMs = Math.max(5000, Number(process.env.TIMEOUT_MS || 60000) || 60000);
 const outPath = resolve(process.env.OUT || resolve(__dirname, '../tmp/ai-question-bank-results.jsonl'));
 const onlyLive = process.env.ONLY_LIVE === '1';
@@ -189,7 +191,8 @@ async function askOnce(item, index, attempt) {
 async function ask(item, index) {
   let last = await askOnce(item, index, 1);
   for (let attempt = 2; attempt <= retries + 1 && isBusy(last); attempt++) {
-    const wait = 2000 * (attempt - 1);
+    // Provider RPM limits need tens of seconds, not 2–6s.
+    const wait = busyWaitMs * (attempt - 1);
     process.stdout.write(`  retry #${item.id} attempt ${attempt} after ${wait}ms (${last.code})\n`);
     await sleep(wait);
     last = await askOnce(item, index, attempt);
