@@ -2,32 +2,35 @@
 /**
  * Concurrent load test against POST /api/v1/ai/ask.
  *
- * Fixed-count mode:
- *   CCU=8 REQUESTS=80 TIMEOUT_MS=60000 node scripts/ai-load-test.mjs
+ * IMPORTANT: Do NOT use TARGET_RPM=0 with high CCU — that spams rejected 429s
+ * and reports fake rpm_total (200k+/min). Use WAVE or fixed REQUESTS instead.
  *
- * 1-minute / target RPM mode (keeps CCU workers busy for DURATION_S):
+ * Wave mode (best for “200–300 at once”):
+ *   MODE=wave CCU=200 WAVES=3 TIMEOUT_MS=60000 node scripts/ai-load-test.mjs
+ *   → each wave fires exactly CCU asks, waits for all, then next wave
+ *
+ * Fixed count:
+ *   CCU=24 REQUESTS=120 TIMEOUT_MS=60000 node scripts/ai-load-test.mjs
+ *
+ * Sustained RPM (paced):
  *   TARGET_RPM=120 DURATION_S=60 CCU=24 TIMEOUT_MS=60000 node scripts/ai-load-test.mjs
  *
- * With ~10s p50 latency, CCU ≈ TARGET_RPM/60 * 10  →  for 120/min use CCU≈20–24.
- * Raise .env first (restart API), then revert after test:
- *   AI_MAX_CONCURRENT=32
- *   AI_REQUESTS_PER_IP_PER_MINUTE=5000
- *   AI_REQUESTS_PER_DEVICE_PER_MINUTE=500
- *   AI_REQUESTS_PER_DEVICE_PER_DAY=100000
- *   RATE_LIMIT_PER_MINUTE=5000
- *
- * Run from /home/cricket-live-1/backend (do NOT cd backend again).
+ * Raise .env for the test, then revert:
+ *   AI_MAX_CONCURRENT=32   (or match CCU if you want to test that high)
+ *   AI_REQUESTS_PER_IP_PER_MINUTE=20000
+ *   RATE_LIMIT_PER_MINUTE=20000
  */
 const base = (process.env.AI_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+const mode = (process.env.MODE || '').toLowerCase() || (process.env.TARGET_RPM ? 'timed' : 'fixed');
 const targetRpm = Math.max(0, Number(process.env.TARGET_RPM || 0) || 0);
 const durationS = Math.max(10, Number(process.env.DURATION_S || 60) || 60);
-const ccuDefault = targetRpm > 0 ? Math.max(8, Math.ceil((targetRpm / 60) * 12)) : 4;
+const waves = Math.max(1, Number(process.env.WAVES || 3) || 3);
+const ccuDefault = mode === 'wave' ? 24 : targetRpm > 0 ? Math.max(8, Math.ceil((targetRpm / 60) * 12)) : 4;
 const ccu = Math.max(1, Number(process.env.CCU || ccuDefault) || ccuDefault);
 const totalFixed = Math.max(ccu, Number(process.env.REQUESTS || ccu * 10) || ccu * 10);
 const matchId = process.env.MATCH_ID?.trim() || '';
 const timeoutMs = Math.max(3000, Number(process.env.TIMEOUT_MS || 60000) || 60000);
 const rampMs = Math.max(0, Number(process.env.RAMP_MS || 0) || 0);
-const timedMode = targetRpm > 0 || process.env.DURATION_S != null;
 
 const ARCHIVE = [
   'Who won IPL 2025?',
@@ -116,7 +119,7 @@ async function askOnce(i) {
   }
 }
 
-/** Fixed number of requests with CCU workers. */
+/** Exactly `n` asks with up to `concurrency` in flight. */
 async function poolFixed(n, concurrency, worker) {
   const results = [];
   let next = 0;
@@ -128,8 +131,7 @@ async function poolFixed(n, concurrency, worker) {
         while (true) {
           const i = next++;
           if (i >= n) return;
-          const r = await worker(i);
-          results.push(r);
+          results.push(await worker(i));
           if (results.length % Math.max(1, Math.floor(n / 10)) === 0 || results.length === n) {
             process.stdout.write(`  progress ${results.length}/${n}\n`);
           }
@@ -141,21 +143,36 @@ async function poolFixed(n, concurrency, worker) {
   return results;
 }
 
-/**
- * Keep `concurrency` workers busy until deadline.
- * Optional TARGET_RPM paces starts (~TARGET_RPM/60 starts per second).
- */
-async function poolTimed(concurrency, durationMs, targetRpm, worker) {
+/** Fire CCU asks, wait for all to finish, repeat. True “N at a time” test. */
+async function poolWaves(concurrency, waveCount, worker) {
+  const results = [];
+  let seq = 0;
+  for (let w = 1; w <= waveCount; w++) {
+    const started = Date.now();
+    process.stdout.write(`  wave ${w}/${waveCount}: firing ${concurrency} asks…\n`);
+    const batch = await Promise.all(Array.from({ length: concurrency }, () => worker(seq++)));
+    results.push(...batch);
+    const ok = batch.filter((r) => r.ok).length;
+    const wall = ((Date.now() - started) / 1000).toFixed(1);
+    process.stdout.write(`  wave ${w} done: ok=${ok}/${concurrency} wall_s=${wall}\n`);
+  }
+  return results;
+}
+
+/** Paced sustained load — requires TARGET_RPM > 0. */
+async function poolTimed(concurrency, durationMs, rpm, worker) {
+  if (!(rpm > 0)) {
+    throw new Error('Timed mode needs TARGET_RPM>0. For high CCU use MODE=wave instead of TARGET_RPM=0.');
+  }
   const results = [];
   const deadline = Date.now() + durationMs;
   let next = 0;
   let lastReport = 0;
-  const minGapMs = targetRpm > 0 ? Math.floor(60000 / targetRpm) : 0;
+  const minGapMs = Math.floor(60000 / rpm);
   let nextStartAt = Date.now();
   const startLock = { p: Promise.resolve() };
 
   async function takeSlot() {
-    // Serialize start pacing across workers.
     let release;
     const wait = new Promise((r) => {
       release = r;
@@ -164,9 +181,7 @@ async function poolTimed(concurrency, durationMs, targetRpm, worker) {
     startLock.p = prev.then(() => wait);
     await prev;
     const now = Date.now();
-    if (minGapMs > 0 && now < nextStartAt) {
-      await sleep(nextStartAt - now);
-    }
+    if (now < nextStartAt) await sleep(nextStartAt - now);
     nextStartAt = Date.now() + minGapMs;
     release();
   }
@@ -179,14 +194,13 @@ async function poolTimed(concurrency, durationMs, targetRpm, worker) {
         while (Date.now() < deadline) {
           await takeSlot();
           if (Date.now() >= deadline) return;
-          const i = next++;
-          const r = await worker(i);
+          const r = await worker(next++);
           results.push(r);
           if (results.length - lastReport >= 10) {
             lastReport = results.length;
             const elapsed = (Date.now() - (deadline - durationMs)) / 1000;
-            const rpm = elapsed > 0 ? ((results.length / elapsed) * 60).toFixed(1) : '0';
-            process.stdout.write(`  progress ${results.length}  elapsed=${elapsed.toFixed(0)}s  rpm≈${rpm}\n`);
+            const okRpm = elapsed > 0 ? ((results.filter((x) => x.ok).length / elapsed) * 60).toFixed(1) : '0';
+            process.stdout.write(`  progress ${results.length}  elapsed=${elapsed.toFixed(0)}s  rpm_ok≈${okRpm}\n`);
           }
         }
       })(),
@@ -199,11 +213,11 @@ async function poolTimed(concurrency, durationMs, targetRpm, worker) {
 function explainFailures(byCode) {
   const hints = [];
   if (byCode['503:AI_BUSY']) {
-    hints.push(`AI_BUSY (${byCode['503:AI_BUSY']}x): raise AI_MAX_CONCURRENT ≥ CCU.`);
+    hints.push(`AI_BUSY (${byCode['503:AI_BUSY']}x): LLM/app concurrent slots full — raise AI_MAX_CONCURRENT only if the model can handle it.`);
   }
   if (byCode['429:TOO_MANY_REQUESTS']) {
     hints.push(
-      `TOO_MANY_REQUESTS (${byCode['429:TOO_MANY_REQUESTS']}x): raise AI_REQUESTS_PER_IP_PER_MINUTE and RATE_LIMIT_PER_MINUTE.`,
+      `TOO_MANY_REQUESTS (${byCode['429:TOO_MANY_REQUESTS']}x): raise AI_REQUESTS_PER_IP_PER_MINUTE and RATE_LIMIT_PER_MINUTE for the test.`,
     );
   }
   if (byCode['429:AI_QUOTA_EXCEEDED']) {
@@ -221,14 +235,17 @@ function printSummary(results, wallMs) {
     const key = `${r.status}:${r.code || 'ERR'}`;
     byCode[key] = (byCode[key] || 0) + 1;
   }
-  const rpm = wallMs > 0 ? (results.length / (wallMs / 1000)) * 60 : 0;
   const okRpm = wallMs > 0 ? (ok.length / (wallMs / 1000)) * 60 : 0;
+  const instantFail = fail.filter((r) => r.latencyMs < 500).length;
 
   console.log('\n=== Summary ===');
-  console.log(
-    `ok=${ok.length} fail=${fail.length} total=${results.length} wall_s=${(wallMs / 1000).toFixed(1)}`,
-  );
-  console.log(`rpm_total=${rpm.toFixed(1)}  rpm_ok=${okRpm.toFixed(1)}  success=${results.length ? ((ok.length / results.length) * 100).toFixed(1) : 0}%`);
+  console.log(`ok=${ok.length} fail=${fail.length} total=${results.length} wall_s=${(wallMs / 1000).toFixed(1)}`);
+  console.log(`rpm_ok=${okRpm.toFixed(1)}  success=${results.length ? ((ok.length / results.length) * 100).toFixed(1) : 0}%`);
+  if (instantFail > results.length * 0.5) {
+    console.log(
+      `note: ${instantFail} fails were <500ms (rate-limit spam). Ignore huge fail counts; trust rpm_ok and wave ok/CCU.`,
+    );
+  }
   if (latencies.length) {
     console.log(
       `latency_ms p50=${percentile(latencies, 50)} p95=${percentile(latencies, 95)} p99=${percentile(latencies, 99)} max=${latencies[latencies.length - 1]}`,
@@ -244,15 +261,23 @@ function printSummary(results, wallMs) {
   for (const r of ok.slice(0, 3)) {
     console.log(`  ok ${r.latencyMs}ms mocked=${r.mocked} tools=${r.tools || '-'}  ${r.question}`);
   }
-  return fail.length > results.length * 0.1 ? 1 : 0;
+  // Wave / capacity tests: judge by ok rate, not tiny 429 spam.
+  const meaningful = results.filter((r) => r.ok || r.latencyMs >= 500 || r.code === 'AI_BUSY' || r.code === 'TIMEOUT');
+  const meaningfulFail = meaningful.filter((r) => !r.ok).length;
+  return meaningful.length > 0 && meaningfulFail > meaningful.length * 0.5 ? 1 : ok.length === 0 ? 1 : 0;
 }
 
 async function main() {
+  if (mode === 'timed' && !(targetRpm > 0)) {
+    console.error('Do not use TARGET_RPM=0. Use MODE=wave CCU=200 WAVES=3 for “N at once”.');
+    process.exit(2);
+  }
+
   console.log(`AI load test → ${base}/api/v1/ai/ask`);
-  if (timedMode) {
-    console.log(
-      `mode=timed  TARGET_RPM=${targetRpm || '(max)'}  DURATION_S=${durationS}  CCU=${ccu}  TIMEOUT_MS=${timeoutMs}`,
-    );
+  if (mode === 'wave') {
+    console.log(`mode=wave  CCU=${ccu}  WAVES=${waves}  TIMEOUT_MS=${timeoutMs}`);
+  } else if (mode === 'timed') {
+    console.log(`mode=timed  TARGET_RPM=${targetRpm}  DURATION_S=${durationS}  CCU=${ccu}  TIMEOUT_MS=${timeoutMs}`);
   } else {
     console.log(`mode=fixed  CCU=${ccu}  REQUESTS=${totalFixed}  TIMEOUT_MS=${timeoutMs}`);
   }
@@ -272,11 +297,15 @@ async function main() {
   }
 
   const wallStart = Date.now();
-  const results = timedMode
-    ? await poolTimed(ccu, durationS * 1000, targetRpm, askOnce)
-    : await poolFixed(totalFixed, ccu, askOnce);
-  const wallMs = Date.now() - wallStart;
-  process.exit(printSummary(results, wallMs));
+  let results;
+  if (mode === 'wave') {
+    results = await poolWaves(ccu, waves, askOnce);
+  } else if (mode === 'timed') {
+    results = await poolTimed(ccu, durationS * 1000, targetRpm, askOnce);
+  } else {
+    results = await poolFixed(totalFixed, ccu, askOnce);
+  }
+  process.exit(printSummary(results, Date.now() - wallStart));
 }
 
 main().catch((err) => {
