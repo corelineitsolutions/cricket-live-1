@@ -157,17 +157,51 @@ export class HistoryQueryService {
     const types = format ? FORMAT_MATCH_TYPES[format] : null;
     const formatSql = types ? Prisma.sql`AND m.match_type IN (${Prisma.join(types)})` : Prisma.sql``;
     const genderSql = gender ? Prisma.sql`AND m.gender = ${gender}` : Prisma.sql``;
-    // Drop U19 / qualifier / Women's spill when asking about a men's World Cup fragment.
+    // Drop U19 / qualifier / league / Women's spill when asking about a men's World Cup fragment.
     const tightenSql = tightenWorldCup
       ? Prisma.sql`AND m.event_name NOT LIKE ${'%Under-19%'}
                    AND m.event_name NOT LIKE ${'%U19%'}
                    AND m.event_name NOT LIKE ${'%Qualifier%'}
-                   AND m.event_name NOT LIKE ${'%Women%'}`
+                   AND m.event_name NOT LIKE ${'%Women%'}
+                   AND m.event_name NOT LIKE ${'%League%'}
+                   AND m.event_name NOT LIKE ${'%Challenge%'}
+                   AND m.event_name NOT LIKE ${'%Warm-up%'}
+                   AND m.event_name NOT LIKE ${'%Warm up%'}`
       : Prisma.sql``;
+    // World Cup / Champions Trophy: calendar year only (season "2023/24" was matching 2024 Qualifier games).
     const yearSql = year
-      ? Prisma.sql`AND (m.season LIKE ${`%${year}%`} OR (m.start_date >= ${new Date(Date.UTC(year, 0, 1))} AND m.start_date < ${new Date(Date.UTC(year + 1, 0, 1))}))`
+      ? tightenWorldCup
+        ? Prisma.sql`AND m.start_date >= ${new Date(Date.UTC(year, 0, 1))} AND m.start_date < ${new Date(Date.UTC(year + 1, 0, 1))}`
+        : Prisma.sql`AND (m.season LIKE ${`%${year}%`} OR (m.start_date >= ${new Date(Date.UTC(year, 0, 1))} AND m.start_date < ${new Date(Date.UTC(year + 1, 0, 1))}))`
       : Prisma.sql``;
     return { formatSql, genderSql, tightenSql, yearSql };
+  }
+
+  private worldCupTightenWhere(): Prisma.HistMatchWhereInput['AND'] {
+    return [
+      { NOT: { eventName: { contains: 'Under-19' } } },
+      { NOT: { eventName: { contains: 'U19' } } },
+      { NOT: { eventName: { contains: 'Qualifier' } } },
+      { NOT: { eventName: { contains: 'Women' } } },
+      { NOT: { eventName: { contains: 'League' } } },
+      { NOT: { eventName: { contains: 'Challenge' } } },
+      { NOT: { eventName: { contains: 'Warm-up' } } },
+      { NOT: { eventName: { contains: 'Warm up' } } },
+    ];
+  }
+
+  private eventYearWhere(eventContains: string, year: number): Prisma.HistMatchWhereInput {
+    const calendar = {
+      startDate: {
+        gte: new Date(Date.UTC(year, 0, 1)),
+        lt: new Date(Date.UTC(year + 1, 0, 1)),
+      },
+    };
+    // IPL-style seasons keep loose season OR calendar; ICC cups use calendar year only.
+    if (/world\s*cup|champions\s*trophy/i.test(eventContains)) return calendar;
+    return {
+      OR: [{ season: { contains: String(year) } }, calendar],
+    };
   }
 
   /**
@@ -312,40 +346,19 @@ export class HistoryQueryService {
     const year = opts.year ?? null;
     const format = opts.format ?? null;
     const gender = opts.gender ?? null;
-    const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
+    const tighten = /world\s*cup|champions\s*trophy/i.test(eventContains) && gender !== 'female';
     const where: Prisma.HistMatchWhereInput = {
       eventName: { contains: eventContains },
       ...(format ? { matchType: { in: FORMAT_MATCH_TYPES[format] } } : {}),
       ...(gender ? { gender } : {}),
-      ...(tighten
-        ? {
-            AND: [
-              { NOT: { eventName: { contains: 'Under-19' } } },
-              { NOT: { eventName: { contains: 'U19' } } },
-              { NOT: { eventName: { contains: 'Qualifier' } } },
-              { NOT: { eventName: { contains: 'Women' } } },
-            ],
-          }
-        : {}),
-      ...(year
-        ? {
-            OR: [
-              { season: { contains: String(year) } },
-              {
-                startDate: {
-                  gte: new Date(Date.UTC(year, 0, 1)),
-                  lt: new Date(Date.UTC(year + 1, 0, 1)),
-                },
-              },
-            ],
-          }
-        : {}),
+      ...(tighten ? { AND: this.worldCupTightenWhere() } : {}),
+      ...(year ? this.eventYearWhere(eventContains, year) : {}),
     };
     const rows = await this.prisma.histMatch.findMany({
       where,
       include: { team1: { select: { name: true } }, team2: { select: { name: true } }, winner: { select: { name: true } } },
       orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
-      take: 40,
+      take: 120,
     });
     const mapped = rows.map((m) => ({
       event: m.eventName,
@@ -362,34 +375,27 @@ export class HistoryQueryService {
       eliminator: m.eliminatorTeam,
       method: m.method,
     }));
-    const labelledFinal =
-      mapped.find((m) => m.matchNumber !== null && /final/i.test(m.matchNumber) && !/semi|quarter/i.test(m.matchNumber)) ??
-      null;
-    // Super-over / tie finals often carry eliminator on the last match even when match_number is blank.
-    const eliminatorFinal =
-      mapped.find((m) => !!m.eliminator && (m.outcome === 'TIE' || m.outcome === 'WIN' || !m.winner)) ??
-      mapped.find((m) => !!m.eliminator) ??
-      null;
-    const final = labelledFinal ?? eliminatorFinal ?? null;
-    const highlight = final ?? mapped[0] ?? null;
-    const usedLabelledFinal = !!labelledFinal && highlight === labelledFinal;
+    const isFinalNumber = (n: string | null) =>
+      !!n && /final/i.test(n) && !/semi|quarter|eliminator|play.?off/i.test(n);
+    // Prefer an explicit Final. Never treat a random "eliminator" group match as the tournament winner
+    // (that produced USA for T20 WC 2024 and Canada for ODI WC 2023).
+    const labelledFinal = mapped.find((m) => isFinalNumber(m.matchNumber)) ?? null;
+    const tournamentWinner = labelledFinal?.winner ?? labelledFinal?.eliminator ?? null;
     return {
       event: eventContains,
       year,
       format: format ?? 'all',
       gender: gender ?? 'any',
       matchCount: mapped.length,
-      tournamentWinner: highlight?.winner ?? highlight?.eliminator ?? null,
-      final: highlight,
+      tournamentWinner,
+      final: labelledFinal,
       matches: mapped.slice(0, 12),
       note:
         mapped.length === 0
           ? `No archive matches whose event name contains "${eventContains}"${year ? ` in ${year}` : ''}.`
-          : usedLabelledFinal
+          : labelledFinal
             ? 'Tournament winner taken from the Final (Cricsheet archive).'
-            : highlight?.eliminator
-              ? 'Tournament winner taken from the match eliminator / last matching match (Cricsheet archive).'
-              : 'Showing the latest matching match as the highlight (Cricsheet archive).',
+            : `Found ${mapped.length} archive match(es) but no match_number Final — cannot confirm the tournament winner.`,
     };
   }
 
@@ -403,7 +409,7 @@ export class HistoryQueryService {
   ) {
     const format = opts.format ?? null;
     const gender = opts.gender ?? null;
-    const tighten = /world\s*cup/i.test(eventContains) && gender !== 'female';
+    const tighten = /world\s*cup|champions\s*trophy/i.test(eventContains) && gender !== 'female';
     const rows = await this.prisma.histMatch.findMany({
       where: {
         eventName: { contains: eventContains },
@@ -412,19 +418,11 @@ export class HistoryQueryService {
         NOT: [
           { matchNumber: { contains: 'Semi' } },
           { matchNumber: { contains: 'Quarter' } },
+          { matchNumber: { contains: 'Eliminator' } },
         ],
         ...(format ? { matchType: { in: FORMAT_MATCH_TYPES[format] } } : {}),
         ...(gender ? { gender } : {}),
-        ...(tighten
-          ? {
-              AND: [
-                { NOT: { eventName: { contains: 'Under-19' } } },
-                { NOT: { eventName: { contains: 'U19' } } },
-                { NOT: { eventName: { contains: 'Qualifier' } } },
-                { NOT: { eventName: { contains: 'Women' } } },
-              ],
-            }
-          : {}),
+        ...(tighten ? { AND: this.worldCupTightenWhere() } : {}),
       },
       include: { winner: { select: { id: true, name: true } } },
       orderBy: [{ startDate: 'asc' }],

@@ -27,7 +27,7 @@ const PLAYER_HISTORY_WORDS =
 const EVENT_WORDS =
   /t20\s*wor[ld]d?\s*cup|t20\s*word\s*cup|world\s*t20|world\s*cup|word\s*cup|\bwc\b|asia\s*cup|champions\s*trophy|ashes|\bipl\b|\bip\b(?=\s*\d{4})|आयपीएल|आईपीएल|आई\s*पी\s*एल|विश्व\s*कप|टी\s*20\s*विश्व|टी20\s*विश्व/i;
 const EVENT_WINNER_WORDS =
-  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|ipl\s+\d{4}\s+title|title\b|runner[\s-]?up|जीता|विजेता|कौन\s*जीत|kon\s+jit[ae]?|kaun\s+jit[ae]?|koun\s+jit[ae]?|jeet[ae]?\s*(?:tha|thi)?|jitaya/i;
+  /who\s+won|who\s+win|which\s+team\s+won|winner\s+of|won\s+the|how\s+win|who\s+lifted|champion\s+of|ipl\s+\d{4}\s+title|title\b|runner[\s-]?up|result\s+of\s+(?:the\s+)?(?:\d{4}\s+)?|final\s+result|(?:world\s*cup|ipl|champions\s*trophy).{0,40}final|जीता|विजेता|कौन\s*जीत|kon\s+jit[ae]?|kaun\s+jit[ae]?|koun\s+jit[ae]?|jeet[ae]?\s*(?:tha|thi)?|jitaya/i;
 const EVENT_LEADER_RUNS =
   /most\s+runs?|top\s+scorer|highest\s+runs?|orange\s*cap|hit\s+the\s+most\s+run|कौन\s*ने\s*सबसे\s*ज्यादा\s*रन|सर्वाधिक\s*रन/i;
 const EVENT_LEADER_WICKETS =
@@ -97,20 +97,23 @@ export function isLiveMatchQuestion(question: string): boolean {
 const TEAMS_VS = /([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})\s+(?:vs\.?|v|versus|बनाम)\s+([A-Z][\w']*(?:\s+[A-Z][\w']*){0,3})/;
 const NAME_PARTICLES = new Set(['de', 'van', 'du', 'der', 'la', 'le', 'da']);
 const NOT_A_NAME = new Set([
-  'what', 'how', 'tell', 'show', 'give', 'is', 'does', 'who', 'which', 'career', 'record', 'stats', 'statistics',
-  'odi', 't20', 'test', 'ipl', 'me', 'the', 'in', 'of', 'a', 'an', 'to', 'for', 'from', 'with', 'this', 'that',
+  'what', 'how', 'tell', 'show', 'give', 'is', 'does', 'did', 'who', 'which', 'career', 'record', 'records', 'stats', 'statistics',
+  'odi', 't20', 't20i', 'test', 'ipl', 'me', 'the', 'in', 'of', 'a', 'an', 'to', 'for', 'from', 'with', 'this', 'that',
   'there', 'many', 'much', 'his', 'her', 'their', 'has', 'have', 'had', 'was', 'were', 'are', 'been', 'icc',
   'men', 'mens', "men's", 'women', 'womens', "women's", 'world', 'cup', 'wc', 'asia', 'champions', 'trophy', 'ashes',
   'century', 'centuries', 'hundred', 'hundreds', 'fifty', 'fifties', 'runs', 'wicket', 'wickets', 'average', 'strike',
-  'rate', 'match', 'matches', 'tournament', 'event', 'please', 'about', 'player', 'batting', 'bowling', 'economy',
+  'rate', 'match', 'matches', 'tournament', 'event', 'please', 'about', 'player', 'players', 'batting', 'bowling', 'economy',
   'win', 'won', 'winner', 'winning', 'lifted', 'champion', 'final', 'chance', 'probability', 'projected', 'project',
   'will', 'vs', 'versus', 'per', 'over', 'overs', 'need', 'needs', 'needed', 'score', 'scoring', 'make', 'get',
-  'current', 'batter', 'batters', 'batsman', 'batsmen', 'performing', 'performance', 'wa', 'ql', 'team',
+  'current', 'batter', 'batters', 'batsman', 'batsmen', 'performing', 'performance', 'wa', 'ql', 'team', 'teams',
   'next', 'kab', 'kb', 'hogi', 'hoga', 'hogaa', 'sakta', 'sakata', 'sakte', 'kon', 'kaun', 'kya', 'hai', 'hain',
   'kitna', 'kitne', 'kaise', 'when', 'fall', 'falls', 'out', 'might', 'reach', 'set', 'mil', 'sakat', 'total',
+  'compare', 'compared', 'across', 'between', 'against', 'result', 'results', 'available', 'specified', 'international',
+  'distinguish', 'series', 'format', 'formats', 'season', 'seasons', 'year', 'years', 'performance', 'opponent',
+  'most', 'best', 'highest', 'lowest', 'same', 'same', 'and', 'or', 'if', 's',
   // Common team codes / short names — never treat as player names in live asks.
   'ban', 'afg', 'ind', 'aus', 'eng', 'nz', 'pak', 'sl', 'sa', 'wi', 'uae', 'ned', 'ire', 'sco', 'usa',
-  'bangladesh', 'afghanistan', 'india', 'australia', 'england', 'pakistan',
+  'bangladesh', 'afghanistan', 'india', 'australia', 'england', 'pakistan', 'scotland', 'canada', 'namibia',
 ]);
 
 const titleCase = (word: string) => {
@@ -122,13 +125,20 @@ const titleCase = (word: string) => {
 
 /** First 2+ word run that looks like a player name ("Virat Kohli" or lowercase "rohit sharma"). */
 export function guessPlayerName(question: string): string | null {
-  const tokens = question.split(/[\s,?!:;'"()]+/).filter(Boolean);
+  // Strip possessives so "Rohit Sharma's" / "India's result" do not become "Sharma S" / "S Result".
+  const normalized = question
+    .replace(/[’']/g, "'")
+    .replace(/([A-Za-z])'s\b/gi, '$1')
+    .replace(/\b\d{4}\b/g, ' ');
+  const tokens = normalized.split(/[\s,?!:;'"()]+/).filter(Boolean);
   const runs: string[][] = [];
   let current: string[] = [];
   for (const token of tokens) {
     const lower = token.toLowerCase();
     const particle = NAME_PARTICLES.has(lower);
-    const nameLike = /^[A-Za-z][A-Za-z'.-]{0,24}$/.test(token) && !NOT_A_NAME.has(lower);
+    const nameLike =
+      /^[A-Za-z][A-Za-z.-]{1,24}$/.test(token) && // at least 2 letters — drops lone "s"
+      !NOT_A_NAME.has(lower);
     if (nameLike || (particle && current.length > 0)) current.push(token);
     else {
       if (current.length) runs.push(current);
@@ -208,8 +218,12 @@ function wantsPlayerHistory(question: string): boolean {
   ) {
     return false;
   }
+  // Tournament winner / final result questions are not player lookups.
+  if (wantsEventResults(question) || wantsEventTitles(question) || wantsEventLeaders(question)) return false;
   const name = guessPlayerName(question);
   if (!name) return false;
+  // Reject garbage names from template questions ("Specified Format", "S Result").
+  if (/^(Specified|Available|International|Distinguish|Compare|Two|Most)\b/i.test(name)) return false;
   return PLAYER_HISTORY_WORDS.test(question) || EVENT_WORDS.test(question) || /centur|hundred|\b100\b|wickets?/i.test(question);
 }
 

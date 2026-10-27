@@ -155,6 +155,9 @@ describe('AI history tools', () => {
     expect(guessGender("icc men's world cup")).toBe('male');
     expect(guessPlayerName('How many runs per over does WA need?')).toBeNull();
     expect(guessPlayerName('next wicket kb hogi')).toBeNull();
+    expect(guessPlayerName('How many centuries did Rohit Sharma score in the 2019 World Cup?')).toBe('Rohit Sharma');
+    expect(guessPlayerName("What is Rohit Sharma's ODI World Cup century record?")).toBe('Rohit Sharma');
+    expect(guessPlayerName("What was India's result in the 2023 ODI World Cup final?")).toBeNull();
     expect(normalizePlayerQuery('rohit sharam')).toBe('Rohit Sharma');
     expect(normalizePlayerQuery('rohit sharama')).toBe('Rohit Sharma');
     expect(normalizePlayerQuery('virat kohili')).toBe('Virat Kohli');

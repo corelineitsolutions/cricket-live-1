@@ -25,7 +25,8 @@
  *   FROM / TO     inclusive question numbers (default 1–300)
  *   SECTION       live|ipl|icc|lang|safety|all
  *   CONCURRENCY   parallel asks (default 1 — sequential is safest for review)
- *   DELAY_MS      pause between starts (default 200)
+ *   DELAY_MS      pause between asks (default 1500 — avoids AI_BUSY from LLM)
+ *   RETRIES       retries on AI_BUSY / 429 (default 3)
  *   TIMEOUT_MS    per ask (default 60000)
  *   OUT           results jsonl path (default ./tmp/ai-question-bank-results.jsonl)
  *   ONLY_LIVE     1 = only questions that need a match (skip archive)
@@ -43,7 +44,8 @@ const bankPath = resolve(
 );
 const matchId = process.env.MATCH_ID?.trim() || '';
 const concurrency = Math.max(1, Number(process.env.CONCURRENCY || 1) || 1);
-const delayMs = Math.max(0, Number(process.env.DELAY_MS || 200) || 200);
+const delayMs = Math.max(0, Number(process.env.DELAY_MS || 1500) || 1500);
+const retries = Math.max(0, Number(process.env.RETRIES || 3) || 3);
 const timeoutMs = Math.max(5000, Number(process.env.TIMEOUT_MS || 60000) || 60000);
 const outPath = resolve(process.env.OUT || resolve(__dirname, '../tmp/ai-question-bank-results.jsonl'));
 const onlyLive = process.env.ONLY_LIVE === '1';
@@ -115,8 +117,12 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function ask(item, index) {
-  const deviceId = `qbank-${item.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+function isBusy(row) {
+  return row.code === 'AI_BUSY' || row.status === 429 || row.status === 503;
+}
+
+async function askOnce(item, index, attempt) {
+  const deviceId = `qbank-${item.id}-a${attempt}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const useMatch = Boolean(matchId) && item.live;
   const body = {
     question: item.question.slice(0, 500),
@@ -145,6 +151,7 @@ async function ask(item, index) {
       status: res.status,
       code: json?.code ?? null,
       latencyMs,
+      attempts: attempt,
       language: item.language,
       live: item.live,
       matchId: useMatch ? matchId : null,
@@ -163,6 +170,7 @@ async function ask(item, index) {
       status: 0,
       code: err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK',
       latencyMs: Date.now() - started,
+      attempts: attempt,
       language: item.language,
       live: item.live,
       matchId: useMatch ? matchId : null,
@@ -176,6 +184,17 @@ async function ask(item, index) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function ask(item, index) {
+  let last = await askOnce(item, index, 1);
+  for (let attempt = 2; attempt <= retries + 1 && isBusy(last); attempt++) {
+    const wait = 2000 * (attempt - 1);
+    process.stdout.write(`  retry #${item.id} attempt ${attempt} after ${wait}ms (${last.code})\n`);
+    await sleep(wait);
+    last = await askOnce(item, index, attempt);
+  }
+  return last;
 }
 
 async function runPool(items, worker) {

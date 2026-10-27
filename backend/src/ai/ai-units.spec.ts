@@ -229,6 +229,17 @@ describe('planAskTools', () => {
     }
   });
 
+  it('routes World Cup final / century asks without inventing junk player names', () => {
+    expect(planAskTools("What was India's result in the 2023 ODI World Cup final?", null, available, { strict: true })[0]?.name).toBe(
+      'get_event_results',
+    );
+    const centuries = planAskTools('How many centuries did Rohit Sharma score in the 2019 World Cup?', null, available, {
+      strict: true,
+    });
+    expect(centuries[0]?.name).toBe('get_player_history');
+    expect(JSON.parse(centuries[0]!.arguments)).toMatchObject({ name: 'Rohit Sharma', event: 'World Cup', year: 2019 });
+  });
+
   it('routes IPL hundreds phrasings to get_player_history', () => {
     for (const q of [
       'ipl hundred of virat kohli',
