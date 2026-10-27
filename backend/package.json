@@ -23,7 +23,8 @@
     "audit:secrets": "node scripts/audit-secrets.mjs",
     "latiyal:probe": "node scripts/latiyal-probe.mjs",
     "latiyal:delay": "node scripts/latiyal-delay-check.mjs",
-    "ai:load": "node scripts/ai-load-test.mjs"
+    "ai:load": "node scripts/ai-load-test.mjs",
+    "ai:bank": "node scripts/ai-question-bank-test.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

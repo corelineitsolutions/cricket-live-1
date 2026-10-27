@@ -1,0 +1,368 @@
+CRICKET MASTER LINE AI — COMPLETE TEST QUESTION BANK
+=====================================================
+
+Purpose:
+Test live-match answers, IPL history, ICC event history, player statistics, venue analysis, predictions, English/Hindi/Hinglish understanding, follow-up context, and safe handling of missing data.
+
+Instructions:
+- Ask these questions one by one to the AI.
+- For live-match questions, use an actually live match and verify against the provider/API.
+- Questions mentioning a specific year or tournament should be checked against the correct edition.
+- Do not expect the AI to invent live scores or missing historical facts.
+- Predictions should be identified as estimates, not certainties.
+
+SECTION 1 — LIVE MATCH: SCORE, TARGET, OVERS, WICKETS
+1. What is the current score?
+2. What is the current score and how many wickets have fallen?
+3. How many runs are needed to win?
+4. What target has the batting team been given?
+5. How many overs are left?
+6. How many wickets are remaining?
+7. Who is batting right now?
+8. Who is bowling right now?
+9. What is the current run rate?
+10. What required run rate is needed to win?
+11. How many runs are needed from the remaining balls?
+12. How many balls are left in the innings?
+13. What is the current partnership?
+14. How many runs has the current batter scored?
+15. How many balls has the current batter faced?
+16. What are the current bowling figures?
+17. What happened in the last over?
+18. What was the last ball?
+19. What is the score at the end of the powerplay?
+20. Give me a short summary of the match so far.
+
+SECTION 2 — LIVE MATCH: PREDICTIONS AND SCENARIOS
+21. Which team has the better chance of winning right now, and why?
+22. What is the winning probability of both teams?
+23. Can the batting team chase this target?
+24. How many runs per over are needed from now?
+25. What could be the final score at 20 overs?
+26. Predict the score at 10 overs.
+27. What score might this team reach if the current run rate continues?
+28. If the team scores 30 runs in the next three overs, what could happen?
+29. If two wickets fall in the next three overs, how might the prediction change?
+30. What if the required run rate increases to 12?
+31. What if the batting team scores 60 runs in the next five overs?
+32. What is a reasonable first-innings par score at this venue?
+33. Based on the current score and venue history, estimate the final total.
+34. What are the main reasons behind your winning prediction?
+35. What factors could change the result?
+36. Is the match currently in favour of the batting team or bowling team?
+37. How important is the next over for the match?
+38. What is the likely result if the current run rate and wicket situation continue?
+39. Give a prediction with supporting statistics and uncertainty.
+40. Tell me whether this is a data-backed prediction or only an estimate.
+
+SECTION 3 — LIVE MATCH: FOLLOW-UP AND CONTEXT
+41. What if they lose two wickets?
+42. What if they score 15 runs in the next over?
+43. How many runs are still needed?
+44. What are their winning chances now?
+45. Why did the winning probability change?
+46. Compare both teams' recent performance.
+47. What was the score you mentioned earlier?
+48. Explain that prediction in simpler words.
+49. Explain the same answer in Hindi.
+50. Now tell me the same thing in English.
+51. Based on the same match, predict the score at the end of the next five overs.
+52. Does your latest prediction use the current match data?
+53. What information do you still need to make a better prediction?
+54. Summarize the match in three lines.
+55. Give me the key turning points so far, using available commentary.
+
+SECTION 4 — IPL: PLAYER RECORDS
+56. How many centuries has Rohit Sharma scored in the IPL?
+57. Rohit Sharma ka IPL mein highest score kitna hai?
+58. Has Virat Kohli scored a century in an IPL final?
+59. Who has scored the most runs in IPL history?
+60. Which player has the most IPL centuries?
+61. How many sixes has MS Dhoni hit in the IPL?
+62. Rohit Sharma ne IPL mein kitne hundred maare hain?
+63. Who has taken the most wickets in IPL history?
+64. What is Virat Kohli's highest IPL score?
+65. How many fifties has Rohit Sharma scored in the IPL?
+66. How many runs did Virat Kohli score in IPL 2024?
+67. Who scored the most runs in IPL 2024?
+68. Who took the most wickets in IPL 2024?
+69. What is AB de Villiers' highest IPL score?
+70. Which player has the best IPL batting average?
+71. Which player has the highest IPL strike rate, subject to a sensible minimum-innings filter?
+72. How many IPL centuries has Chris Gayle scored?
+73. Compare Rohit Sharma's IPL and ODI centuries.
+74. Give me Rohit Sharma's IPL season-by-season runs.
+75. Show the player's record with the season and match context where available.
+
+SECTION 5 — IPL: TEAMS AND TOURNAMENT HISTORY
+76. Which team has won the most IPL titles?
+77. Who won IPL 2024?
+78. Who won the IPL final in 2023?
+79. What was the result of the 2024 IPL final?
+80. Mumbai Indians aur Chennai Super Kings ka head-to-head record kya hai?
+81. Which team scored the highest total in IPL history?
+82. What is the biggest successful run chase in IPL history?
+83. Which IPL team has the most wins?
+84. Which team has the best win percentage against RCB?
+85. How many times have Mumbai Indians won the IPL?
+86. How many times have Chennai Super Kings won the IPL?
+87. Which teams played the IPL final in 2022?
+88. Who was Player of the Tournament in IPL 2024?
+89. Which team has reached the most IPL finals?
+90. Give me the result of a specified IPL final and the top performers.
+91. Compare Mumbai Indians and Chennai Super Kings across IPL history.
+92. Which team has performed best in IPL playoffs?
+93. What is the lowest team total in IPL history?
+94. Which IPL season had the most runs?
+95. Which team had the best win-loss record in a specified IPL season?
+
+SECTION 6 — IPL: VENUE AND MATCH ANALYSIS
+96. What is the average first-innings score at Wankhede Stadium in IPL?
+97. What is the highest IPL score at Chinnaswamy Stadium?
+98. Is this ground better for batting or bowling?
+99. What is a good powerplay score at this venue?
+100. How many times has a team chased 200 or more at this ground?
+101. Which team performs best at Chepauk?
+102. What is the average score in the last 10 IPL matches at this venue?
+103. What is the expected par score for an IPL match at this ground?
+104. What is the average second-innings score at Wankhede in IPL matches?
+105. Compare the first-innings and second-innings averages at this venue.
+106. Which bowlers have performed best at this ground in IPL?
+107. Which batters have scored the most runs at this venue in IPL?
+108. What is the venue's highest successful run chase?
+109. How often does the team batting first win at this ground?
+110. Give the venue statistics with the number of matches in the sample.
+111. Is the venue sample large enough to support this conclusion?
+112. What is a good score after six overs at this venue?
+113. What is a typical score after ten overs at this venue?
+114. Compare this venue's IPL scoring pattern with another ground.
+115. Based on historical venue data, what score should a team aim for?
+
+SECTION 7 — ICC EVENTS AND ODI WORLD CUP
+116. Who won the 2023 Cricket World Cup?
+117. India ka 2023 World Cup final mein kya score tha?
+118. Who scored the most runs in the 2023 ODI World Cup?
+119. How many centuries did Rohit Sharma score in the 2019 World Cup?
+120. What is the highest team total in ODI World Cup history?
+121. Who was Player of the Tournament in the 2023 ODI World Cup?
+122. Who won the 2019 ODI World Cup?
+123. What was the result of the 2011 ODI World Cup final?
+124. How many ODI World Cups has India won?
+125. Who scored the most runs in the 2019 ODI World Cup?
+126. Who took the most wickets in the 2023 ODI World Cup?
+127. What is Rohit Sharma's ODI World Cup century record?
+128. Which team has won the most men's ODI World Cup titles?
+129. What was India's result in the 2023 ODI World Cup final?
+130. Compare India's batting performance in the 2019 and 2023 ODI World Cups.
+
+SECTION 8 — ICC T20 WORLD CUP
+131. Who won the 2024 T20 World Cup?
+132. India ne 2024 T20 World Cup final kaise jeeta?
+133. Who was Player of the Tournament in 2024?
+134. What was India's score in the 2024 final?
+135. Which team has won the most men's T20 World Cup titles?
+136. Who won the 2022 T20 World Cup?
+137. What was the result of the 2021 T20 World Cup final?
+138. Who scored the most runs in the 2024 T20 World Cup?
+139. Who took the most wickets in the 2024 T20 World Cup?
+140. How many T20 World Cup titles has India won?
+141. What was the turning point in the 2024 final, based on the scorecard and commentary?
+142. Compare India's 2007 and 2024 T20 World Cup campaigns.
+143. Which team had the highest total in the 2024 T20 World Cup?
+144. Give the result and top performers of a specified T20 World Cup final.
+145. What are Rohit Sharma's T20 World Cup batting records?
+
+SECTION 9 — ICC CHAMPIONS TROPHY AND TEST CRICKET
+146. Who won the 2025 Champions Trophy?
+147. Who was Player of the Tournament in the 2025 Champions Trophy?
+148. Which country has won the most ICC tournament titles? Define which tournaments you count.
+149. What is India's highest successful Test run chase?
+150. How many ODI hundreds does Rohit Sharma have?
+151. Compare Rohit Sharma's ODI and IPL records.
+152. Who won the 2017 Champions Trophy?
+153. What was the result of the 2025 Champions Trophy final?
+154. Who scored the most runs in the 2025 Champions Trophy?
+155. Who took the most wickets in the 2025 Champions Trophy?
+156. Which team has won the most Champions Trophy titles?
+157. What is India's highest Test team total?
+158. Which player has scored the most Test runs for India?
+159. Give India's Test win-loss record against Australia, if available.
+160. Compare a player's records across Test, ODI, and T20I formats.
+
+SECTION 10 — GENERAL INTERNATIONAL PLAYER AND TEAM QUESTIONS
+161. Who has scored the most international centuries?
+162. Who has scored the most runs in ODI cricket?
+163. Who has taken the most wickets in international cricket?
+164. What is India's highest ODI total?
+165. What is the highest successful chase in men's ODI cricket?
+166. Who has the most sixes in T20 international cricket?
+167. Compare Virat Kohli and Rohit Sharma in ODI cricket.
+168. Compare two players' records in a specified tournament.
+169. Who performed best in the last specified series?
+170. What was the result of India's most recent completed match? Use current, verified data.
+171. Give me a player's career stats in a specified format.
+172. Show a player's season-by-season or year-by-year performance.
+173. Which team has the best record against a specified opponent?
+174. What is the head-to-head record between India and Australia in ODIs?
+175. Distinguish international records from IPL records in your answer.
+
+SECTION 11 — ENGLISH LANGUAGE UNDERSTANDING
+176. What is the current score?
+177. How many runs are required to win?
+178. Who is likely to win this match?
+179. Predict the final score.
+180. What is the average first-innings score at this venue?
+181. How many IPL centuries has Rohit Sharma scored?
+182. What is Virat Kohli's highest IPL score?
+183. Who won the 2023 ODI World Cup?
+184. Compare Mumbai Indians and Chennai Super Kings.
+185. What happens to the prediction if two wickets fall?
+186. Explain the reason for your prediction.
+187. Give the answer in three short bullet points.
+188. What data did you use to answer this question?
+189. How confident should I be in this estimate?
+190. If the data is unavailable, tell me clearly.
+
+SECTION 12 — HINDI LANGUAGE UNDERSTANDING
+191. अभी मैच में कितने रन चाहिए?
+192. अगर टीम 10 ओवर में 100 रन बना ले तो 20 ओवर तक कितना स्कोर हो सकता है?
+193. रोहित शर्मा ने आईपीएल में कितने शतक लगाए हैं?
+194. इस मैदान पर पहली पारी का औसत स्कोर कितना है?
+195. भारत ने 2024 टी20 वर्ल्ड कप फाइनल कैसे जीता?
+196. अभी कौन सी टीम जीत सकती है और क्यों?
+197. कितने ओवर बाकी हैं?
+198. बल्लेबाजी करने वाली टीम को जीतने के लिए कितने रन चाहिए?
+199. विराट कोहली का आईपीएल में सबसे बड़ा स्कोर कितना है?
+200. आईपीएल में सबसे ज्यादा विकेट किसने लिए हैं?
+201. मुंबई इंडियंस और चेन्नई सुपर किंग्स का आमने-सामने का रिकॉर्ड बताओ।
+202. इस मैदान पर 200 रन बनाना अच्छा स्कोर है क्या?
+203. अगले पांच ओवर में कितने रन बन सकते हैं?
+204. अगर दो विकेट गिर जाएं तो जीतने की संभावना कितनी बदलेगी?
+205. भारत ने 2023 वनडे वर्ल्ड कप फाइनल में कितने रन बनाए थे?
+206. रोहित शर्मा के वनडे और आईपीएल शतकों की तुलना करो।
+207. इस जवाब को आसान हिंदी में समझाओ।
+208. यह अनुमान किन आंकड़ों के आधार पर है?
+209. अगर लाइव डेटा उपलब्ध नहीं है तो साफ-साफ बताओ।
+210. इस मैच का अब तक का सारांश तीन पंक्तियों में दो।
+
+SECTION 13 — HINGLISH AND INFORMAL USER QUERIES
+211. Rohit ipl hundred
+212. Rohit Sharma ipl me kitne 100
+213. rohit ka highest score ipl
+214. ind vs aus kitna target hai
+215. kitne run aur chahiye
+216. abhi winning chances kitne hain
+217. 10 over tak kitna banega
+218. is ground pe kitna score acha hai
+219. kal wale match me kon jita
+220. last wala answer hindi me batao
+221. MI CSK ka record batao
+222. virat ke ipl 100 aur odi 100 compare kar
+223. abhi kaun batting kar raha hai
+224. next 5 over me kitne run banenge
+225. ye team chase kar payegi kya
+226. rohit ne world cup me kitne hundred mare
+227. india ka highest score kitna hai
+228. is pitch pe batting easy hai kya
+229. is bowler ke against virat ka record kya hai
+230. score kitna hua aur kitne wicket gire
+231. target kitna mila aur run rate kya chahiye
+232. last over me kya hua
+233. thoda simple batao
+234. short me answer de
+235. same answer English me bata
+236. ab detail me samjha
+237. pichle question ka answer use karke bata
+238. 2 wicket gir gaye to kya hoga
+239. current run rate se final score kitna hoga
+240. ye stat IPL ka hai ya international ka?
+
+SECTION 14 — SPELLING ERRORS, NICKNAMES, AND AMBIGUITY
+241. Rohit sharma ne ipl me kitne centry mare
+242. virat kohli ka higest score in ipl
+243. csk aur mi kitni baar jeete
+244. india ka wc final score kya tha
+245. rohit ka odi 100 kitna hai
+246. bumrah ne ipl me kitne wkt liye
+247. kohli vs rohit kon best hai
+248. ind aus match me kitna run chahiye
+249. kal ka match ka winner batao
+250. ground ka avg score batao
+251. Who has the most hundreds? (Check whether the format or competition needs clarification.)
+252. What is his highest score? (Check whether player context exists; otherwise ask who.)
+253. What was the score in the final? (Ask which tournament/year if not clear.)
+254. How many runs does he need? (Use context if clear; otherwise clarify player/team.)
+255. Tell me the record at this ground. (Clarify format or competition if needed.)
+256. Who will win? (If no match is identified, ask which match.)
+257. Is 180 a good score? (Ask or infer format, venue, and match situation carefully.)
+258. What about Rohit? (Use prior context if clear; otherwise clarify what statistic is wanted.)
+259. Compare them. (Use prior context if clear; otherwise ask which players/teams.)
+260. What happened yesterday? (Clarify match or competition if multiple matches are possible.)
+
+SECTION 15 — MULTI-STEP REASONING AND COMPARISONS
+261. Compare Virat Kohli's performance at Chinnaswamy with his overall IPL performance.
+262. Which venues have been best for Rohit Sharma in IPL, based on runs and average?
+263. Compare both teams' powerplay performance in their last 10 IPL matches.
+264. Has this batting team chased a similar target at this venue before?
+265. Compare the current chase with previous successful chases at this ground.
+266. Which bowlers have performed best against this batting lineup historically?
+267. Compare India's batting performance in the 2023 ODI World Cup and 2024 T20 World Cup.
+268. Give a player's best and worst seasons, with the metric and sample size.
+269. Compare two teams' head-to-head record and recent form without treating them as the same measure.
+270. Predict the innings total using current run rate and venue history, and explain the limits.
+271. Estimate the score at 10 overs using the current score, wickets, and available match context.
+272. Explain how the loss of wickets changes the projection.
+273. Identify the strongest evidence for and against your prediction.
+274. Give the answer, supporting statistics, sample size, and data timestamp.
+275. Compare the last five matches of both teams, if the database contains them.
+276. Which team has the better death-over batting record in the specified competition?
+277. Which bowlers have the best death-over economy in the specified season, using a minimum-overs filter?
+278. Compare a player's performance against left-arm and right-arm bowling, if data supports it.
+279. Summarize a team's performance across powerplay, middle overs, and death overs.
+280. Explain the difference between a historical trend and a prediction for today's match.
+
+SECTION 16 — DATA QUALITY, SAFETY, AND FAILURE CASES
+281. What is the live score when no match is live?
+282. Give me a statistic that is not in the database. (The AI should admit that it cannot verify it.)
+283. Ask for a player's IPL record but provide an ambiguous or misspelled name.
+284. Ask for a tournament winner without specifying the year.
+285. Ask for a venue average without specifying the format.
+286. Ask for a live target when the match data is stale.
+287. Ask for a prediction when overs or wickets are missing from the input.
+288. Ask for a statistic where the database has no matching player.
+289. Ask for a scorecard from a match that does not exist.
+290. Ask the AI to cite the data source or timestamp for a live answer.
+291. Ask for a percentage prediction without enough evidence.
+292. Ask the AI to distinguish a confirmed score from an estimated score.
+293. Ask for a player record where IPL and international data could be confused.
+294. Ask for a venue statistic with too few matches in the sample.
+295. Ask for a historical fact that may have changed recently and check if the answer is up to date.
+296. Ask the same question twice and check whether factual answers remain consistent.
+297. Ask for a source-backed answer and check whether the cited record supports the claim.
+298. Ask a question in Hindi when the available data labels are in English.
+299. Ask a follow-up after switching from one match to another and ensure old match context is not reused.
+300. Ask the AI to explain what it does not know instead of guessing.
+
+SECTION 17 — SUGGESTED TESTING RECORD FORMAT
+For each test, record:
+- Test ID:
+- User question:
+- Language: English / Hindi / Hinglish
+- Category: Live / IPL / ICC / Player / Venue / Prediction / Follow-up / Data quality
+- Expected answer or reference:
+- Actual AI answer:
+- Data source or API used:
+- Correctness: Pass / Fail / Partial
+- Notes: intent issue / retrieval issue / stale data / calculation issue / hallucination / language issue
+
+PASS CRITERIA
+1. Correct intent is identified.
+2. The correct player, team, tournament, season, venue, and format are used.
+3. Historical facts match the database or a trusted reference.
+4. Live answers use fresh match data and identify when data is unavailable or stale.
+5. Hindi and Hinglish versions preserve the meaning of the English question.
+6. Follow-up questions use context only when the reference is clear.
+7. Predictions are labelled as estimates and do not promise certainty.
+8. The AI does not invent scores, records, citations, or database results.
+9. Statistical comparisons state the relevant format, time period, and sample size where possible.
+10. Ambiguous questions trigger a clarification instead of an unsupported guess.
