@@ -255,8 +255,15 @@ function overNumberOf(row: Record<string, unknown>): number | null {
 }
 
 function overRunsOf(row: Record<string, unknown>): number | null {
-  const r = num(row.runs ?? row.total_runs ?? row.run ?? row.score ?? row.over_runs ?? row.runs_scored);
+  // Prefer per-over fields; `score` is often cumulative and is handled in sumFirstOversRuns.
+  const r = num(row.over_runs ?? row.runs_scored ?? row.runs ?? row.total_runs ?? row.run ?? row.r);
   if (r === null || r < 0 || r > 36) return null;
+  return r;
+}
+
+function overCumulativeOf(row: Record<string, unknown>): number | null {
+  const r = num(row.score ?? row.total ?? row.cum_runs ?? row.cumulative ?? row.team_score);
+  if (r === null || r < 0 || r > 500) return null;
   return r;
 }
 
@@ -274,6 +281,7 @@ export function recentOversRunRate(data: unknown, lastN = 3): number | null {
 /**
  * Sum runs in overs [1..toOver] from matchOverHistory.
  * Used for "first 6 overs / powerplay kitne run" on the LIVE innings (not archive).
+ * Supports per-over runs or cumulative end-of-over scores (Latiyal sometimes sends either).
  */
 export function sumFirstOversRuns(
   data: unknown,
@@ -287,25 +295,57 @@ export function sumFirstOversRuns(
   perOver: Array<{ over: number; runs: number }>;
   note: string | null;
 } {
-  const oversRequested = Math.max(1, Math.min(20, Math.floor(toOver)));
+  // ODI can ask first 40/50; keep a hard ceiling at a full ODI innings.
+  const oversRequested = Math.max(1, Math.min(50, Math.floor(toOver)));
   const rows = listOverHistoryRows(data);
   const byOver = new Map<number, number>();
+  const cumulativeByOver = new Map<number, number>();
   let sequential = 0;
   for (const row of rows) {
-    const runs = overRunsOf(row);
-    if (runs === null) continue;
     const overNo = overNumberOf(row);
-    if (overNo !== null && overNo >= 1 && overNo <= 50) {
-      byOver.set(overNo, (byOver.get(overNo) ?? 0) + runs);
-    } else {
-      sequential += 1;
-      if (sequential <= oversRequested) byOver.set(sequential, (byOver.get(sequential) ?? 0) + runs);
-    }
+    const runs = overRunsOf(row);
+    const cumulative = overCumulativeOf(row);
+    const key =
+      overNo !== null && overNo >= 1 && overNo <= 50
+        ? overNo
+        : runs !== null || cumulative !== null
+          ? ((sequential += 1), sequential)
+          : null;
+    if (key === null || key > oversRequested + 5) continue;
+    if (runs !== null) byOver.set(key, (byOver.get(key) ?? 0) + runs);
+    if (cumulative !== null) cumulativeByOver.set(key, cumulative);
   }
-  const perOver: Array<{ over: number; runs: number }> = [];
+
+  // Prefer per-over runs; fall back to cumulative end-of-over totals.
+  let perOver: Array<{ over: number; runs: number }> = [];
   for (let o = 1; o <= oversRequested; o++) {
     if (byOver.has(o)) perOver.push({ over: o, runs: byOver.get(o)! });
   }
+  if (perOver.length === 0 && cumulativeByOver.size > 0) {
+    const atAsk = cumulativeByOver.get(oversRequested);
+    if (atAsk != null) {
+      perOver = [{ over: oversRequested, runs: atAsk }];
+      return {
+        available: true,
+        runs: atAsk,
+        oversCounted: oversRequested,
+        oversRequested,
+        complete: true,
+        perOver,
+        note: null,
+      };
+    }
+    // Derive per-over deltas from cumulative scores for overs we have.
+    let prev = 0;
+    for (let o = 1; o <= oversRequested; o++) {
+      if (!cumulativeByOver.has(o)) continue;
+      const cum = cumulativeByOver.get(o)!;
+      const delta = Math.max(0, cum - prev);
+      perOver.push({ over: o, runs: delta });
+      prev = cum;
+    }
+  }
+
   if (perOver.length === 0) {
     return {
       available: false,
@@ -318,7 +358,7 @@ export function sumFirstOversRuns(
     };
   }
   const runs = perOver.reduce((s, x) => s + x.runs, 0);
-  const complete = perOver.length >= oversRequested;
+  const complete = perOver.length >= oversRequested || cumulativeByOver.has(oversRequested);
   return {
     available: true,
     runs,
@@ -328,7 +368,7 @@ export function sumFirstOversRuns(
     perOver,
     note: complete
       ? null
-      : `Only ${perOver.length} of ${oversRequested} overs completed so far — this is the live total through those overs, not a finished powerplay.`,
+      : `Only ${perOver.length} of ${oversRequested} overs completed so far — live total through those overs, not a finished first-${oversRequested} block.`,
   };
 }
 
@@ -1264,8 +1304,8 @@ export function createPredictionTools(
           overs: {
             type: 'integer',
             minimum: 1,
-            maximum: 20,
-            description: 'First N overs (powerplay: T20=6, ODI=10). Default 6.',
+            maximum: 50,
+            description: 'First N overs (T20 powerplay=6, ODI powerplay=10, ODI milestones 20/30/40/50). Default 6.',
           },
         },
         required: ['matchId'],
@@ -1275,22 +1315,26 @@ export function createPredictionTools(
     parse: (raw) => {
       const matchId = parseMatchId(raw.matchId);
       if (!matchId) return 'matchId must be a numeric id';
-      const overs = raw.overs === undefined ? 6 : parseIntInRange(raw.overs, 1, 20);
-      if (overs === null) return 'overs must be an integer from 1 to 20';
+      const overs = raw.overs === undefined ? 6 : parseIntInRange(raw.overs, 1, 50);
+      if (overs === null) return 'overs must be an integer from 1 to 50';
       return { matchId, overs };
     },
     run: async ({ matchId, overs }) => {
       const match = await matches.getMatch(matchId);
       const summary = summarizeMatch(match);
       const team = summary.current?.battingTeam ?? teamName(match, match.battingTeamSportmonksId);
-      const ballsBowled = oversToBalls(match.overs ?? 0) ?? 0;
+      // Coerce — Redis/JSON occasionally yields string scores; typeof === 'number' then fails.
+      const scoreNum = num(match.score);
+      const wicketsNum = num(match.wickets);
+      const oversNum = num(match.overs);
+      const ballsBowled = oversToBalls(match.overs ?? oversNum ?? 0) ?? (oversNum != null ? Math.floor(oversNum) * 6 : 0);
       const phaseBalls = overs * 6;
-      const phaseDone = ballsBowled >= phaseBalls;
       const remainingBalls = Math.max(0, phaseBalls - ballsBowled);
       const remainingOvers = Math.round((remainingBalls / 6) * 100) / 100;
-      const currentScore = typeof match.score === 'number' ? match.score : 0;
+      const currentScore = scoreNum ?? 0;
 
       // Optional: actual overs so far (context only — prediction does not depend on this).
+      // Latiyal docs: matchOverHistory is for live matches; finished innings often return empty.
       let overHistory: unknown = null;
       let stale = false;
       try {
@@ -1301,13 +1345,6 @@ export function createPredictionTools(
         /* optional */
       }
       const summed = sumFirstOversRuns(overHistory, overs);
-      let runsSoFar: number | null = summed.available ? summed.runs : null;
-      if (runsSoFar == null && typeof match.score === 'number' && !phaseDone) {
-        runsSoFar = match.score; // still inside phase → live score is runs so far
-      }
-      if (runsSoFar == null && phaseDone && typeof match.score === 'number') {
-        runsSoFar = match.score;
-      }
 
       // Latiyal liveMatch: s_min/s_max/s_ovr + projected_score[] (authoritative when present).
       let liveProj = parseLatiyalLiveProjections(null);
@@ -1332,18 +1369,72 @@ export function createPredictionTools(
       // Session tip only when answering that same session (not when using a different over row).
       if (!sessionMatchesAsk) nextBallsWindow = null;
 
-      // Finished powerplay → report actual only.
+      const phaseDone =
+        ballsBowled >= phaseBalls ||
+        (oversNum != null && oversNum >= overs) ||
+        summed.complete ||
+        (summed.oversCounted >= overs && summed.available);
+
+      let runsSoFar: number | null = summed.available && (summed.complete || summed.oversCounted >= overs) ? summed.runs : null;
+      if (runsSoFar == null && summed.available && !phaseDone) runsSoFar = summed.runs;
+      if (runsSoFar == null && scoreNum != null && !phaseDone) runsSoFar = scoreNum; // still inside phase
+
+      // Finished first-N block → report actual (never fall through to "need live RR").
       if (phaseDone) {
-        const actual = runsSoFar ?? (typeof match.score === 'number' ? match.score : null);
+        const formatLimit = oversLimitFor(match.matchType);
+        // Prefer over history; then Latiyal projected_score row at that over; then full-innings score only if ask covers the innings.
+        let actual: number | null = runsSoFar;
+        let actualSource: 'over_history' | 'projected_score' | 'innings_total' | 'missing' = actual != null ? 'over_history' : 'missing';
+        if (actual == null && projRow?.mid != null) {
+          actual = projRow.mid;
+          actualSource = 'projected_score';
+        }
+        if (actual == null && scoreNum != null && formatLimit != null && overs >= formatLimit) {
+          actual = scoreNum;
+          actualSource = 'innings_total';
+        }
+        // Exact first-N unknown (common when Latiyal drops over history after the innings) — still answer.
+        if (actual == null && scoreNum != null) {
+          return {
+            matchId,
+            matchType: match.matchType,
+            isLive: match.isLive,
+            team,
+            oversRequested: overs,
+            currentScore: scoreNum,
+            currentOvers: match.overs ?? oversNum,
+            wickets: wicketsNum ?? match.wickets,
+            phaseDone: true,
+            phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
+            mode: 'phase_complete_no_split',
+            available: true,
+            runsSoFar: null,
+            estimatedPhaseTotalMid: null,
+            estimatedPhaseTotalLow: null,
+            estimatedPhaseTotalHigh: null,
+            rangeText: null,
+            perOver: summed.perOver,
+            latiyalProjectedScore: latiyalProjected,
+            latiyalSession: {
+              overs: liveProj.sessionOvers,
+              min: liveProj.sessionMin,
+              max: liveProj.sessionMax,
+              mid: liveProj.sessionMid,
+            },
+            nextBallsWindow,
+            stale,
+            note: `First ${overs} overs are complete, but over-by-over history was not available to isolate that exact total. Innings score: ${scoreNum}/${wicketsNum ?? '-'} in ${match.overs ?? oversNum} overs.`,
+          };
+        }
         return {
           matchId,
           matchType: match.matchType,
           isLive: match.isLive,
           team,
           oversRequested: overs,
-          currentScore: match.score,
-          currentOvers: match.overs,
-          wickets: match.wickets,
+          currentScore: scoreNum ?? match.score,
+          currentOvers: match.overs ?? oversNum,
+          wickets: wicketsNum ?? match.wickets,
           phaseDone: true,
           phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
           mode: 'actual',
@@ -1363,7 +1454,12 @@ export function createPredictionTools(
           },
           nextBallsWindow,
           stale,
-          note: actual != null ? `Actual runs in the first ${overs} overs of this innings.` : 'Phase finished but total not available.',
+          note:
+            actual != null
+              ? actualSource === 'projected_score'
+                ? `Approx. runs at ${overs} overs from Latiyal projected_score (over-by-over history missing).`
+                : `Actual runs in the first ${overs} overs of this innings.`
+              : 'Phase finished but total not available.',
         };
       }
 
@@ -1411,15 +1507,55 @@ export function createPredictionTools(
         }
       }
 
+      // Prediction failed but we still know the live score — never leave the user with only "need RR".
+      if (mid == null && scoreNum != null) {
+        return {
+          matchId,
+          matchType: match.matchType,
+          isLive: match.isLive,
+          team,
+          oversRequested: overs,
+          currentScore: scoreNum,
+          currentOvers: match.overs ?? oversNum,
+          wickets: wicketsNum ?? match.wickets,
+          phaseDone: false,
+          phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
+          mode: 'in_progress_no_estimate',
+          available: true,
+          runsSoFar: runsSoFar ?? scoreNum,
+          remainingBallsInPhase: remainingBalls,
+          remainingOvers,
+          estimatedPhaseTotalMid: null,
+          estimatedPhaseTotalLow: null,
+          estimatedPhaseTotalHigh: null,
+          rangeText: null,
+          projectionMethod: 'unavailable',
+          perOver: summed.perOver,
+          latiyalProjectedScore: latiyalProjected,
+          latiyalSession: {
+            overs: liveProj.sessionOvers,
+            min: liveProj.sessionMin,
+            max: liveProj.sessionMax,
+            mid: liveProj.sessionMid,
+            runsSoFar: liveProj.sessionRunsSoFar,
+            ballsSoFar: liveProj.sessionBallsSoFar,
+            inPowerplay: liveProj.inPowerplay,
+          },
+          nextBallsWindow,
+          stale,
+          note: `First ${overs} overs not finished yet. Live score ${scoreNum}/${wicketsNum ?? '-'} in ${match.overs ?? oversNum} overs — projection fields unavailable.`,
+        };
+      }
+
       return {
         matchId,
         matchType: match.matchType,
         isLive: match.isLive,
         team,
         oversRequested: overs,
-        currentScore: match.score,
-        currentOvers: match.overs,
-        wickets: match.wickets,
+        currentScore: scoreNum ?? match.score,
+        currentOvers: match.overs ?? oversNum,
+        wickets: wicketsNum ?? match.wickets,
         phaseDone: false,
         phaseLabel: overs === powerplayOversFor(match.matchType) ? 'powerplay' : `first_${overs}_overs`,
         mode: 'prediction',

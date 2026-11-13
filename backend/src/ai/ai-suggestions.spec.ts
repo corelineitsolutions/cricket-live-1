@@ -86,6 +86,19 @@ describe('ai-suggestions', () => {
     expect(mid.questions.map((q) => q.question).join(' ')).toMatch(/first 10 overs/i);
   });
 
+  it('ODI first-overs chips reach 40 while innings is at 34 overs', () => {
+    expect(nextFirstOversTarget('ODI', 34)).toBe(40);
+    const odi = matchSuggestions(
+      baseMatch({
+        matchType: 'ODI',
+        overs: 34.2,
+        innings: [{ inning: 1, teamSportmonksId: 1, score: 142, wickets: 8, overs: 34.2 }],
+      }),
+      'en',
+    );
+    expect(odi.questions.map((q) => q.question).join(' ')).toMatch(/first 40 overs/i);
+  });
+
   it('suggests chase chips including required rate in the second innings', () => {
     const res = matchSuggestions(
       baseMatch({

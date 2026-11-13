@@ -165,6 +165,67 @@ describe('prediction helpers', () => {
     expect(summed).toMatchObject({ available: true, complete: true, runs: 56, oversCounted: 6 });
   });
 
+  it('allows first-40 ODI asks and marks incomplete when fewer overs exist', () => {
+    const rows = Array.from({ length: 34 }, (_, i) => ({ over: i + 1, runs: 4 }));
+    const summed = sumFirstOversRuns(rows, 40);
+    expect(summed).toMatchObject({
+      available: true,
+      complete: false,
+      oversRequested: 40,
+      oversCounted: 34,
+      runs: 136,
+    });
+  });
+
+  it('reads cumulative end-of-over scores for first-N when per-over runs are missing', () => {
+    const summed = sumFirstOversRuns(
+      [
+        { over: 38, score: 200 },
+        { over: 39, score: 205 },
+        { over: 40, score: 211 },
+        { over: 41, score: 215 },
+      ],
+      40,
+    );
+    expect(summed).toMatchObject({ available: true, complete: true, runs: 211, oversRequested: 40 });
+  });
+
+  it('answers first-40 after a finished 50-over innings even when over history is empty', async () => {
+    const finished = {
+      ...match,
+      matchType: 'ODI',
+      isLive: false,
+      isFinished: true,
+      // String score reproduces the production bug (typeof === 'number' failed → available:false).
+      score: '240' as unknown as number,
+      wickets: '6' as unknown as number,
+      overs: '50.0' as unknown as number,
+      runRate: null,
+    } as unknown as MatchDto;
+    const feeds = {
+      get: vi.fn(async (endpoint: string) => {
+        if (endpoint === 'matchOverHistory') {
+          return { data: null, stale: false, message: 'finished', updatedAt: '', endpoint, params: {} };
+        }
+        if (endpoint === 'liveMatch') {
+          return { data: {}, stale: false, message: null, updatedAt: '', endpoint, params: {} };
+        }
+        throw new Error(`unexpected ${endpoint}`);
+      }),
+    } as unknown as FeedsService;
+    const matches = { getMatch: vi.fn(async () => finished) } as unknown as MatchesService;
+    const registry = new AiToolRegistry(createPredictionTools(matches, feeds));
+    const result = await registry.execute('get_first_overs_score', JSON.stringify({ matchId: '61521', overs: 40 }));
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({
+      available: true,
+      phaseDone: true,
+      mode: 'phase_complete_no_split',
+      oversRequested: 40,
+      currentScore: 240,
+    });
+  });
+
   it('parses Latiyal s_min/s_max/s_ovr + projected_score[] from liveMatch', () => {
     const parsed = parseLatiyalLiveProjections({
       powerplay: '1',

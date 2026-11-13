@@ -1,0 +1,296 @@
+================================================================================
+  Cricket Live — AI system flow, models, and load-test report
+  Updated: 2026-10-28
+================================================================================
+
+This file is the ops / product summary of how Ask AI works, which models are
+used, what we tested, and how much load this server can handle today.
+
+
+--------------------------------------------------------------------------------
+1. WHAT THE AI DOES
+--------------------------------------------------------------------------------
+
+Endpoint:  POST /api/v1/ai/ask
+Status:    GET  /api/v1/ai/status
+Chips:     GET  /api/v1/ai/suggestions?matchId=&language=
+
+The assistant answers cricket questions about:
+  - Live match (score, RRR, projection, toss/win chance, first N overs, …)
+  - Archive (IPL / World Cup / Champions Trophy / player records via Cricsheet)
+  - English, Hindi, and Hinglish
+
+It must NOT invent scores or winners. Facts come from tools (Latiyal live +
+Cricsheet history), then a short answer is composed.
+
+
+--------------------------------------------------------------------------------
+2. END-TO-END FLOW (one Ask)
+--------------------------------------------------------------------------------
+
+  App / admin
+       |
+       v
+  POST /api/v1/ai/ask  { question, language, deviceId, matchId? }
+       |
+       +-- AI_ENABLED?              no -> 503 AI_DISABLED
+       +-- Provider ready?          no -> 503 AI_NOT_CONFIGURED
+       +-- Device / IP quota?       no -> 429 AI_QUOTA_EXCEEDED
+       +-- Daily token budget?      no -> 503 AI_BUDGET_EXHAUSTED  (real LLM only)
+       +-- inFlight < AI_MAX_CONCURRENT?
+                                    no -> 503 AI_BUSY  ("chairs full")
+       |
+       v
+  Resolve tool plan
+       |
+       +-- Exact arithmetic ("100 runs in 6 overs")
+       |     -> calculate_required_rate only
+       |
+       +-- Optional local intent classifier (Qwen on llama.cpp)
+       |     -> JSON intent -> map to tools
+       |     -> if Qwen down / bad JSON -> deterministic planner
+       |
+       +-- Deterministic planner (keywords: IPL, World Cup, kon jita, …)
+             -> tool list (get_match, get_event_results, get_player_history, …)
+       |
+       v
+  Run tools (Latiyal Redis live state and/or MySQL hist_* Cricsheet)
+       |
+       v
+  Answer path
+       |
+       +-- If ALL planned tools are "offline-capable"
+       |     -> composeAskAnswer templates  (NO chat LLM call)
+       |     -> fast, cheap, survives provider rate limits
+       |
+       +-- Else
+             -> optional chat LLM (LLM_PROVIDER=openai-compatible)
+             -> on 429/timeout, fall back to tools + composeAskAnswer if possible
+       |
+       v
+  Response envelope { success, data: { answer, sources, mocked, … } }
+
+
+"Chairs" analogy
+----------------
+AI_MAX_CONCURRENT = how many Asks may run at the SAME time on one API process.
+Example: AI_MAX_CONCURRENT=64 means 64 chairs. The 65th Ask gets AI_BUSY until
+a chair frees (typical answer ~10 seconds).
+
+
+--------------------------------------------------------------------------------
+3. MODELS / PROVIDERS (what runs where)
+--------------------------------------------------------------------------------
+
+A) Facts (always preferred)
+   - Live: Latiyal worker -> Redis -> get_match / project_score / …
+   - History: Cricsheet MySQL hist_* -> get_event_results / get_player_history / …
+
+B) Answer composer (no GPU)
+   - composeAskAnswer templates when tools are enough
+   - Used heavily for IPL winners, WC finals, live chips, player hundreds
+
+C) Intent classifier (optional, small local model)
+   - Config: AI_INTENT_CLASSIFIER=local
+   - Typical: Qwen3-1.7B via llama.cpp on 127.0.0.1:8081
+   - ONLY classifies intent JSON — does NOT invent cricket facts
+   - See also: docs/AI_LOCAL_QWEN.txt
+
+D) Chat LLM (optional, for fuzzy / hard questions)
+   - Config: LLM_PROVIDER=openai-compatible
+   - Self-hosted examples:
+       Ollama / vLLM / llama.cpp OpenAI-compatible URL
+       LLM_BASE_URL=http://127.0.0.1:11434/v1   (example)
+       LLM_MODEL=<your model id>
+   - Hosted examples: Groq, OpenAI, … (needs LLM_API_KEY + AI_DAILY_TOKEN_BUDGET)
+   - When LLM_PROVIDER=mock: answers are tool templates only (mocked:true)
+
+On this production-style server you self-host the chat LLM. Hosted Groq was
+used in some early tests and returned 429 AI_BUSY when its rate limit hit —
+that is the *provider* limit, not Nest dying.
+
+
+--------------------------------------------------------------------------------
+4. IMPORTANT API / ENV KNOBS
+--------------------------------------------------------------------------------
+
+AI_ENABLED=true|false
+LLM_PROVIDER=mock | openai-compatible
+LLM_BASE_URL=…
+LLM_MODEL=…
+LLM_API_KEY=…                    (hosted only; never commit)
+AI_DAILY_TOKEN_BUDGET=…          (must be >0 for real LLM)
+AI_HISTORY_ENABLED=true          (Cricsheet tools)
+AI_MAX_CONCURRENT=N              (simultaneous Asks per API process = "chairs")
+AI_REQUEST_TIMEOUT_MS=25000–60000
+AI_REQUESTS_PER_DEVICE_PER_MINUTE / _DAY
+AI_REQUESTS_PER_IP_PER_MINUTE
+RATE_LIMIT_PER_MINUTE
+RATE_LIMIT_BURST_PER_SECOND      (default 20 — blocks 200-at-once tests)
+
+Intent classifier (optional):
+AI_INTENT_CLASSIFIER=off|local
+AI_LOCAL_MODEL_URL=http://127.0.0.1:8081
+AI_LOCAL_MODEL_NAME=qwen3-1.7b
+AI_INTENT_MAX_CONCURRENT=2
+
+Frontend contract: docs/AI_FRONTEND_API.txt
+Longer setup:      docs/CRICKET_AI_SETUP.txt
+Ask loop detail:   docs/AI_ASK_FLOW.txt
+
+
+--------------------------------------------------------------------------------
+5. LOAD / CAPACITY TESTS (this server)
+--------------------------------------------------------------------------------
+
+Scripts (from /home/cricket-live-1/backend):
+  npm run ai:load
+    node scripts/ai-load-test.mjs
+  npm run ai:bank
+    node scripts/ai-question-bank-test.mjs
+  Question bank file:
+    questions/cricket_ai_test_question_bank.txt
+
+
+5.1 Sustained Ask rate (timed / paced)
+--------------------------------------
+  CCU=8  REQUESTS=80     -> ~47 ok/min, 100% success (first run)
+  TARGET_RPM=120 CCU=24  -> ~99 ok/min, 100% success
+  TARGET_RPM=150 CCU=30  -> ~128 ok/min, 100% success
+  DURATION_S=300 CCU=24 TARGET_RPM=120
+                         -> 597 ok / 5 min, ~115 ok/min, 100% success
+
+5.2 Live match Ask (MATCH_ID set)
+---------------------------------
+  MATCH_ID=14761 TARGET_RPM=100 CCU=24 DURATION_S=60
+                         -> ~78 ok/min, 100% success
+  (live paths a bit heavier; still stable)
+
+5.3 Bad test (ignore huge fail counts)
+--------------------------------------
+  TARGET_RPM=0 with CCU=200/300 caused hundreds of thousands of instant
+  429 TOO_MANY_REQUESTS (workers re-fired after 75ms rejects).
+  Real signal buried inside: rpm_ok still ~156–173.
+  Script now forbids TARGET_RPM=0; use MODE=wave instead.
+
+5.4 Wave test = “N people ask at the same moment”
+-------------------------------------------------
+  MODE=wave CCU=200 WAVES=3
+
+  With default RATE_LIMIT_BURST_PER_SECOND=20:
+    ok=20/200 each wave  -> HTTP burst gate, not LLM
+
+  After raising burst + AI_MAX_CONCURRENT=64:
+    wave 1/2/3: ok=64/200 every time
+    fails: 503 AI_BUSY (chairs full)
+    p50 latency ~11s on successes
+    -> Nest limit matched config: exactly 64 concurrent Asks work
+
+5.5 Question bank (quality, not only load)
+------------------------------------------
+  SECTION=ipl / icc against the bank:
+  - Early runs: many AI_BUSY when chat LLM rate-limited; wrong WC winners /
+    player-name bugs (since fixed: Final-only winner, calendar year for WC,
+    possessive name parsing, get_event_titles offline, longer bank retries).
+  - Re-run after deploy for accuracy review via:
+      tmp/ai-question-bank-results.csv
+
+
+--------------------------------------------------------------------------------
+6. CURRENT CAPACITY (planning numbers)
+--------------------------------------------------------------------------------
+
+Proven on this box (self-hosted chat LLM + tools):
+
+  Concurrent Asks (chairs):     ~64 when AI_MAX_CONCURRENT=64
+                                (prod tip: use ~32–48 for headroom)
+
+  Sustained successful Asks:    ~100–170 per minute (healthy runs)
+  Comfortable launch target:    ~100–130 Ask/min, ~24–32 concurrent
+
+  Typical latency:              ~10 s median; p95 often 12–21 s
+  Keep timeouts:                AI_REQUEST_TIMEOUT_MS and nginx >= 30s
+
+NOT supported today without more LLM hardware:
+  - 200–300 simultaneous full LLM Answers all succeeding
+  - 2000 concurrent AI users all mid-Ask
+
+App users online can be much higher if only a small % open Ask at once.
+
+
+--------------------------------------------------------------------------------
+7. HOW TO THINK ABOUT SCALE (1M app users)
+--------------------------------------------------------------------------------
+
+Most Asks should use tools + templates (no LLM).
+LLM only for fuzzy / chatty questions.
+
+To grow past ~64 concurrent:
+  1. Stronger / more GPU replicas for self-host LLM
+  2. Optional paid LLM as overflow when self-host is full
+  3. Keep AI_MAX_CONCURRENT at what stays fast (wave-tested)
+  4. Cache identical popular questions
+  5. Never leave load-test burst limits in production forever
+
+
+--------------------------------------------------------------------------------
+8. RECOMMENDED PRODUCTION SETTINGS (starting point)
+--------------------------------------------------------------------------------
+
+After load tests, put safe values back, for example:
+
+  AI_ENABLED=true
+  AI_HISTORY_ENABLED=true
+  LLM_PROVIDER=openai-compatible          # or mock if templates-only
+  LLM_BASE_URL=http://127.0.0.1:<port>/v1
+  LLM_MODEL=<your self-host model>
+  AI_DAILY_TOKEN_BUDGET=<large enough>
+  AI_MAX_CONCURRENT=32                    # or 48 if wave test stays fast
+  AI_REQUEST_TIMEOUT_MS=30000
+  AI_REQUESTS_PER_DEVICE_PER_MINUTE=10
+  AI_REQUESTS_PER_DEVICE_PER_DAY=200
+  AI_REQUESTS_PER_IP_PER_MINUTE=60
+  RATE_LIMIT_PER_MINUTE=600
+  RATE_LIMIT_BURST_PER_SECOND=40
+
+Optional Hinglish intent:
+  AI_INTENT_CLASSIFIER=local
+  AI_LOCAL_MODEL_URL=http://127.0.0.1:8081
+  AI_LOCAL_MODEL_NAME=qwen3-1.7b
+
+
+--------------------------------------------------------------------------------
+9. HOW TO RE-TEST QUICKLY
+--------------------------------------------------------------------------------
+
+Health:
+  curl -sS http://127.0.0.1:3000/health
+  curl -sS http://127.0.0.1:3000/api/v1/ai/status
+
+Sustained:
+  TARGET_RPM=120 DURATION_S=60 CCU=24 TIMEOUT_MS=60000 node scripts/ai-load-test.mjs
+
+Concurrent chairs:
+  MODE=wave CCU=64 WAVES=3 TIMEOUT_MS=60000 node scripts/ai-load-test.mjs
+
+Question bank section:
+  SECTION=icc DELAY_MS=3000 RETRIES=4 node scripts/ai-question-bank-test.mjs
+
+PM2 (if API down):
+  cd /home/cricket-live-1 && pm2 restart live-score-api
+  pm2 logs live-score-api --lines 40
+
+
+--------------------------------------------------------------------------------
+10. ONE-LINE SUMMARY
+--------------------------------------------------------------------------------
+
+Ask AI = plan tools -> Latiyal/Cricsheet facts -> template or self-host LLM.
+This server reliably handles ~64 concurrent Asks (when configured) and about
+100–170 successful Asks per minute; 200+ simultaneous Asks only fill the chairs
+and return AI_BUSY for the rest until seats free.
+
+
+================================================================================
+  End of report
+================================================================================

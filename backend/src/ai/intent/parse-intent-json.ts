@@ -49,7 +49,7 @@ function parseOptionalString(raw: unknown, re: RegExp): string | undefined {
 function parseParameters(raw: unknown): AiIntentParameters {
   const obj = asRecord(raw) ?? {};
   const params: AiIntentParameters = {};
-  const overs = parseOptionalInt(obj.overs ?? obj.oversAhead, 1, 20);
+  const overs = parseOptionalInt(obj.overs ?? obj.oversAhead, 1, 50);
   if (overs !== undefined) params.overs = overs;
   const playerName = parseOptionalString(obj.playerName ?? obj.player ?? obj.name, PLAYER_NAME);
   if (playerName) params.playerName = playerName;

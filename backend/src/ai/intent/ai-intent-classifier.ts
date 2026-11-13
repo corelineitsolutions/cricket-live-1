@@ -16,14 +16,14 @@ Rules:
 - required_run_rate = only "required run rate / RRR / kitne run per over chahiye" math from the live chase.
 - win_probability = who wins / can they chase / likely to win / jit sakta (NOT required_run_rate).
 - project_next_overs = runs in NEXT N overs or NEXT N balls; set parameters.overs or ballsRemaining; needs_match=true. NOT "first 6 overs".
-- first_overs_score = runs in FIRST N overs / powerplay of this live innings ("pehle 6 over", "powerplay kitne run"). set parameters.overs (T20 powerplay=6). needs_match=true. Never player_history / archive.
+- first_overs_score = runs in FIRST N overs / powerplay of this live innings ("pehle 6 over", "first 40 overs", "powerplay kitne run"). set parameters.overs 1-50 (T20 powerplay=6, ODI milestones up to 50). needs_match=true. Never player_history / archive.
 - project_score = projected final total / target they might set / score in 50 overs (LIVE). needs_match=true. Never player_history.
 - When match_selected=yes, prefer live intents; do not use player_history for projected score, target, first overs, or "reach in N overs".
 - next_wicket = when next wicket might fall (agla wicket / kb hogi).
 - player_history = named player career / World Cup / IPL / hundreds. Put playerName + event/year/format. needs_match=false.
 - head_to_head = head to head / h2h between teams.
 - Do NOT invent match ids, player ids, scores, or statistics.
-- parameters may include only: playerName, event, year, format (T20|ODI|Test), gender (male|female), leaderKind, team1, team2, overs (1-20), runsNeeded, oversRemaining, ballsRemaining.
+- parameters may include only: playerName, event, year, format (T20|ODI|Test), gender (male|female), leaderKind, team1, team2, overs (1-50), runsNeeded, oversRemaining, ballsRemaining.
 - English, Hindi, and Hinglish are cricket if about a match or cricket stats.
 Examples:
 Q: Can they chase this? → {"domain":"cricket","intent":"win_probability","parameters":{},"needs_match":true,"confidence":0.9}

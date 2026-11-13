@@ -292,6 +292,9 @@ function guessNextBalls(question: string): number | null {
   return n >= 1 && n <= 120 ? n : null;
 }
 
+/** Max first-N ask (ODI full innings). Chips go to 40/50; never silently fall back to 6. */
+export const MAX_FIRST_OVERS_ASK = 50;
+
 /** First N overs / powerplay length for THIS innings. */
 export function guessFirstOvers(question: string): number | null {
   if (!FIRST_OVERS_WORDS.test(question)) return null;
@@ -301,7 +304,8 @@ export function guessFirstOvers(question: string): number | null {
     );
   if (numbered) {
     const n = Number(numbered[1] || numbered[2] || numbered[3]);
-    if (n >= 1 && n <= 20) return n;
+    // ODI chips ask 30/40/50 — old cap of 20 made "first 40" silently become 6.
+    if (Number.isFinite(n) && n >= 1) return Math.min(MAX_FIRST_OVERS_ASK, Math.floor(n));
   }
   // Bare "powerplay" / "first power play" → T20 default 6 (tool may refine via match type).
   if (/power\s*play|powerplay|पावर/i.test(question)) return 6;
@@ -1351,11 +1355,23 @@ function compose(p: Parsed): string {
         );
       }
     } else if (name === 'get_first_overs_score') {
-      if (!data.available) {
+      if (data.mode === 'phase_complete_no_split') {
         lines.push(
           lang === 'hi'
-            ? `Pehle ${str(data.oversRequested)} overs (powerplay) ka estimate abhi nahi ban saka — live RR / Latiyal prediction missing.`
-            : `Could not estimate first ${str(data.oversRequested)} overs yet — need live RR or Latiyal prediction fields.`,
+            ? `Pehle ${str(data.oversRequested)} overs complete ho chuke hain, lekin over-by-over history nahi mili isliye exact pehle-${str(data.oversRequested)} total alag nahi bata sakte. Innings score: ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`
+            : `First ${str(data.oversRequested)} overs are complete, but over-by-over history was not available to isolate that exact total. Innings score: ${str(data.currentScore)}/${str(data.wickets ?? '-')} after ${str(data.currentOvers)} overs.`,
+        );
+      } else if (data.mode === 'in_progress_no_estimate') {
+        lines.push(
+          lang === 'hi'
+            ? `Pehle ${str(data.oversRequested)} overs abhi complete nahi hue — ${str(data.team)} abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov). Projection fields abhi missing hain.`
+            : `First ${str(data.oversRequested)} overs are not finished yet — ${str(data.team)} are ${str(data.currentScore)}/${str(data.wickets ?? '-')} after ${str(data.currentOvers)} overs. Projection fields are unavailable right now.`,
+        );
+      } else if (!data.available) {
+        lines.push(
+          lang === 'hi'
+            ? `Pehle ${str(data.oversRequested)} overs ka estimate abhi nahi ban saka — live RR / Latiyal prediction missing. Abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`
+            : `Could not estimate first ${str(data.oversRequested)} overs yet — need live RR or Latiyal prediction fields. Now ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`,
         );
       } else if (data.mode === 'actual' || data.phaseDone) {
         lines.push(
@@ -1380,10 +1396,11 @@ function compose(p: Parsed): string {
             : method === 'latiyal_projected_score'
               ? ' (Latiyal projected_score)'
               : ' (live RR fallback)';
+        // Incomplete milestone (e.g. ask first 40 while on 34.2) — never claim a finished total.
         lines.push(
           lang === 'hi'
-            ? `Pehle ${str(data.oversRequested)}${phaseWord} me roughly ${str(data.rangeText)} runs nikal sakte hain (mid ${str(data.estimatedPhaseTotalMid)})${how}. Abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`
-            : `About ${str(data.rangeText)} runs possible in the first ${str(data.oversRequested)}${phaseWord} (mid ${str(data.estimatedPhaseTotalMid)})${how}. Now ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov).`,
+            ? `Pehle ${str(data.oversRequested)}${phaseWord} abhi complete nahi hue — ${str(data.team)} abhi ${str(data.currentScore)}/${str(data.wickets ?? '-')} (${str(data.currentOvers)} ov). Pehle ${str(data.oversRequested)} overs me roughly ${str(data.rangeText)} runs nikal sakte hain (mid ${str(data.estimatedPhaseTotalMid)})${how}.`
+            : `First ${str(data.oversRequested)}${phaseWord} are not finished yet — ${str(data.team)} are ${str(data.currentScore)}/${str(data.wickets ?? '-')} after ${str(data.currentOvers)} overs. About ${str(data.rangeText)} runs possible through the first ${str(data.oversRequested)} overs (mid ${str(data.estimatedPhaseTotalMid)})${how}.`,
         );
         // Only show session remaining tip when we actually used that same session market.
         if (method === 'latiyal_session' && data.nextBallsWindow && typeof data.nextBallsWindow === 'object') {

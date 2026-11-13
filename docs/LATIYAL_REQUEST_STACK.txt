@@ -1,0 +1,213 @@
+================================================================================
+  Latiyal request stack — who hits what, how many calls per minute
+  Updated: 2026-11-03
+================================================================================
+
+Short answer for the provider / for you
+---------------------------------------
+The mobile app NEVER calls Latiyal. It only calls YOUR base URL
+(e.g. https://your-api/... or Socket.IO).
+
+Your Nest API + live worker call Latiyal. Redis cache + single-flight means
+1,000 app users opening the same screen still cause ~1 Latiyal call per
+refresh window — not 1,000.
+
+If Latiyal says "too many requests", the volume almost always comes from the
+LIVE WORKER (poll loop), not from app traffic multiplying.
+
+
+--------------------------------------------------------------------------------
+1. THREE LAYERS (the full stack)
+--------------------------------------------------------------------------------
+
+  [Mobile / admin app]
+        |  HTTP + WebSocket to YOUR API only
+        |  (no Latiyal token, no Latiyal URL)
+        v
+  [Your Nest API  +  live-score worker]
+        |  Redis cache (shared) + single-flight lock
+        |  Only on cache miss / TTL expiry → Latiyal
+        v
+  [Latiyal Infotech  Cricket Live Line V4/V5]
+        ${LATIYAL_API_URL}/<endpoint>/<token>
+
+
+What the app may call every minute (YOUR API — NOT Latiyal):
+  - Socket subscribe to live matches (preferred for scores)
+  - GET /matches/live, /matches/{id}
+  - GET /matches/{id}/scorecard  (poll ~every 15 s while tab open)
+  - GET /matches/{id}/commentary (poll ~every 2–5 s while tab open)
+  - GET /feeds/{endpoint}        (screen open)
+  - POST /ai/ask, /ads, /devices, …
+
+Each of those hits YOUR server. Latiyal is hit only when YOUR cache is empty
+or expired for that key.
+
+
+--------------------------------------------------------------------------------
+2. WHERE LATIYAL CALLS COME FROM
+--------------------------------------------------------------------------------
+
+A) Live worker (background, always on)  — usually the BIG volume
+   File: backend/src/live-score/live-score-sync.service.ts
+   Env (defaults in .env.example):
+
+     LATIYAL_IDLE_INTERVAL_MS=60000     no live match → poll every 60 s
+     LATIYAL_LIVE_INTERVAL_MS=1000      live match(s) → poll every ~1 s
+     LATIYAL_ACTIVE_INTERVAL_MS=700     chase crunch → poll every ~0.7 s
+     LATIYAL_LIST_INTERVAL_MS=15000     reuse liveMatchList for 15 s
+
+   Each poll cycle:
+     1. liveMatchList     — at most once per LATIYAL_LIST_INTERVAL_MS
+                            (cached in Redis between cycles)
+     2. liveMatch         — once per listed match, every cycle
+                            (max 25 matches per cycle)
+
+B) On-demand (user opens scorecard / commentary / feeds)
+   - MatchDetailService: scorecard / commentary behind Redis TTL
+   - FeedsService: GET /feeds/{endpoint} behind catalog TTL
+   - Shared SingleFlightCache: many clients → one upstream call
+
+
+--------------------------------------------------------------------------------
+3. MATH — LATIYAL CALLS PER MINUTE (worker only)
+--------------------------------------------------------------------------------
+
+Formula while matches are live:
+
+  list_calls/min   ≈  60_000 / LATIYAL_LIST_INTERVAL_MS
+  detail_calls/min ≈  (60_000 / LATIYAL_LIVE_INTERVAL_MS) × N_live
+  total/min        ≈  list_calls + detail_calls
+                      (+ occasional missing-match lookups, ≤3/cycle)
+
+With DEFAULT env (list 15 s, live 1 s):
+
+  list ≈ 4 / min
+
+  N live matches | liveMatch/min | + list | ≈ Latiyal/min (worker)
+  -------------- | ------------- | ------ | ----------------------
+  0 (idle)       | 0             | ~1     | ~1
+  1              | 60            | 4      | ~64
+  2              | 120           | 4      | ~124
+  3              | 180           | 4      | ~184
+  5              | 300           | 4      | ~304
+  10             | 600           | 4      | ~604
+
+Active chase (LATIYAL_ACTIVE_INTERVAL_MS=700):
+  cycles/min ≈ 86 → multiply the liveMatch column by ~1.4
+
+Idle (no live):
+  ~1 liveMatchList per minute. Tiny.
+
+
+--------------------------------------------------------------------------------
+4. MATH — ON-DEMAND (scorecard / commentary / feeds)
+--------------------------------------------------------------------------------
+
+Cache rules (one Latiyal call per key per TTL, however many apps poll):
+
+  Endpoint / path              Live TTL     Max Latiyal/min PER MATCH
+  ---------------------------  -----------  ----------------------------
+  GET …/scorecard              15 s         4
+  GET …/commentary             2 s          30
+  GET /feeds/liveMatch         0.5 s        120   (avoid; use socket)
+  GET /feeds/commentary        1 s          60
+  GET /feeds/scorecardByMatchId 15 s        4
+  GET /feeds/homeList          60 s         1 (global)
+  GET /feeds/seriesList        6 h          ~0
+  GET /feeds/matchInfo         10 min       ~0.1
+  most series/news/rankings    1–6 h / day  near 0
+
+Important:
+  - 10,000 users polling scorecard for match X still = max 4 Latiyal/min
+    for that match (single-flight + Redis).
+  - Prefer Socket for live score. Do NOT poll GET /feeds/liveMatch from the
+    app every second — that alone can add 120 Latiyal/min per match.
+
+
+--------------------------------------------------------------------------------
+5. EXAMPLE DAY SCENARIOS (what to tell Latiyal / yourself)
+--------------------------------------------------------------------------------
+
+Scenario A — quiet, 0 live matches
+  Worker ≈ 1 call/min → ~60/hour
+  On-demand (browsing) ≈ few dozen/hour
+  Total: low hundreds/hour
+
+Scenario B — 2 live matches, apps use socket + normal scorecard/commentary
+  Worker ≈ 124/min → ~7,400/hour
+  Scorecard 2 matches × 4 = 8/min (if tabs open)
+  Commentary 2 × 30 = 60/min (if tabs open)
+  Worst case extras ≈ +68/min
+  Total ≈ 190/min ≈ ~11,000/hour while both matches stay live
+
+Scenario C — someone polls feeds/liveMatch every 0.5s for 5 matches
+  Extra ≈ 5 × 120 = 600/min on top of worker
+  This is the bad pattern. Use socket + /matches/live instead.
+
+
+--------------------------------------------------------------------------------
+6. YOUR LOCAL COUNTERS (see real numbers)
+--------------------------------------------------------------------------------
+
+Admin dashboard (API already counts Latiyal calls in Redis):
+  GET /api/v1/admin/dashboard
+  → provider.callsThisHour
+  → provider.onDemandCallsThisHour
+  → provider.count429
+  → provider.last429At
+  → worker intervals / live match count
+
+Env caps (0 = unlimited; plan is unlimited, counters still run):
+  LATIYAL_MAX_CALLS_PER_HOUR=0
+  LATIYAL_ON_DEMAND_MAX_CALLS_PER_HOUR=0
+
+If Latiyal ever returns HTTP 429 / Retry-After, the worker slows automatically
+(reason: retry-after / rate-limited). Honour that; do not hammer.
+
+
+--------------------------------------------------------------------------------
+7. IF PROVIDER SAYS "TOO MANY REQUESTS" — WHAT TO CHANGE
+--------------------------------------------------------------------------------
+
+Cut volume WITHOUT hurting the app (app still hits your URL the same way):
+
+  1. Raise live poll interval (biggest win):
+       LATIYAL_LIVE_INTERVAL_MS=2000     # was 1000 → ~half worker calls
+       LATIYAL_ACTIVE_INTERVAL_MS=1000
+       LATIYAL_LIST_INTERVAL_MS=30000    # list every 30 s instead of 15
+
+  2. Confirm app uses Socket for live scores, not /feeds/liveMatch polling.
+
+  3. Keep scorecard/commentary TTLs (already coalesced).
+
+  4. Check dashboard callsThisHour vs live match count — should match §3.
+
+Example after slowing live to 2 s, 2 matches:
+  list ~2–4/min + liveMatch 30×2 = 60 → ~64/min worker (was ~124)
+
+
+--------------------------------------------------------------------------------
+8. ONE DIAGRAM
+--------------------------------------------------------------------------------
+
+  App users (any number)
+       |  many HTTP / WS to YOUR base URL
+       v
+  Nest API ── Redis HIT ──> same cached JSON (0 Latiyal)
+       |
+       | cache miss / TTL end / worker tick
+       v
+  Latiyal  (worker: ~N×60 liveMatch/min + ~4 list/min
+            + on-demand only when someone needs scorecard/feeds)
+
+
+Bottom line:
+  App load ≠ Latiyal load.
+  Latiyal load ≈ worker poll rate × live matches (+ small on-demand).
+  Cache is why 1M app users do not equal 1M Latiyal calls.
+
+
+================================================================================
+  End
+================================================================================

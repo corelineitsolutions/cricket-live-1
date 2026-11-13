@@ -2,11 +2,20 @@ import { AiTool, parseIntInRange } from './ai-tool.types';
 
 /** "5.3" overs → 33 balls (six-ball overs). Null for invalid notation such as "5.7". */
 export function oversToBalls(raw: unknown): number | null {
-  const text = typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? raw.trim() : '';
+  // Numbers first — String(15.2) is fine, but float noise like 15.2000001 must not fail.
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
+    const rounded = Math.round(raw * 10) / 10;
+    const whole = Math.trunc(rounded);
+    const part = Math.round((rounded - whole) * 10);
+    if (part < 0 || part > 5) return null;
+    const balls = whole * 6 + part;
+    return balls > 0 && balls <= 900 ? balls : null;
+  }
+  const text = typeof raw === 'string' ? raw.trim() : '';
   const match = /^(\d{1,3})(?:\.([0-5]))?$/.exec(text);
   if (!match) return null;
   const balls = Number(match[1]) * 6 + Number(match[2] ?? 0);
-  return balls > 0 && balls <= 600 ? balls : null;
+  return balls > 0 && balls <= 900 ? balls : null;
 }
 
 export function requiredRate(runsNeeded: number, ballsRemaining: number) {

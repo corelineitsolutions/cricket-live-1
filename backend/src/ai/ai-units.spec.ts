@@ -17,6 +17,9 @@ describe('run-rate calculator', () => {
   it('reads cricket over notation and rejects impossible balls', () => {
     expect(oversToBalls('5.3')).toBe(33);
     expect(oversToBalls(6)).toBe(36);
+    expect(oversToBalls(50)).toBe(300);
+    expect(oversToBalls('50.0')).toBe(300);
+    expect(oversToBalls(15.2000000001)).toBe(92);
     expect(oversToBalls('5.6')).toBeNull();
     expect(oversToBalls('abc')).toBeNull();
   });
@@ -328,6 +331,13 @@ describe('planAskTools', () => {
       expect(calls[0]?.name, q).toBe('get_first_overs_score');
       expect(JSON.parse(calls[0]!.arguments).overs).toBe(6);
     }
+    // ODI chip: "first 40" must keep 40 (old bug: capped at 20 → defaulted to 6).
+    const forty = planAskTools('How many runs in the first 40 overs?', '15136', tools, { strict: true });
+    expect(forty[0]?.name).toBe('get_first_overs_score');
+    expect(JSON.parse(forty[0]!.arguments).overs).toBe(40);
+    const thirty = planAskTools('पहले 30 ओवर में कितने रन?', '15136', tools, { strict: true });
+    expect(thirty[0]?.name).toBe('get_first_overs_score');
+    expect(JSON.parse(thirty[0]!.arguments).overs).toBe(30);
     expect(planAskTools('How many runs in the next 6 overs?', '15131', tools, { strict: true })[0]?.name).toBe(
       'project_next_overs',
     );
